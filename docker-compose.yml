@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: sovani_postgres
+    environment:
+      POSTGRES_DB: sovani_crosspost
+      POSTGRES_USER: sovani
+      POSTGRES_PASSWORD: sovani_pass
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sovani -d sovani_crosspost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Celery & Caching
+  redis:
+    image: redis:7-alpine
+    container_name: sovani_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # MinIO S3-compatible Storage
+  minio:
+    image: minio/minio:latest
+    container_name: sovani_minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # FastAPI Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sovani_api
+    environment:
+      - DATABASE_URL=postgresql://sovani:sovani_pass@postgres:5432/sovani_crosspost
+      - REDIS_URL=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin123
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app
+      - ./config:/config
+      - media_cache:/tmp/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  # Celery Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: sovani_worker
+    environment:
+      - DATABASE_URL=postgresql://sovani:sovani_pass@postgres:5432/sovani_crosspost
+      - REDIS_URL=redis://redis:6379/0
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin123
+    volumes:
+      - ./app:/app
+      - ./config:/config
+      - media_cache:/tmp/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: >
+      sh -c "
+        apt-get update && 
+        apt-get install -y ffmpeg && 
+        celery -A app.workers.celery_app worker 
+          --loglevel=info 
+          --queues=ingest,enrich,captionize,transcode,preflight,publish,finalize
+          --concurrency=4
+      "
+    restart: unless-stopped
+
+  # Celery Beat Scheduler
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sovani_beat
+    environment:
+      - DATABASE_URL=postgresql://sovani:sovani_pass@postgres:5432/sovani_crosspost
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./app:/app
+      - ./config:/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  media_cache:
