@@ -8,10 +8,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from ..models.db import get_db
 from ..models.entities import User, VideoGenTask, VideoGenStatus, VideoGenProvider
 from ..services.video_gen_runway import RunwayService, RunwayVideoResult, AspectRatio
-from .deps import get_current_user
+from .deps import get_current_user, get_db_async_session
 
 router = APIRouter(prefix="/video-gen", tags=["video-generation"])
 
@@ -48,7 +47,7 @@ class VideoTaskResponse(BaseModel):
 async def generate_video_from_text(
     request: TextToVideoRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Generate video from text prompt."""
     # Validate aspect ratio
@@ -125,7 +124,7 @@ async def generate_video_from_text(
 async def generate_video_from_image(
     request: ImageToVideoRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Generate video from image."""
     # Create task record
@@ -192,7 +191,7 @@ async def generate_video_from_image(
 async def get_task_status(
     task_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Get video generation task status."""
     task = await db.get(VideoGenTask, task_id)
@@ -225,7 +224,7 @@ async def get_task_status(
 @router.get("/tasks", response_model=List[VideoTaskResponse])
 async def list_tasks(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_async_session),
     limit: int = 20,
     offset: int = 0
 ):

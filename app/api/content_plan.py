@@ -7,10 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.db import get_db
 from ..models.entities import User, ContentPlan, ContentPlanStatus
 from ..services.content_planner import ContentPlannerService, Tone, generate_content_plan
-from .deps import get_current_user
+from .deps import get_current_user, get_db_async_session
 
 router = APIRouter(prefix="/content-plan", tags=["content-plan"])
 
@@ -66,7 +65,7 @@ class RegeneratPostRequest(BaseModel):
 async def generate_plan(
     request: GeneratePlanRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Generate AI-powered content plan."""
     # Validate platforms
@@ -147,7 +146,7 @@ async def generate_plan(
 async def get_plan(
     plan_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Get content plan by ID."""
     plan = await db.get(ContentPlan, plan_id)
@@ -182,7 +181,7 @@ async def get_plan(
 @router.get("/", response_model=List[ContentPlanResponse])
 async def list_plans(
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_db_async_session),
     limit: int = 20,
     offset: int = 0
 ):
@@ -219,7 +218,7 @@ async def update_plan(
     plan_id: UUID,
     posts: List[PlannedPostResponse],
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Update content plan posts."""
     plan = await db.get(ContentPlan, plan_id)
@@ -260,7 +259,7 @@ async def update_plan(
 async def activate_plan(
     plan_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Activate content plan and create scheduled posts."""
     from datetime import datetime
@@ -334,7 +333,7 @@ async def activate_plan(
 async def delete_plan(
     plan_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Delete content plan."""
     plan = await db.get(ContentPlan, plan_id)
@@ -362,7 +361,7 @@ async def regenerate_post(
     plan_id: UUID,
     request: RegeneratPostRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """Regenerate a single post in the plan."""
     plan = await db.get(ContentPlan, plan_id)

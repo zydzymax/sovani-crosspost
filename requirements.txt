@@ -36,6 +36,19 @@ numpy==1.26.2
 opencv-python-headless==4.8.1.78
 python-multipart==0.0.6
 
+# Security & Auth
+cryptography==41.0.7
+PyJWT==2.8.0
+passlib[bcrypt]==1.7.4
+
+# Cloud Storage APIs
+google-auth==2.25.2
+google-auth-oauthlib==1.2.0
+
+# AI/ML APIs
+openai==1.5.0
+anthropic==0.8.1
+
 # Testing (dev dependencies)
 pytest==7.4.3
 pytest-asyncio==0.21.1
