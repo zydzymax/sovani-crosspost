@@ -76,6 +76,14 @@ class RateLimitResult:
     retry_after: Optional[int] = None
 
 
+@dataclass
+class TelegramTrustResult:
+    """Result of Telegram account trust check."""
+    score: float  # 0.0 - 1.0, higher = more trustworthy
+    reason: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
 class AntifraudService:
     """
     Comprehensive anti-fraud service.
@@ -134,77 +142,112 @@ class AntifraudService:
         telegram_id: int,
         ip_address: str,
         device_fingerprint: Optional[str] = None,
-        phone_hash: Optional[str] = None
+        phone_hash: Optional[str] = None,
+        telegram_user_data: Optional[Dict[str, Any]] = None,
+        browser_data: Optional[Dict[str, Any]] = None
     ) -> FraudCheckResult:
         """
         Check if user is eligible for demo account.
 
-        Checks:
-        - IP address limits
-        - Device fingerprint limits
-        - Phone number limits (hashed)
-        - Previous demo history
+        Multi-layered fraud detection:
+        1. VPN/Proxy detection (BLOCK for demo - no exceptions)
+        2. Telegram account trust score
+        3. Device fingerprint + similarity matching
+        4. Phone number verification
+        5. IP address (least reliable, checked last)
+        6. Cross-correlation analysis
         """
         signals: List[FraudSignal] = []
 
-        # Check IP limit
-        ip_count = await self._get_demo_count_by_ip(ip_address)
-        if ip_count >= self.config["demo_per_ip_limit"]:
+        # ===== LAYER 1: VPN/Proxy - STRICT BLOCK for demo =====
+        is_vpn = await self._check_vpn_proxy(ip_address)
+        if is_vpn:
             signals.append(FraudSignal(
-                fraud_type=FraudType.DEMO_ABUSE,
-                risk_level=FraudRiskLevel.HIGH,
-                score=0.8,
-                description=f"IP {ip_address[:8]}... has {ip_count} demo accounts",
-                metadata={"ip_count": ip_count, "limit": self.config["demo_per_ip_limit"]}
+                fraud_type=FraudType.PROXY_VPN,
+                risk_level=FraudRiskLevel.CRITICAL,  # Critical for demo
+                score=0.95,
+                description="VPN/Proxy detected - not allowed for demo",
+                metadata={"ip": ip_address[:8] + "...", "blocked": True}
             ))
+            # Early return - VPN users cannot get demo
+            return self._calculate_result(signals, force_block=True)
 
-        # Check device fingerprint
-        if device_fingerprint:
-            device_count = await self._get_demo_count_by_device(device_fingerprint)
-            if device_count >= self.config["demo_per_device_limit"]:
+        # ===== LAYER 2: Telegram Account Trust Score =====
+        if telegram_user_data:
+            tg_trust = await self._check_telegram_trust(telegram_id, telegram_user_data)
+            if tg_trust.score < 0.5:
                 signals.append(FraudSignal(
-                    fraud_type=FraudType.DEVICE_FINGERPRINT,
-                    risk_level=FraudRiskLevel.HIGH,
-                    score=0.9,
-                    description=f"Device has {device_count} demo accounts",
-                    metadata={"device_count": device_count}
+                    fraud_type=FraudType.DEMO_ABUSE,
+                    risk_level=FraudRiskLevel.HIGH if tg_trust.score < 0.3 else FraudRiskLevel.MEDIUM,
+                    score=1.0 - tg_trust.score,
+                    description=tg_trust.reason,
+                    metadata=tg_trust.metadata
                 ))
 
-        # Check phone hash
+        # ===== LAYER 3: Phone Hash - Most Reliable =====
         if phone_hash:
             phone_count = await self._get_demo_count_by_phone(phone_hash)
             if phone_count >= self.config["demo_per_phone_limit"]:
                 signals.append(FraudSignal(
                     fraud_type=FraudType.MULTIPLE_ACCOUNTS,
                     risk_level=FraudRiskLevel.CRITICAL,
-                    score=0.95,
+                    score=0.98,
                     description="Phone number already used for demo",
                     metadata={"phone_count": phone_count}
                 ))
 
-        # Check if Telegram ID had demo before
+        # ===== LAYER 4: Device Fingerprint + Similarity =====
+        if device_fingerprint:
+            device_count = await self._get_demo_count_by_device(device_fingerprint)
+            if device_count >= self.config["demo_per_device_limit"]:
+                signals.append(FraudSignal(
+                    fraud_type=FraudType.DEVICE_FINGERPRINT,
+                    risk_level=FraudRiskLevel.CRITICAL,
+                    score=0.95,
+                    description=f"Device already used for demo",
+                    metadata={"device_count": device_count}
+                ))
+            else:
+                # Check for similar fingerprints (fuzzy matching)
+                similar = await self._find_similar_fingerprints(device_fingerprint, browser_data)
+                if similar:
+                    signals.append(FraudSignal(
+                        fraud_type=FraudType.DEVICE_FINGERPRINT,
+                        risk_level=FraudRiskLevel.HIGH,
+                        score=0.85,
+                        description=f"Similar device fingerprint detected ({similar['similarity']}% match)",
+                        metadata=similar
+                    ))
+
+        # ===== LAYER 5: Telegram ID History =====
         previous_demo = await self._get_previous_demo(telegram_id)
         if previous_demo:
             days_since = (datetime.utcnow() - previous_demo).days
             if days_since < self.config["demo_cooldown_days"]:
                 signals.append(FraudSignal(
                     fraud_type=FraudType.DEMO_ABUSE,
-                    risk_level=FraudRiskLevel.MEDIUM,
-                    score=0.6,
+                    risk_level=FraudRiskLevel.CRITICAL,
+                    score=0.99,
                     description=f"Demo used {days_since} days ago, cooldown: {self.config['demo_cooldown_days']} days",
                     metadata={"days_since": days_since, "cooldown": self.config["demo_cooldown_days"]}
                 ))
 
-        # Check for VPN/Proxy
-        is_vpn = await self._check_vpn_proxy(ip_address)
-        if is_vpn:
+        # ===== LAYER 6: IP Address (least reliable) =====
+        ip_count = await self._get_demo_count_by_ip(ip_address)
+        if ip_count >= self.config["demo_per_ip_limit"]:
             signals.append(FraudSignal(
-                fraud_type=FraudType.PROXY_VPN,
-                risk_level=FraudRiskLevel.MEDIUM,
-                score=0.4,
-                description="VPN or proxy detected",
-                metadata={"ip": ip_address[:8] + "..."}
+                fraud_type=FraudType.DEMO_ABUSE,
+                risk_level=FraudRiskLevel.MEDIUM,  # Lower priority than device/phone
+                score=0.6,
+                description=f"IP {ip_address[:8]}... has {ip_count} demo accounts",
+                metadata={"ip_count": ip_count, "limit": self.config["demo_per_ip_limit"]}
             ))
+
+        # ===== LAYER 7: Cross-correlation =====
+        cross_signals = await self._check_cross_correlation(
+            telegram_id, ip_address, device_fingerprint, phone_hash
+        )
+        signals.extend(cross_signals)
 
         return self._calculate_result(signals)
 
@@ -516,7 +559,11 @@ class AntifraudService:
 
     # ==================== Helper Methods ====================
 
-    def _calculate_result(self, signals: List[FraudSignal]) -> FraudCheckResult:
+    def _calculate_result(
+        self,
+        signals: List[FraudSignal],
+        force_block: bool = False
+    ) -> FraudCheckResult:
         """Calculate final fraud check result from signals."""
         if not signals:
             return FraudCheckResult(
@@ -525,6 +572,18 @@ class AntifraudService:
                 total_score=0.0,
                 signals=[],
                 action="allow"
+            )
+
+        # Force block overrides everything
+        if force_block:
+            highest_signal = max(signals, key=lambda s: s.score)
+            return FraudCheckResult(
+                passed=False,
+                risk_level=FraudRiskLevel.CRITICAL,
+                total_score=1.0,
+                signals=signals,
+                action="block",
+                reason=highest_signal.description
             )
 
         # Calculate weighted score
@@ -592,6 +651,261 @@ class AntifraudService:
             if timestamp:
                 return datetime.fromisoformat(timestamp)
         return None
+
+    async def _check_telegram_trust(
+        self,
+        telegram_id: int,
+        user_data: Dict[str, Any]
+    ) -> "TelegramTrustResult":
+        """
+        Calculate trust score for Telegram account.
+
+        Higher score = more trustworthy.
+        Factors:
+        - Has username: +0.15
+        - Has profile photo: +0.15
+        - Has first/last name: +0.1
+        - Is premium: +0.2
+        - Account age (if available): +0.4
+        """
+        score = 0.0
+        factors = []
+
+        # Has username
+        if user_data.get("username"):
+            score += 0.15
+            factors.append("has_username")
+
+        # Has profile photo
+        if user_data.get("photo_url") or user_data.get("has_photo"):
+            score += 0.15
+            factors.append("has_photo")
+
+        # Has real name
+        first_name = user_data.get("first_name", "")
+        last_name = user_data.get("last_name", "")
+        if first_name and len(first_name) > 1:
+            score += 0.05
+            factors.append("has_first_name")
+        if last_name and len(last_name) > 1:
+            score += 0.05
+            factors.append("has_last_name")
+
+        # Is premium user (very trustworthy - paid for Telegram)
+        if user_data.get("is_premium"):
+            score += 0.3
+            factors.append("is_premium")
+
+        # Check for suspicious patterns in username
+        username = user_data.get("username", "")
+        if username:
+            # Random-looking usernames (lots of numbers at end)
+            import re
+            if re.search(r'\d{5,}$', username):
+                score -= 0.2
+                factors.append("suspicious_username")
+            # Very short usernames
+            if len(username) < 4:
+                score -= 0.1
+                factors.append("short_username")
+
+        # Telegram ID range check (older accounts have lower IDs)
+        # IDs < 1 billion are generally older accounts
+        if telegram_id < 1_000_000_000:
+            score += 0.2
+            factors.append("old_account_id")
+        elif telegram_id > 5_000_000_000:
+            score -= 0.1
+            factors.append("very_new_account_id")
+
+        # Clamp score
+        score = max(0.0, min(1.0, score))
+
+        # Determine reason
+        if score < 0.3:
+            reason = "Low trust: new/empty Telegram account"
+        elif score < 0.5:
+            reason = "Medium trust: incomplete Telegram profile"
+        else:
+            reason = "Acceptable trust level"
+
+        return TelegramTrustResult(
+            score=score,
+            reason=reason,
+            metadata={"factors": factors, "telegram_id": telegram_id}
+        )
+
+    async def _find_similar_fingerprints(
+        self,
+        fingerprint: str,
+        browser_data: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find similar device fingerprints using fuzzy matching.
+
+        Checks browser data components for similarity even if
+        full fingerprint hash is different.
+        """
+        if not self._redis or not browser_data:
+            return None
+
+        # Get all stored fingerprints
+        cursor = 0
+        pattern = "antifraud:fingerprint:*"
+
+        try:
+            cursor, keys = await self._redis.scan(cursor, match=pattern, count=100)
+
+            for key in keys:
+                stored_data = await self._redis.get(key)
+                if not stored_data:
+                    continue
+
+                try:
+                    stored = json.loads(stored_data)
+                    similarity = self._calculate_fingerprint_similarity(browser_data, stored)
+
+                    # 70% similarity threshold
+                    if similarity >= 70:
+                        return {
+                            "similarity": similarity,
+                            "matched_key": key.split(":")[-1][:8] + "...",
+                            "matching_components": self._get_matching_components(browser_data, stored)
+                        }
+                except json.JSONDecodeError:
+                    continue
+        except Exception as e:
+            logger.warning("Error checking fingerprint similarity", error=str(e))
+
+        return None
+
+    def _calculate_fingerprint_similarity(
+        self,
+        fp1: Dict[str, Any],
+        fp2: Dict[str, Any]
+    ) -> int:
+        """Calculate similarity percentage between two fingerprints."""
+        components = [
+            "screen_resolution",
+            "timezone",
+            "language",
+            "platform",
+            "color_depth",
+            "hardware_concurrency",
+            "device_memory",
+            "canvas_hash",
+            "webgl_vendor",
+            "webgl_renderer",
+            "fonts_hash"
+        ]
+
+        matches = 0
+        total = 0
+
+        for comp in components:
+            if comp in fp1 and comp in fp2:
+                total += 1
+                if fp1[comp] == fp2[comp]:
+                    matches += 1
+
+        if total == 0:
+            return 0
+
+        return int((matches / total) * 100)
+
+    def _get_matching_components(
+        self,
+        fp1: Dict[str, Any],
+        fp2: Dict[str, Any]
+    ) -> List[str]:
+        """Get list of matching fingerprint components."""
+        components = [
+            "screen_resolution", "timezone", "language", "platform",
+            "canvas_hash", "webgl_vendor", "webgl_renderer"
+        ]
+
+        matches = []
+        for comp in components:
+            if comp in fp1 and comp in fp2 and fp1[comp] == fp2[comp]:
+                matches.append(comp)
+
+        return matches
+
+    async def _check_cross_correlation(
+        self,
+        telegram_id: int,
+        ip_address: str,
+        device_fingerprint: Optional[str],
+        phone_hash: Optional[str]
+    ) -> List[FraudSignal]:
+        """
+        Cross-correlation analysis to detect fraud patterns.
+
+        Detects:
+        - Same device, different IPs (VPN hopping)
+        - Same phone, different devices (SIM swapping)
+        - Multiple Telegram IDs from same device
+        """
+        signals = []
+
+        if not self._redis:
+            return signals
+
+        # Check: Same device seen with multiple Telegram IDs
+        if device_fingerprint:
+            device_tg_key = f"antifraud:device_tg:{device_fingerprint}"
+            seen_tg_ids = await self._redis.smembers(device_tg_key)
+
+            if seen_tg_ids and str(telegram_id) not in seen_tg_ids:
+                # This device was used with OTHER Telegram accounts
+                signals.append(FraudSignal(
+                    fraud_type=FraudType.MULTIPLE_ACCOUNTS,
+                    risk_level=FraudRiskLevel.HIGH,
+                    score=0.85,
+                    description=f"Device used with {len(seen_tg_ids)} other Telegram accounts",
+                    metadata={"other_accounts": len(seen_tg_ids)}
+                ))
+
+            # Track this combination
+            await self._redis.sadd(device_tg_key, str(telegram_id))
+            await self._redis.expire(device_tg_key, 30 * 86400)  # 30 days
+
+        # Check: Same phone seen with different devices
+        if phone_hash and device_fingerprint:
+            phone_devices_key = f"antifraud:phone_devices:{phone_hash}"
+            seen_devices = await self._redis.smembers(phone_devices_key)
+
+            if seen_devices and device_fingerprint not in seen_devices:
+                signals.append(FraudSignal(
+                    fraud_type=FraudType.MULTIPLE_ACCOUNTS,
+                    risk_level=FraudRiskLevel.MEDIUM,
+                    score=0.6,
+                    description=f"Phone number used from {len(seen_devices)} different devices",
+                    metadata={"device_count": len(seen_devices)}
+                ))
+
+            await self._redis.sadd(phone_devices_key, device_fingerprint)
+            await self._redis.expire(phone_devices_key, 30 * 86400)
+
+        # Check: IP history for this device (detect VPN hopping)
+        if device_fingerprint:
+            device_ips_key = f"antifraud:device_ips:{device_fingerprint}"
+            seen_ips = await self._redis.smembers(device_ips_key)
+            ip_hash = self._hash(ip_address)
+
+            if len(seen_ips) >= 5 and ip_hash not in seen_ips:
+                signals.append(FraudSignal(
+                    fraud_type=FraudType.SUSPICIOUS_IP,
+                    risk_level=FraudRiskLevel.MEDIUM,
+                    score=0.5,
+                    description=f"Device seen from {len(seen_ips)}+ different IPs (VPN hopping?)",
+                    metadata={"ip_count": len(seen_ips)}
+                ))
+
+            await self._redis.sadd(device_ips_key, ip_hash)
+            await self._redis.expire(device_ips_key, 7 * 86400)  # 7 days
+
+        return signals
 
     async def _check_vpn_proxy(self, ip_address: str) -> bool:
         """
