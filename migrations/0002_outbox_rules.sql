@@ -149,11 +149,11 @@ CREATE INDEX idx_outbox_created_at ON outbox(created_at);
 CREATE INDEX idx_outbox_priority ON outbox(priority DESC);
 
 -- Partial indexes for active outbox entries
-CREATE INDEX idx_outbox_pending ON outbox(scheduled_at, priority DESC) 
-    WHERE status = 'pending' AND scheduled_at <= NOW();
+CREATE INDEX idx_outbox_pending ON outbox(scheduled_at, priority DESC)
+    WHERE status = 'pending';
 
-CREATE INDEX idx_outbox_retry ON outbox(scheduled_at) 
-    WHERE status = 'failed' AND attempts < max_attempts;
+CREATE INDEX idx_outbox_retry ON outbox(scheduled_at)
+    WHERE status = 'failed';
 
 -- Deduplication indexes
 CREATE INDEX idx_dedupe_type_key ON dedupe(dedupe_type, dedupe_key);
@@ -176,8 +176,8 @@ CREATE INDEX idx_media_assets_idempotency_key ON media_assets(idempotency_key) W
 CREATE INDEX idx_tasks_idempotency_key ON tasks(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 -- Enhanced scheduling indexes
-CREATE INDEX idx_posts_scheduled_at ON posts(scheduled_at) WHERE scheduled_at IS NOT NULL AND status IN ('draft', 'scheduled');
-CREATE INDEX idx_products_scheduled_at ON products(scheduled_at) WHERE scheduled_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_posts_scheduled_status ON posts(scheduled_at, status) WHERE scheduled_at IS NOT NULL AND status IN ('draft', 'scheduled');
+CREATE INDEX IF NOT EXISTS idx_products_scheduled_at ON products(scheduled_at) WHERE scheduled_at IS NOT NULL;
 
 -- Composite indexes for common queries
 CREATE INDEX idx_posts_platform_status_scheduled ON posts(platform, status, scheduled_at) 

@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: sovani_pass
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d
@@ -26,7 +26,7 @@ services:
     image: redis:7-alpine
     container_name: sovani_redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -68,7 +68,7 @@ services:
       - S3_ACCESS_KEY=minioadmin
       - S3_SECRET_KEY=minioadmin123
     ports:
-      - "8000:8000"
+      - "8003:8000"
     volumes:
       - ./app:/app
       - ./config:/config
