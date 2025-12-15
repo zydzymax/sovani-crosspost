@@ -96,7 +96,7 @@ class AntifraudService:
         # Configuration
         self.config = {
             # Demo abuse limits
-            "demo_per_ip_limit": 2,  # Max demo accounts per IP
+            "demo_per_ip_limit": 1,  # Max demo accounts per IP (strict)
             "demo_per_device_limit": 1,  # Max demo accounts per device
             "demo_per_phone_limit": 1,  # Max demo accounts per phone
             "demo_cooldown_days": 30,  # Days before allowing new demo
