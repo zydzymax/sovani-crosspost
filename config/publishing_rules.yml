@@ -1,0 +1,533 @@
+version: "2.0"
+updated_at: "2024-01-15T10:00:00Z"
+description: "Publishing rules for SoVAni Crosspost platform validation"
+
+# Global settings
+global:
+  default_timezone: "UTC"
+  max_parallel_validations: 10
+  validation_timeout_seconds: 30
+  cache_ttl_seconds: 300
+
+# Platform-specific validation rules
+platforms:
+  instagram:
+    display_name: "Instagram"
+    enabled: true
+    priority: 1
+    
+    caption:
+      max_length: 2200
+      min_length: 1
+      required: true
+      encoding: "utf-8"
+      
+    hashtags:
+      max_count: 30
+      max_length_each: 100
+      required: false
+      allowed_characters: "a-zA-Z0-9_"
+      min_length_each: 2
+      
+    mentions:
+      max_count: 20
+      required: false
+      pattern: "@[a-zA-Z0-9._]+"
+      max_length_each: 30
+      
+    links:
+      allowed: true
+      max_count: 1
+      allowed_domains: []  # Empty = all allowed
+      forbidden_domains: ["spam.com", "malicious.net"]
+      require_https: false
+      
+    media:
+      required: true
+      max_count: 10
+      min_count: 1
+      max_file_size: 104857600  # 100MB
+      supported_formats: ["jpg", "jpeg", "png", "mp4", "mov"]
+      
+      image:
+        max_width: 1080
+        max_height: 1350  # Instagram portrait
+        min_width: 320
+        min_height: 320
+        supported_aspect_ratios: ["1:1", "4:5", "16:9", "9:16"]
+        max_file_size: 8388608  # 8MB for images
+        
+      video:
+        max_duration: 60
+        min_duration: 3
+        max_width: 1080
+        max_height: 1920
+        max_file_size: 104857600  # 100MB
+        supported_aspect_ratios: ["1:1", "4:5", "16:9", "9:16"]
+        required_codecs: ["h264", "h265"]
+        max_bitrate: 8000  # kbps
+        
+    content:
+      forbidden_words: 
+        - "spam"
+        - "fake" 
+        - "scam"
+        - "virus"
+        - "hack"
+        - "illegal"
+      forbidden_patterns:
+        - "\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"  # Credit cards
+        - "\\b\\d{3}[\\s-]?\\d{2}[\\s-]?\\d{4}\\b"  # SSN pattern
+        - "\\b(?:buy|get)\\s+followers\\b"  # Follower buying
+      
+      moderation:
+        check_nudity: true
+        check_violence: true
+        check_hate_speech: true
+        confidence_threshold: 0.8
+
+  vk:
+    display_name: "VKontakte"
+    enabled: true
+    priority: 2
+    
+    caption:
+      max_length: 15000
+      min_length: 1
+      required: true
+      
+    hashtags:
+      max_count: 10
+      max_length_each: 50
+      required: false
+      
+    mentions:
+      max_count: 10
+      required: false
+      
+    links:
+      allowed: true
+      max_count: 5
+      
+    media:
+      required: false
+      max_count: 10
+      max_file_size: 209715200  # 200MB
+      supported_formats: ["jpg", "jpeg", "png", "gif", "mp4", "avi", "mov"]
+      
+      image:
+        max_width: 7000
+        max_height: 7000
+        min_width: 50
+        min_height: 50
+        
+      video:
+        max_duration: 600  # 10 minutes
+        min_duration: 1
+        max_width: 1920
+        max_height: 1920
+        
+    content:
+      forbidden_words:
+        - "=0@:>B8:8"
+        - "?>@=>"
+        - "M:AB@5<87<"
+      forbidden_patterns: []
+
+  tiktok:
+    display_name: "TikTok"
+    enabled: true
+    priority: 3
+    
+    caption:
+      max_length: 150
+      min_length: 1
+      required: true
+      
+    hashtags:
+      max_count: 5
+      max_length_each: 25
+      required: false
+      trending_hashtags_bonus: true  # Allow +2 hashtags if trending
+      
+    mentions:
+      max_count: 5
+      required: false
+      
+    links:
+      allowed: false
+      max_count: 0
+      note: "Links only allowed in bio"
+      
+    media:
+      required: true
+      max_count: 1
+      min_count: 1
+      max_file_size: 287309824  # 274MB
+      supported_formats: ["mp4", "mov"]
+      
+      video:
+        max_duration: 180  # 3 minutes
+        min_duration: 1
+        preferred_duration: 15  # Sweet spot for algorithm
+        aspect_ratios: ["9:16", "1:1"]  # Vertical preferred
+        max_width: 1080
+        max_height: 1920
+        min_fps: 23
+        max_fps: 60
+        
+    content:
+      forbidden_words:
+        - "hate"
+        - "violence"
+        - "suicide"
+        - "self-harm"
+      forbidden_patterns: []
+      
+      algorithm:
+        prefer_trending_sounds: true
+        prefer_native_editing: true
+        max_text_overlay_ratio: 0.3  # Max 30% of screen
+
+  youtube:
+    display_name: "YouTube"
+    enabled: true
+    priority: 4
+    
+    caption:
+      max_length: 5000  # Description field
+      min_length: 1
+      required: true
+      
+    title:
+      max_length: 100
+      min_length: 10
+      required: true
+      
+    hashtags:
+      max_count: 15
+      max_length_each: 50
+      required: false
+      
+    mentions:
+      max_count: 10
+      required: false
+      
+    links:
+      allowed: true
+      max_count: 10
+      
+    media:
+      required: true
+      max_count: 1
+      max_file_size: 137438953472  # 128GB
+      supported_formats: ["mp4", "mov", "avi", "wmv", "flv", "webm"]
+      
+      video:
+        max_duration: 43200  # 12 hours
+        min_duration: 1
+        shorts_max_duration: 60  # YouTube Shorts
+        max_width: 3840  # 4K
+        max_height: 2160
+        recommended_formats: ["mp4"]
+        
+    content:
+      forbidden_words:
+        - "copyright"
+        - "piracy"
+      forbidden_patterns: []
+      
+    metadata:
+      categories_required: true
+      thumbnail_required: true
+      privacy_levels: ["public", "unlisted", "private"]
+
+  facebook:
+    display_name: "Facebook"
+    enabled: true
+    priority: 5
+
+    caption:
+      max_length: 63206
+      min_length: 0
+      required: false
+
+    hashtags:
+      max_count: 30
+      max_length_each: 100
+      required: false
+
+    mentions:
+      max_count: 50
+      required: false
+      pattern: "@[a-zA-Z0-9.]+"
+
+    links:
+      allowed: true
+      max_count: 10
+      preview_enabled: true
+
+    media:
+      required: false
+      max_count: 10
+      max_file_size: 4294967296  # 4GB
+      supported_formats: ["jpg", "jpeg", "png", "gif", "mp4", "mov"]
+
+      image:
+        max_width: 8192
+        max_height: 8192
+        min_width: 200
+        min_height: 200
+
+      video:
+        max_duration: 14400  # 4 hours
+        min_duration: 1
+        max_width: 1920
+        max_height: 1080
+        recommended_aspect_ratios: ["16:9", "9:16", "1:1"]
+
+    content:
+      forbidden_words:
+        - "spam"
+        - "scam"
+        - "fake"
+      forbidden_patterns: []
+
+    features:
+      reels_supported: true
+      stories_supported: true
+      live_supported: true
+      scheduling_supported: true
+
+  rutube:
+    display_name: "RuTube"
+    enabled: true
+    priority: 6
+
+    caption:
+      max_length: 5000
+      min_length: 10
+      required: true
+
+    title:
+      max_length: 100
+      min_length: 3
+      required: true
+
+    hashtags:
+      max_count: 20
+      max_length_each: 50
+      required: false
+
+    mentions:
+      max_count: 10
+      required: false
+
+    links:
+      allowed: true
+      max_count: 5
+
+    media:
+      required: true
+      max_count: 1
+      min_count: 1
+      max_file_size: 10737418240  # 10GB
+      supported_formats: ["mp4", "mov", "avi", "wmv", "mkv", "flv"]
+
+      video:
+        max_duration: 43200  # 12 hours
+        min_duration: 1
+        max_width: 3840  # 4K
+        max_height: 2160
+        recommended_formats: ["mp4"]
+        min_bitrate: 500
+        max_bitrate: 50000
+
+    content:
+      forbidden_words:
+        - "экстремизм"
+        - "терроризм"
+      forbidden_patterns: []
+
+    metadata:
+      categories_required: true
+      age_restriction_levels: [0, 6, 12, 16, 18]
+      default_age_restriction: 0
+
+  telegram:
+    display_name: "Telegram"
+    enabled: true
+    priority: 5
+    
+    caption:
+      max_length: 4096
+      min_length: 0
+      required: false
+      markdown_supported: true
+      html_supported: true
+      
+    hashtags:
+      max_count: 10
+      max_length_each: 50
+      required: false
+      
+    mentions:
+      max_count: 20
+      required: false
+      
+    links:
+      allowed: true
+      max_count: 10
+      preview_enabled: true
+      
+    media:
+      required: false
+      max_count: 10
+      max_file_size: 2147483648  # 2GB
+      supported_formats: 
+        - "jpg"
+        - "jpeg" 
+        - "png"
+        - "gif"
+        - "mp4"
+        - "mov"
+        - "avi"
+        - "pdf"
+        - "doc"
+        - "docx"
+        - "zip"
+        
+      image:
+        max_width: 10000
+        max_height: 10000
+        
+      video:
+        max_duration: 3600  # 1 hour
+        min_duration: 1
+        streaming_support: true
+        
+    content:
+      forbidden_words: []  # Very permissive
+      forbidden_patterns: []
+      
+    features:
+      buttons_supported: true
+      polls_supported: true
+      voice_messages: true
+      stickers: true
+
+# Cross-platform validation rules
+cross_platform:
+  consistency_checks:
+    enabled: true
+    rules:
+      - name: "aspect_ratio_consistency"
+        description: "Maintain aspect ratio across platforms"
+        severity: "warning"
+        
+      - name: "brand_mention_consistency" 
+        description: "Ensure brand mentions are consistent"
+        severity: "error"
+        
+      - name: "hashtag_relevance"
+        description: "Check hashtag relevance across platforms"
+        severity: "warning"
+
+# Content quality checks
+quality_checks:
+  text_analysis:
+    enabled: true
+    checks:
+      - grammar_check
+      - spelling_check
+      - readability_score
+      - sentiment_analysis
+      
+  media_analysis:
+    enabled: true
+    checks:
+      - blur_detection
+      - brightness_check
+      - contrast_check
+      - face_detection
+      
+  brand_compliance:
+    enabled: true
+    checks:
+      - logo_presence
+      - brand_colors
+      - tone_consistency
+      
+# Emergency controls
+emergency:
+  kill_switch:
+    enabled: false
+    reason: ""
+    
+  platform_overrides:
+    instagram:
+      enabled: true
+      override_rules: {}
+      
+  content_filters:
+    strict_mode: false
+    custom_rules: []
+
+# Validation performance settings
+performance:
+  parallel_validation: true
+  max_workers: 5
+  timeout_per_platform: 10
+  
+  caching:
+    enabled: true
+    ttl_seconds: 300
+    max_entries: 1000
+    
+  retries:
+    max_attempts: 3
+    backoff_factor: 2
+    retry_statuses: [500, 502, 503, 504]
+
+# Monitoring and logging
+monitoring:
+  metrics:
+    enabled: true
+    track_validation_time: true
+    track_violation_types: true
+    track_platform_success_rate: true
+    
+  logging:
+    level: "INFO"
+    structured: true
+    include_content_samples: false  # Privacy
+    
+  alerts:
+    high_failure_rate_threshold: 0.1  # 10%
+    slow_validation_threshold: 5000   # 5 seconds
+    
+# Business rules
+business:
+  posting_windows:
+    instagram:
+      optimal_hours: [9, 12, 17, 20]  # UTC
+      avoid_hours: [1, 2, 3, 4, 5]
+      
+    tiktok:
+      optimal_hours: [6, 10, 19, 20]
+      peak_days: ["tuesday", "thursday", "friday"]
+      
+  content_strategy:
+    hashtag_mixing:
+      popular_ratio: 0.3
+      niche_ratio: 0.4  
+      branded_ratio: 0.3
+      
+    posting_frequency:
+      max_per_hour: 1
+      max_per_day: 10
+      
+  compliance:
+    gdpr_enabled: true
+    data_retention_days: 30
+    user_consent_required: true

@@ -1,0 +1,46 @@
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONHASHSEED=random \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Install system dependencies including FFmpeg
+RUN apt-get update && apt-get install -y \
+    curl \
+    gcc \
+    g++ \
+    ffmpeg \
+    libavcodec-extra \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and set working directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app/ ./app/
+COPY config/ ./config/
+
+# Create directories for media processing
+RUN mkdir -p /tmp/media && \
+    chmod 755 /tmp/media
+
+# Create user for security
+RUN adduser --disabled-password --gecos '' appuser && \
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /tmp/media
+
+USER appuser
+
+# Health check for Celery worker
+HEALTHCHECK --interval=60s --timeout=30s --start-period=30s --retries=3 \
+    CMD celery -A app.workers.celery_app inspect ping || exit 1
+
+# Default command (can be overridden in docker-compose.yml)
+CMD ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info"]
