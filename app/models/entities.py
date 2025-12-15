@@ -840,6 +840,178 @@ class CloudSyncedFile(Base):
         }
 
 
+# ==================== ANTIFRAUD MODELS ====================
+
+class FraudEventType(str, Enum):
+    """Types of fraud events."""
+    DEMO_ABUSE = "demo_abuse"
+    MULTIPLE_ACCOUNTS = "multiple_accounts"
+    RATE_LIMIT_EXCEEDED = "rate_limit_exceeded"
+    PAYMENT_FRAUD = "payment_fraud"
+    BOT_DETECTED = "bot_detected"
+    IP_BLOCKED = "ip_blocked"
+    SUSPICIOUS_ACTIVITY = "suspicious_activity"
+
+
+class FraudRiskLevel(str, Enum):
+    """Risk levels for fraud events."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class FraudEvent(Base):
+    """
+    Log of detected fraud events.
+
+    Used for monitoring and analysis.
+    """
+
+    __tablename__ = "fraud_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Event type and risk
+    event_type = Column(SQLEnum(FraudEventType), nullable=False, index=True)
+    risk_level = Column(SQLEnum(FraudRiskLevel), nullable=False, index=True)
+    score = Column(Float, nullable=False)
+
+    # Target information
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    ip_address = Column(String(45), nullable=True, index=True)  # IPv6 max length
+    ip_hash = Column(String(64), nullable=True, index=True)
+    device_fingerprint = Column(String(64), nullable=True)
+    telegram_id = Column(BigInteger, nullable=True, index=True)
+
+    # Event details
+    description = Column(Text, nullable=False)
+    details = Column(JSONB, nullable=True, default=dict)
+
+    # Action taken
+    action_taken = Column(String(50), nullable=True)  # allow, challenge, block
+    was_blocked = Column(Boolean, default=False)
+
+    # Request context
+    endpoint = Column(String(255), nullable=True)
+    user_agent = Column(Text, nullable=True)
+    request_id = Column(String(100), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index("ix_fraud_events_type_created", "event_type", "created_at"),
+        Index("ix_fraud_events_risk_created", "risk_level", "created_at"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": str(self.id),
+            "event_type": self.event_type.value,
+            "risk_level": self.risk_level.value,
+            "score": self.score,
+            "user_id": str(self.user_id) if self.user_id else None,
+            "ip_hash": self.ip_hash[:8] + "..." if self.ip_hash else None,
+            "description": self.description,
+            "action_taken": self.action_taken,
+            "was_blocked": self.was_blocked,
+            "endpoint": self.endpoint,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class BlockedIP(Base):
+    """
+    Blocked IP addresses.
+
+    Supports both manual and automatic blocks.
+    """
+
+    __tablename__ = "blocked_ips"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # IP identification
+    ip_address = Column(String(45), nullable=False, unique=True, index=True)
+    ip_hash = Column(String(64), nullable=True)
+
+    # Block reason
+    reason = Column(Text, nullable=False)
+    auto_blocked = Column(Boolean, default=False)  # True if blocked by system
+    blocked_by_user_id = Column(UUID(as_uuid=True), nullable=True)  # Admin who blocked
+
+    # Related fraud events
+    fraud_event_ids = Column(ARRAY(String), nullable=True, default=list)
+
+    # Block duration
+    permanent = Column(Boolean, default=False)
+    expires_at = Column(DateTime, nullable=True)
+
+    # Statistics
+    block_count = Column(Integer, default=1)  # Times this IP was blocked
+    last_attempt_at = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_blocked_ips_expires", "expires_at"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": str(self.id),
+            "ip_address": self.ip_address[:8] + "...",  # Partial for security
+            "reason": self.reason,
+            "auto_blocked": self.auto_blocked,
+            "permanent": self.permanent,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "block_count": self.block_count,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class RateLimitOverride(Base):
+    """
+    Custom rate limit overrides for specific users or IPs.
+
+    Allows whitelisting or custom limits.
+    """
+
+    __tablename__ = "rate_limit_overrides"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Target
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    ip_address = Column(String(45), nullable=True, index=True)
+    api_key = Column(String(255), nullable=True, index=True)
+
+    # Override settings
+    requests_per_minute = Column(Integer, nullable=True)
+    requests_per_hour = Column(Integer, nullable=True)
+    requests_per_day = Column(Integer, nullable=True)
+    burst_limit = Column(Integer, nullable=True)
+
+    # Whitelist (bypass all limits)
+    is_whitelisted = Column(Boolean, default=False)
+
+    # Metadata
+    reason = Column(Text, nullable=True)
+    created_by = Column(UUID(as_uuid=True), nullable=True)
+
+    # Validity
+    expires_at = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # Update exports
 __all__.extend([
     "User",
@@ -856,4 +1028,9 @@ __all__.extend([
     "CloudConnectionStatus",
     "CloudStorageConnection",
     "CloudSyncedFile",
+    "FraudEventType",
+    "FraudRiskLevel",
+    "FraudEvent",
+    "BlockedIP",
+    "RateLimitOverride",
 ])

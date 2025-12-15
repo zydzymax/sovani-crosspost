@@ -38,6 +38,8 @@ from .api.content_plan import router as content_plan_router
 from .api.video_gen import router as video_gen_router
 from .api.pricing import router as pricing_router
 from .api.cloud_storage import router as cloud_storage_router
+from .api.admin_fraud import router as admin_fraud_router
+from .middleware.antifraud import AntifraudMiddleware, IPBlockMiddleware
 
 
 @asynccontextmanager
@@ -113,6 +115,7 @@ def create_application() -> FastAPI:
     app.include_router(video_gen_router, prefix="/api/v1")
     app.include_router(pricing_router, prefix="/api/v1")
     app.include_router(cloud_storage_router, prefix="/api/v1")
+    app.include_router(admin_fraud_router, prefix="/api/v1")
     
     # Add metrics endpoint
     @app.get("/metrics", response_class=Response)
@@ -194,7 +197,15 @@ def setup_middleware(app: FastAPI):
             TrustedHostMiddleware,
             allowed_hosts=["api.sovani.ru", "*.sovani.ru"]
         )
-    
+
+    # Anti-fraud middleware (rate limiting + bot detection)
+    app.add_middleware(AntifraudMiddleware)
+
+    # IP blocking middleware
+    app.add_middleware(IPBlockMiddleware)
+
+    logger.info("Anti-fraud middleware enabled")
+
     # Request ID and logging middleware
     @app.middleware("http")
     async def logging_middleware(request: Request, call_next):
