@@ -535,7 +535,7 @@ class UserSocialAccount(Base):
     account = relationship("SocialAccount")
 
     __table_args__ = (
-        UniqueConstraint("user_id", "social_account_id", name="uq_user_social_account"),
+        UniqueConstraint("user_id", "account_id", name="uq_user_social_account"),
     )
 
 
@@ -684,6 +684,162 @@ class VideoGenTask(Base):
         }
 
 
+# ==================== CLOUD STORAGE MODELS ====================
+
+class CloudProvider(str, Enum):
+    """Supported cloud storage providers."""
+    GOOGLE_DRIVE = "google_drive"
+    YANDEX_DISK = "yandex_disk"
+
+
+class CloudConnectionStatus(str, Enum):
+    """Cloud connection status."""
+    PENDING = "pending"      # Waiting for OAuth
+    ACTIVE = "active"        # Connected and working
+    ERROR = "error"          # Connection error
+    EXPIRED = "expired"      # Token expired
+    DISCONNECTED = "disconnected"  # User disconnected
+
+
+class CloudStorageConnection(Base):
+    """
+    User's cloud storage connection.
+
+    Allows users to connect Google Drive or Yandex Disk folders
+    for automatic media sync.
+    """
+
+    __tablename__ = "cloud_storage_connections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Provider info
+    provider = Column(SQLEnum(CloudProvider), nullable=False)
+
+    # Folder identification
+    folder_id = Column(String(500), nullable=False)  # Google Drive folder ID or Yandex path
+    folder_name = Column(String(500), nullable=True)
+    folder_url = Column(String(1000), nullable=True)  # Original sharing URL
+
+    # OAuth tokens (encrypted in production)
+    access_token = Column(Text, nullable=True)
+    refresh_token = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
+
+    # For public folders (Yandex Disk)
+    public_url = Column(String(1000), nullable=True)
+    is_public = Column(Boolean, default=False)
+
+    # Connection status
+    status = Column(SQLEnum(CloudConnectionStatus), default=CloudConnectionStatus.PENDING)
+    error_message = Column(Text, nullable=True)
+
+    # Sync settings
+    sync_enabled = Column(Boolean, default=True)
+    sync_interval_minutes = Column(Integer, default=60)  # How often to sync
+    sync_videos = Column(Boolean, default=True)
+    sync_photos = Column(Boolean, default=True)
+
+    # Sync statistics
+    last_sync_at = Column(DateTime, nullable=True)
+    last_sync_status = Column(String(50), nullable=True)  # success, partial, failed
+    files_synced_total = Column(Integer, default=0)
+    last_sync_files_count = Column(Integer, default=0)
+    last_sync_errors = Column(JSONB, nullable=True, default=list)
+
+    # Local storage path for synced files
+    local_sync_path = Column(String(1000), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_cloud_connections_user_provider", "user_id", "provider"),
+        Index("ix_cloud_connections_status", "status", "sync_enabled"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary (without sensitive tokens)."""
+        return {
+            "id": str(self.id),
+            "user_id": str(self.user_id),
+            "provider": self.provider.value if self.provider else None,
+            "folder_id": self.folder_id,
+            "folder_name": self.folder_name,
+            "folder_url": self.folder_url,
+            "is_public": self.is_public,
+            "status": self.status.value if self.status else None,
+            "error_message": self.error_message,
+            "sync_enabled": self.sync_enabled,
+            "sync_interval_minutes": self.sync_interval_minutes,
+            "sync_videos": self.sync_videos,
+            "sync_photos": self.sync_photos,
+            "last_sync_at": self.last_sync_at.isoformat() if self.last_sync_at else None,
+            "last_sync_status": self.last_sync_status,
+            "files_synced_total": self.files_synced_total,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class CloudSyncedFile(Base):
+    """
+    Track individual files synced from cloud storage.
+
+    Links cloud files to local media assets and tracks sync status.
+    """
+
+    __tablename__ = "cloud_synced_files"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    connection_id = Column(UUID(as_uuid=True), ForeignKey("cloud_storage_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Cloud file info
+    cloud_file_id = Column(String(500), nullable=False)  # File ID in cloud
+    cloud_file_name = Column(String(500), nullable=False)
+    cloud_file_path = Column(String(1000), nullable=True)  # Path in cloud folder
+    cloud_mime_type = Column(String(100), nullable=True)
+    cloud_file_size = Column(BigInteger, nullable=True)
+    cloud_modified_at = Column(DateTime, nullable=True)
+
+    # Media type
+    media_type = Column(SQLEnum(MediaType), nullable=False)
+
+    # Local file info
+    local_path = Column(String(1000), nullable=True)
+    local_file_size = Column(BigInteger, nullable=True)
+
+    # Link to MediaAsset if used in a post
+    media_asset_id = Column(UUID(as_uuid=True), ForeignKey("media_assets.id", ondelete="SET NULL"), nullable=True)
+
+    # Sync status
+    is_synced = Column(Boolean, default=False)
+    sync_error = Column(Text, nullable=True)
+
+    # Timestamps
+    first_synced_at = Column(DateTime, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("connection_id", "cloud_file_id", name="uq_cloud_synced_file"),
+        Index("ix_cloud_synced_files_media_type", "connection_id", "media_type"),
+    )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": str(self.id),
+            "cloud_file_name": self.cloud_file_name,
+            "cloud_file_path": self.cloud_file_path,
+            "media_type": self.media_type.value if self.media_type else None,
+            "cloud_file_size": self.cloud_file_size,
+            "is_synced": self.is_synced,
+            "last_synced_at": self.last_synced_at.isoformat() if self.last_synced_at else None,
+        }
+
+
 # Update exports
 __all__.extend([
     "User",
@@ -696,4 +852,8 @@ __all__.extend([
     "ContentPlanStatus",
     "VideoGenTask",
     "VideoGenStatus",
+    "CloudProvider",
+    "CloudConnectionStatus",
+    "CloudStorageConnection",
+    "CloudSyncedFile",
 ])

@@ -37,6 +37,7 @@ from .api.user_routes import router as user_router
 from .api.content_plan import router as content_plan_router
 from .api.video_gen import router as video_gen_router
 from .api.pricing import router as pricing_router
+from .api.cloud_storage import router as cloud_storage_router
 
 
 @asynccontextmanager
@@ -111,6 +112,7 @@ def create_application() -> FastAPI:
     app.include_router(content_plan_router, prefix="/api/v1")
     app.include_router(video_gen_router, prefix="/api/v1")
     app.include_router(pricing_router, prefix="/api/v1")
+    app.include_router(cloud_storage_router, prefix="/api/v1")
     
     # Add metrics endpoint
     @app.get("/metrics", response_class=Response)
