@@ -92,37 +92,49 @@ class FFmpegWrapper:
     
     def __init__(self):
         """Initialize FFmpeg wrapper."""
-        self.script_path = self._get_script_path()
         self.temp_dir = tempfile.gettempdir()
-        
-        # Validate script exists and is executable
-        if not os.path.exists(self.script_path):
-            raise FFmpegError(f"FFmpeg profiles script not found: {self.script_path}")
-        
-        if not os.access(self.script_path, os.X_OK):
-            # Try to make it executable
-            try:
-                os.chmod(self.script_path, 0o755)
-            except Exception as e:
-                raise FFmpegError(f"FFmpeg script is not executable: {e}")
-        
-        logger.info("FFmpegWrapper initialized", script_path=self.script_path)
+        self.script_path = None
+
+        try:
+            self.script_path = self._get_script_path()
+
+            # Validate script exists and is executable
+            if self.script_path and not os.path.exists(self.script_path):
+                logger.warning(f"FFmpeg profiles script not found: {self.script_path}")
+                self.script_path = None
+
+            if self.script_path and not os.access(self.script_path, os.X_OK):
+                # Try to make it executable
+                try:
+                    os.chmod(self.script_path, 0o755)
+                except Exception as e:
+                    logger.warning(f"FFmpeg script is not executable: {e}")
+
+            if self.script_path:
+                logger.info("FFmpegWrapper initialized", script_path=self.script_path)
+            else:
+                logger.info("FFmpegWrapper initialized without profile script (using direct ffmpeg)")
+        except FFmpegError:
+            logger.info("FFmpegWrapper initialized without profile script (using direct ffmpeg)")
+            self.script_path = None
     
-    def _get_script_path(self) -> str:
+    def _get_script_path(self) -> str | None:
         """Get path to FFmpeg profiles script."""
         # Try to find script relative to project root
         current_dir = Path(__file__).parent
         project_root = current_dir.parent.parent
         script_path = project_root / "helpers" / "ffmpeg_profiles.sh"
-        
+
         if script_path.exists():
             return str(script_path)
-        
+
         # Fallback to configured path if available
-        if hasattr(settings, 'ffmpeg_script_path'):
-            return settings.ffmpeg_script_path
-        
-        raise FFmpegError("Could not locate ffmpeg_profiles.sh script")
+        if hasattr(settings, 'ffmpeg_script_path') and settings.ffmpeg_script_path:
+            if Path(settings.ffmpeg_script_path).exists():
+                return settings.ffmpeg_script_path
+
+        # Return None instead of raising - we can work without the script
+        return None
     
     async def convert_aspect_ratio(self, params: ConversionParams) -> ConversionResult:
         """

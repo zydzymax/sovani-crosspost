@@ -70,8 +70,8 @@ services:
     ports:
       - "8003:8000"
     volumes:
-      - ./app:/app
-      - ./config:/config
+      - ./app:/app/app
+      - ./config:/app/config
       - media_cache:/tmp/media
     depends_on:
       postgres:
@@ -96,8 +96,8 @@ services:
       - S3_ACCESS_KEY=minioadmin
       - S3_SECRET_KEY=minioadmin123
     volumes:
-      - ./app:/app
-      - ./config:/config
+      - ./app:/app/app
+      - ./config:/app/config
       - media_cache:/tmp/media
     depends_on:
       postgres:
@@ -106,15 +106,7 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    command: >
-      sh -c "
-        apt-get update && 
-        apt-get install -y ffmpeg && 
-        celery -A app.workers.celery_app worker 
-          --loglevel=info 
-          --queues=ingest,enrich,captionize,transcode,preflight,publish,finalize
-          --concurrency=4
-      "
+    command: celery -A app.workers.celery_app worker --loglevel=info --queues=ingest,enrich,captionize,transcode,preflight,publish,finalize --concurrency=4
     restart: unless-stopped
 
   # Celery Beat Scheduler
@@ -127,8 +119,8 @@ services:
       - DATABASE_URL=postgresql://sovani:sovani_pass@postgres:5432/sovani_crosspost
       - REDIS_URL=redis://redis:6379/0
     volumes:
-      - ./app:/app
-      - ./config:/config
+      - ./app:/app/app
+      - ./config:/app/config
     depends_on:
       postgres:
         condition: service_healthy
