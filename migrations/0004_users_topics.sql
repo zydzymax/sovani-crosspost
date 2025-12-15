@@ -52,7 +52,7 @@ CREATE INDEX IF NOT EXISTS ix_users_telegram_id ON users(telegram_id);
 CREATE TABLE IF NOT EXISTS user_social_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    social_account_id UUID NOT NULL REFERENCES social_accounts(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     
     -- Permissions
     can_publish BOOLEAN DEFAULT TRUE,
@@ -60,12 +60,12 @@ CREATE TABLE IF NOT EXISTS user_social_accounts (
     
     -- Timestamps
     created_at TIMESTAMP DEFAULT NOW(),
-    
-    CONSTRAINT uq_user_social_account UNIQUE (user_id, social_account_id)
+
+    CONSTRAINT uq_user_account UNIQUE (user_id, account_id)
 );
 
 CREATE INDEX IF NOT EXISTS ix_user_social_accounts_user_id ON user_social_accounts(user_id);
-CREATE INDEX IF NOT EXISTS ix_user_social_accounts_social_account_id ON user_social_accounts(social_account_id);
+CREATE INDEX IF NOT EXISTS ix_user_social_accounts_account_id ON user_social_accounts(account_id);
 
 -- Topics table
 CREATE TABLE IF NOT EXISTS topics (

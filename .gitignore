@@ -76,9 +76,10 @@ docker-compose.override.yml
 # Jupyter
 .ipynb_checkpoints
 
-# Media files and uploads
-media/
+# Media files and uploads (but not app/media/ code)
+/media/
 uploads/
+!app/media/
 temp/
 tmp/
 
