@@ -1,11 +1,13 @@
 """
 Authentication API routes for SoVAni Crosspost.
-Telegram Login + JWT authentication.
+Telegram Login + JWT authentication + Code-based auth.
 """
 
 import hashlib
 import hmac
 import time
+import random
+import string
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
@@ -13,16 +15,21 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 import jwt
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from .deps import get_db_session
+from .deps import get_db_async_session, get_redis_client
 
 logger = get_logger("api.auth")
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+# Code storage prefix
+AUTH_CODE_PREFIX = "auth:code:"
+AUTH_CODE_TTL = 300  # 5 minutes
 
 
 # ==================== SCHEMAS ====================
@@ -45,6 +52,23 @@ class AuthResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: dict
+
+
+class SendCodeRequest(BaseModel):
+    """Request to send auth code."""
+    username: str = Field(..., description="Telegram username (with or without @)")
+
+
+class SendCodeResponse(BaseModel):
+    """Response after sending code."""
+    success: bool
+    message: str
+
+
+class VerifyCodeRequest(BaseModel):
+    """Request to verify auth code."""
+    username: str = Field(..., description="Telegram username")
+    code: str = Field(..., description="6-digit verification code")
 
 
 class UserResponse(BaseModel):
@@ -93,7 +117,8 @@ def verify_telegram_auth(data: TelegramAuthData) -> bool:
     )
     
     # Create secret key from bot token
-    secret_key = hashlib.sha256(settings.TG_BOT_TOKEN.encode()).digest()
+    bot_token = settings.telegram.bot_token.get_secret_value()
+    secret_key = hashlib.sha256(bot_token.encode()).digest()
     
     # Calculate hash
     calculated_hash = hmac.new(
@@ -134,7 +159,7 @@ def decode_jwt_token(token: str) -> Optional[dict]:
 @router.post("/telegram", response_model=AuthResponse)
 async def telegram_login(
     auth_data: TelegramAuthData,
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_async_session)
 ):
     """
     Authenticate user via Telegram Login Widget.
@@ -209,8 +234,8 @@ async def telegram_login(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user(
-    db: AsyncSession = Depends(get_db_session),
+async def get_me(
+    db: AsyncSession = Depends(get_db_async_session),
     token: str = None  # Will be extracted from header in deps
 ):
     """Get current authenticated user info."""
@@ -225,3 +250,232 @@ async def get_current_user(
 async def logout():
     """Logout (client-side token removal)."""
     return {"success": True, "message": "Logged out successfully"}
+
+
+# ==================== CODE-BASED AUTH ====================
+
+def generate_auth_code() -> str:
+    """Generate 6-digit auth code."""
+    return ''.join(random.choices(string.digits, k=6))
+
+
+async def send_telegram_message(chat_id: int, text: str) -> bool:
+    """Send message via Telegram Bot API."""
+    bot_token = settings.telegram.bot_token.get_secret_value()
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": "HTML"
+            })
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(f"Failed to send Telegram message: {e}")
+            return False
+
+
+async def get_telegram_user_by_username(username: str) -> Optional[dict]:
+    """Get Telegram user info by username using getChat."""
+    bot_token = settings.telegram.bot_token.get_secret_value()
+    url = f"https://api.telegram.org/bot{bot_token}/getChat"
+
+    # Clean username
+    clean_username = username.lstrip('@')
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(url, json={"chat_id": f"@{clean_username}"})
+            data = response.json()
+            if data.get("ok"):
+                return data.get("result")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get Telegram user: {e}")
+            return None
+
+
+@router.post("/send-code", response_model=SendCodeResponse)
+async def send_auth_code(
+    request: SendCodeRequest,
+    redis = Depends(get_redis_client)
+):
+    """
+    Send authentication code to user's Telegram.
+    User must have previously interacted with the bot.
+    """
+    # Clean username
+    username = request.username.lstrip('@').lower()
+
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username is required"
+        )
+
+    # Try to get user info from Telegram
+    tg_user = await get_telegram_user_by_username(username)
+
+    if not tg_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден. Убедитесь, что вы отправили /start боту @login_SalesWhisper_bot"
+        )
+
+    chat_id = tg_user.get("id")
+    if not chat_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Не удалось получить ID пользователя"
+        )
+
+    # Generate code
+    code = generate_auth_code()
+
+    # Store in Redis
+    redis_key = f"{AUTH_CODE_PREFIX}{username}"
+    await redis.setex(redis_key, AUTH_CODE_TTL, f"{code}:{chat_id}")
+
+    # Send code via Telegram
+    message = (
+        f"🔐 <b>Код авторизации</b>\n\n"
+        f"Ваш код: <code>{code}</code>\n\n"
+        f"Код действителен 5 минут.\n"
+        f"Не сообщайте его никому!"
+    )
+
+    sent = await send_telegram_message(chat_id, message)
+
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось отправить код. Попробуйте позже."
+        )
+
+    logger.info(f"Auth code sent to @{username} (chat_id: {chat_id})")
+
+    return SendCodeResponse(
+        success=True,
+        message=f"Код отправлен в Telegram @{username}"
+    )
+
+
+@router.post("/verify-code", response_model=AuthResponse)
+async def verify_auth_code(
+    request: VerifyCodeRequest,
+    db: AsyncSession = Depends(get_db_async_session),
+    redis = Depends(get_redis_client)
+):
+    """
+    Verify authentication code and return JWT token.
+    """
+    # Clean inputs
+    username = request.username.lstrip('@').lower()
+    code = request.code.strip()
+
+    if not username or not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username and code are required"
+        )
+
+    # Get stored code from Redis
+    redis_key = f"{AUTH_CODE_PREFIX}{username}"
+    stored_data = await redis.get(redis_key)
+
+    if not stored_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Код истёк или не существует. Запросите новый код."
+        )
+
+    # Parse stored data (code:chat_id)
+    try:
+        stored_code, chat_id_str = stored_data.split(":")
+        chat_id = int(chat_id_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка данных. Запросите новый код."
+        )
+
+    # Verify code
+    if code != stored_code:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный код"
+        )
+
+    # Delete used code
+    await redis.delete(redis_key)
+
+    # Import here to avoid circular imports
+    from ..models.entities import User, SubscriptionPlan
+
+    # Find or create user
+    result = await db.execute(
+        select(User).where(User.telegram_id == chat_id)
+    )
+    user = result.scalar_one_or_none()
+
+    # Get fresh user info from Telegram
+    tg_user = await get_telegram_user_by_username(username)
+    first_name = tg_user.get("first_name", "") if tg_user else ""
+    last_name = tg_user.get("last_name") if tg_user else None
+    photo_url = None
+    if tg_user and tg_user.get("photo"):
+        photo_url = tg_user["photo"].get("small_file_id")
+
+    if user is None:
+        # Create new user with demo subscription
+        user = User(
+            telegram_id=chat_id,
+            telegram_username=username,
+            telegram_first_name=first_name,
+            telegram_last_name=last_name,
+            telegram_photo_url=photo_url,
+            subscription_plan=SubscriptionPlan.DEMO,
+            demo_started_at=datetime.utcnow(),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        logger.info(f"New user created via code auth: {user.id} (tg: {chat_id})")
+    else:
+        # Update user info
+        user.telegram_username = username
+        if first_name:
+            user.telegram_first_name = first_name
+        if last_name:
+            user.telegram_last_name = last_name
+        user.updated_at = datetime.utcnow()
+        await db.commit()
+        logger.info(f"User logged in via code auth: {user.id} (tg: {chat_id})")
+
+    # Calculate demo days left
+    demo_days_left = None
+    if user.subscription_plan == SubscriptionPlan.DEMO and user.demo_started_at:
+        days_passed = (datetime.utcnow() - user.demo_started_at).days
+        demo_days_left = max(0, 7 - days_passed)
+
+    # Create JWT token
+    token, expires_in = create_jwt_token(str(user.id), user.telegram_id)
+
+    return AuthResponse(
+        success=True,
+        access_token=token,
+        expires_in=expires_in,
+        user={
+            "id": str(user.id),
+            "telegram_id": user.telegram_id,
+            "telegram_username": user.telegram_username,
+            "first_name": user.telegram_first_name,
+            "last_name": user.telegram_last_name,
+            "photo_url": user.telegram_photo_url,
+            "subscription_plan": user.subscription_plan.value,
+            "demo_days_left": demo_days_left,
+            "image_gen_provider": user.image_gen_provider.value,
+        }
+    )
