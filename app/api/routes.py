@@ -84,6 +84,48 @@ class QueuesResponse(BaseModel):
     system_health: str = Field(description="Overall system health")
 
 
+class ReadyResponse(BaseModel):
+    """Readiness check response schema."""
+    ready: bool = Field(description="Application readiness status")
+    timestamp: datetime = Field(description="Response timestamp")
+    checks: Dict[str, bool] = Field(description="Individual readiness checks")
+
+
+@router.get("/ready", response_model=ReadyResponse, tags=["Health"])
+async def readiness_check(
+    redis=Depends(get_redis_client)
+):
+    """
+    Readiness probe endpoint for Kubernetes.
+
+    Returns whether the application is ready to receive traffic.
+    Unlike /health, this only checks critical dependencies.
+    """
+    checks = {}
+
+    # Check Redis (critical for auth and caching)
+    try:
+        await redis.ping()
+        checks["redis"] = True
+    except Exception:
+        checks["redis"] = False
+
+    # Check database (critical for data operations)
+    try:
+        from ..models.db import db_manager
+        checks["database"] = db_manager.health_check()
+    except Exception:
+        checks["database"] = False
+
+    ready = all(checks.values())
+
+    return ReadyResponse(
+        ready=ready,
+        timestamp=datetime.now(),
+        checks=checks
+    )
+
+
 @router.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check(
     db=Depends(get_db_session),
