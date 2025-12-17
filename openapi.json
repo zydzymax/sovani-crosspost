@@ -1,0 +1,5831 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SoVAni Crosspost API",
+    "description": "Cross-platform content publishing system from Telegram to social media platforms",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health Check",
+        "description": "Health check endpoint.\n\nReturns application health status including service dependencies.",
+        "operationId": "health_check_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/intake/telegram": {
+      "post": {
+        "tags": [
+          "Telegram"
+        ],
+        "summary": "Telegram Webhook",
+        "description": "Telegram webhook endpoint.\n\nReceives and processes updates from Telegram bot.",
+        "operationId": "telegram_webhook_api_v1_intake_telegram_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramWebhookResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/debug/publish": {
+      "post": {
+        "tags": [
+          "Debug"
+        ],
+        "summary": "Debug Publish",
+        "description": "Debug publish endpoint.\n\nManually trigger publishing of a post to specified platforms.\nOnly available in development/testing environments.",
+        "operationId": "debug_publish_api_v1_debug_publish_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugPublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugPublishResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/queues": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get Queue Status",
+        "description": "Queue monitoring endpoint.\n\nReturns status of all Celery queues for admin monitoring.",
+        "operationId": "get_queue_status_api_v1_admin_queues_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/telegram": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Telegram Login",
+        "description": "Authenticate user via Telegram Login Widget.\nCreates new user if not exists, returns JWT token.",
+        "operationId": "telegram_login_api_v1_auth_telegram_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelegramAuthData"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Get Me",
+        "description": "Get current authenticated user info.",
+        "operationId": "get_me_api_v1_auth_me_get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Logout",
+        "description": "Logout (client-side token removal).",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/send-code": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Send Auth Code",
+        "description": "Send authentication code to user's Telegram.\nUser must have previously interacted with the bot.",
+        "operationId": "send_auth_code_api_v1_auth_send_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendCodeResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/verify-code": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Verify Auth Code",
+        "description": "Verify authentication code and return JWT token.",
+        "operationId": "verify_auth_code_api_v1_auth_verify_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/accounts": {
+      "get": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "List Accounts",
+        "description": "List user's connected social accounts.",
+        "operationId": "list_accounts_api_v1_user_accounts_get",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountResponse"
+                  },
+                  "title": "Response List Accounts Api V1 User Accounts Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Add Account",
+        "description": "Add a new social account.",
+        "operationId": "add_account_api_v1_user_accounts_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/accounts/{account_id}": {
+      "delete": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Remove Account",
+        "description": "Remove a social account from user.",
+        "operationId": "remove_account_api_v1_user_accounts__account_id__delete",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/topics": {
+      "get": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "List Topics",
+        "description": "List user's content topics.",
+        "operationId": "list_topics_api_v1_user_topics_get",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TopicResponse"
+                  },
+                  "title": "Response List Topics Api V1 User Topics Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Create Topic",
+        "description": "Create a new content topic.",
+        "operationId": "create_topic_api_v1_user_topics_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/topics/{topic_id}": {
+      "put": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Update Topic",
+        "description": "Update a content topic.",
+        "operationId": "update_topic_api_v1_user_topics__topic_id__put",
+        "parameters": [
+          {
+            "name": "topic_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Topic Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Delete Topic",
+        "description": "Delete a content topic.",
+        "operationId": "delete_topic_api_v1_user_topics__topic_id__delete",
+        "parameters": [
+          {
+            "name": "topic_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Topic Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/stats": {
+      "get": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Get User Stats",
+        "description": "Get user statistics.",
+        "operationId": "get_user_stats_api_v1_user_stats_get",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/settings": {
+      "patch": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Update Settings",
+        "description": "Update user settings.",
+        "operationId": "update_settings_api_v1_user_settings_patch",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserSettingsUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/images/generate": {
+      "post": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Generate Image",
+        "description": "Generate an image using user's selected provider.",
+        "operationId": "generate_image_api_v1_user_images_generate_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageGenerateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageGenerateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/user/images/providers": {
+      "get": {
+        "tags": [
+          "User API"
+        ],
+        "summary": "Get Image Providers",
+        "description": "Get available image generation providers.",
+        "operationId": "get_image_providers_api_v1_user_images_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content-plan/generate": {
+      "post": {
+        "tags": [
+          "content-plan"
+        ],
+        "summary": "Generate Plan",
+        "description": "Generate AI-powered content plan.",
+        "operationId": "generate_plan_api_v1_content_plan_generate_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content-plan/{plan_id}": {
+      "get": {
+        "tags": [
+          "content-plan"
+        ],
+        "summary": "Get Plan",
+        "description": "Get content plan by ID.",
+        "operationId": "get_plan_api_v1_content_plan__plan_id__get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "content-plan"
+        ],
+        "summary": "Update Plan",
+        "description": "Update content plan posts.",
+        "operationId": "update_plan_api_v1_content_plan__plan_id__put",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PlannedPostResponse"
+                },
+                "title": "Posts"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentPlanResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "content-plan"
+        ],
+        "summary": "Delete Plan",
+        "description": "Delete content plan.",
+        "operationId": "delete_plan_api_v1_content_plan__plan_id__delete",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content-plan/": {
+      "get": {
+        "tags": [
+          "content-plan"
+        ],
+        "summary": "List Plans",
+        "description": "List user's content plans.",
+        "operationId": "list_plans_api_v1_content_plan__get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ContentPlanResponse"
+                  },
+                  "title": "Response List Plans Api V1 Content Plan  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content-plan/{plan_id}/activate": {
+      "post": {
+        "tags": [
+          "content-plan"
+        ],
+        "summary": "Activate Plan",
+        "description": "Activate content plan and create scheduled posts.",
+        "operationId": "activate_plan_api_v1_content_plan__plan_id__activate_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/content-plan/{plan_id}/regenerate-post": {
+      "post": {
+        "tags": [
+          "content-plan"
+        ],
+        "summary": "Regenerate Post",
+        "description": "Regenerate a single post in the plan.",
+        "operationId": "regenerate_post_api_v1_content_plan__plan_id__regenerate_post_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegeneratPostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video-gen/text-to-video": {
+      "post": {
+        "tags": [
+          "video-generation"
+        ],
+        "summary": "Generate Video From Text",
+        "description": "Generate video from text prompt.",
+        "operationId": "generate_video_from_text_api_v1_video_gen_text_to_video_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextToVideoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoTaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video-gen/image-to-video": {
+      "post": {
+        "tags": [
+          "video-generation"
+        ],
+        "summary": "Generate Video From Image",
+        "description": "Generate video from image.",
+        "operationId": "generate_video_from_image_api_v1_video_gen_image_to_video_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageToVideoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoTaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video-gen/task/{task_id}": {
+      "get": {
+        "tags": [
+          "video-generation"
+        ],
+        "summary": "Get Task Status",
+        "description": "Get video generation task status.",
+        "operationId": "get_task_status_api_v1_video_gen_task__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoTaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video-gen/tasks": {
+      "get": {
+        "tags": [
+          "video-generation"
+        ],
+        "summary": "List Tasks",
+        "description": "List user's video generation tasks.",
+        "operationId": "list_tasks_api_v1_video_gen_tasks_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VideoTaskResponse"
+                  },
+                  "title": "Response List Tasks Api V1 Video Gen Tasks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/video-gen/providers": {
+      "get": {
+        "tags": [
+          "video-generation"
+        ],
+        "summary": "Get Video Providers",
+        "description": "Get available video generation providers.",
+        "operationId": "get_video_providers_api_v1_video_gen_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing/platforms": {
+      "get": {
+        "tags": [
+          "pricing"
+        ],
+        "summary": "List Platforms",
+        "description": "Get list of available platforms with pricing.",
+        "operationId": "list_platforms_api_v1_pricing_platforms_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlatformInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Platforms Api V1 Pricing Platforms Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing/image-providers": {
+      "get": {
+        "tags": [
+          "pricing"
+        ],
+        "summary": "List Image Providers",
+        "description": "Get list of available image generation providers.",
+        "operationId": "list_image_providers_api_v1_pricing_image_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ImageProviderInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Image Providers Api V1 Pricing Image Providers Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing/video-providers": {
+      "get": {
+        "tags": [
+          "pricing"
+        ],
+        "summary": "List Video Providers",
+        "description": "Get list of available video generation providers.",
+        "operationId": "list_video_providers_api_v1_pricing_video_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VideoProviderInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Video Providers Api V1 Pricing Video Providers Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing/subscription-plans": {
+      "get": {
+        "tags": [
+          "pricing"
+        ],
+        "summary": "List Subscription Plans",
+        "description": "Get list of subscription plans.",
+        "operationId": "list_subscription_plans_api_v1_pricing_subscription_plans_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SubscriptionPlanInfo"
+                  },
+                  "type": "array",
+                  "title": "Response List Subscription Plans Api V1 Pricing Subscription Plans Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing/calculate": {
+      "get": {
+        "tags": [
+          "pricing"
+        ],
+        "summary": "Calculate Price",
+        "description": "Calculate estimated subscription price.",
+        "operationId": "calculate_price_api_v1_pricing_calculate_get",
+        "parameters": [
+          {
+            "name": "platforms",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of platform IDs",
+              "title": "Platforms"
+            },
+            "description": "List of platform IDs"
+          },
+          {
+            "name": "posts_per_month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Posts per month",
+              "title": "Posts Per Month"
+            },
+            "description": "Posts per month"
+          },
+          {
+            "name": "image_provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Image generation provider",
+              "default": "openai",
+              "title": "Image Provider"
+            },
+            "description": "Image generation provider"
+          },
+          {
+            "name": "images_per_post",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 10,
+              "minimum": 0,
+              "description": "Average images per post",
+              "default": 1,
+              "title": "Images Per Post"
+            },
+            "description": "Average images per post"
+          },
+          {
+            "name": "video_provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Video generation provider",
+              "default": "none",
+              "title": "Video Provider"
+            },
+            "description": "Video generation provider"
+          },
+          {
+            "name": "video_seconds_per_post",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 60,
+              "minimum": 0,
+              "description": "Video seconds per post",
+              "default": 0,
+              "title": "Video Seconds Per Post"
+            },
+            "description": "Video seconds per post"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PriceEstimateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing/compare-image-providers": {
+      "get": {
+        "tags": [
+          "pricing"
+        ],
+        "summary": "Compare Image Providers",
+        "description": "Compare image generation providers by cost.",
+        "operationId": "compare_image_providers_api_v1_pricing_compare_image_providers_get",
+        "parameters": [
+          {
+            "name": "posts_per_month",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Posts Per Month"
+            }
+          },
+          {
+            "name": "images_per_post",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "maximum": 10,
+              "minimum": 0,
+              "default": 1,
+              "title": "Images Per Post"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pricing/quick-estimate": {
+      "get": {
+        "tags": [
+          "pricing"
+        ],
+        "summary": "Quick Estimate",
+        "description": "Get quick price estimate with defaults.",
+        "operationId": "quick_estimate_api_v1_pricing_quick_estimate_get",
+        "parameters": [
+          {
+            "name": "platforms_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 7,
+              "minimum": 1,
+              "default": 3,
+              "title": "Platforms Count"
+            }
+          },
+          {
+            "name": "posts_per_month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 30,
+              "title": "Posts Per Month"
+            }
+          },
+          {
+            "name": "with_images",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "With Images"
+            }
+          },
+          {
+            "name": "with_video",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "With Video"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-storage/folder-structure": {
+      "get": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "Get Folder Structure",
+        "description": "Get expected folder structure for cloud storage.\nReturns guide for users on how to organize their media files.",
+        "operationId": "get_folder_structure_api_v1_cloud_storage_folder_structure_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderStructureResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-storage/connect": {
+      "post": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "Connect Cloud Storage",
+        "description": "Connect a cloud storage folder.\n\nFor public folders (Yandex Disk public links), no OAuth is needed.\nFor private folders, returns OAuth URL for user to authorize.",
+        "operationId": "connect_cloud_storage_api_v1_cloud_storage_connect_post",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectCloudRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectCloudResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-storage/oauth/callback": {
+      "get": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "Oauth Callback",
+        "description": "OAuth callback handler.\nExchanges authorization code for tokens and activates connection.",
+        "operationId": "oauth_callback_api_v1_cloud_storage_oauth_callback_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "OAuth authorization code",
+              "title": "Code"
+            },
+            "description": "OAuth authorization code"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Connection ID",
+              "title": "State"
+            },
+            "description": "Connection ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-storage/connections": {
+      "get": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "List Connections",
+        "description": "List all cloud storage connections for current user.",
+        "operationId": "list_connections_api_v1_cloud_storage_connections_get",
+        "parameters": [
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudConnectionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-storage/connections/{connection_id}": {
+      "get": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "Get Connection",
+        "description": "Get details of a specific cloud connection.",
+        "operationId": "get_connection_api_v1_cloud_storage_connections__connection_id__get",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudConnectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "Update Connection",
+        "description": "Update connection settings.",
+        "operationId": "update_connection_api_v1_cloud_storage_connections__connection_id__patch",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudConnectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "Delete Connection",
+        "description": "Delete a cloud connection.",
+        "operationId": "delete_connection_api_v1_cloud_storage_connections__connection_id__delete",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-storage/connections/{connection_id}/sync": {
+      "post": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "Trigger Sync",
+        "description": "Manually trigger sync for a cloud connection.",
+        "operationId": "trigger_sync_api_v1_cloud_storage_connections__connection_id__sync_post",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncTriggerResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-storage/connections/{connection_id}/files": {
+      "get": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "List Synced Files",
+        "description": "List files synced from a cloud connection.",
+        "operationId": "list_synced_files_api_v1_cloud_storage_connections__connection_id__files_get",
+        "parameters": [
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Connection Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "media_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter by media type: video or image",
+              "title": "Media Type"
+            },
+            "description": "Filter by media type: video or image"
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudFilesListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cloud-storage/providers": {
+      "get": {
+        "tags": [
+          "Cloud Storage"
+        ],
+        "summary": "List Providers",
+        "description": "List supported cloud storage providers.",
+        "operationId": "list_providers_api_v1_cloud_storage_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/fraud/events": {
+      "get": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "List Fraud Events",
+        "description": "List fraud events with filtering.\n\nAdmin only.",
+        "operationId": "list_fraud_events_api_v1_admin_fraud_events_get",
+        "parameters": [
+          {
+            "name": "event_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/FraudEventType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Type"
+            }
+          },
+          {
+            "name": "risk_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/FraudRiskLevel"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Risk Level"
+            }
+          },
+          {
+            "name": "ip_address",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ip Address"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Date"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FraudEventResponse"
+                  },
+                  "title": "Response List Fraud Events Api V1 Admin Fraud Events Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/fraud/stats": {
+      "get": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "Get Fraud Stats",
+        "description": "Get fraud statistics for dashboard.\n\nAdmin only.",
+        "operationId": "get_fraud_stats_api_v1_admin_fraud_stats_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FraudStatsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/fraud/blocked-ips": {
+      "get": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "List Blocked Ips",
+        "description": "List blocked IPs.\n\nAdmin only.",
+        "operationId": "list_blocked_ips_api_v1_admin_fraud_blocked_ips_get",
+        "parameters": [
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BlockedIPResponse"
+                  },
+                  "title": "Response List Blocked Ips Api V1 Admin Fraud Blocked Ips Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "Block Ip",
+        "description": "Block an IP address.\n\nAdmin only.",
+        "operationId": "block_ip_api_v1_admin_fraud_blocked_ips_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockedIPCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockedIPResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/fraud/blocked-ips/{blocked_id}": {
+      "delete": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "Unblock Ip",
+        "description": "Unblock an IP address.\n\nAdmin only.",
+        "operationId": "unblock_ip_api_v1_admin_fraud_blocked_ips__blocked_id__delete",
+        "parameters": [
+          {
+            "name": "blocked_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Blocked Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/fraud/rate-limits": {
+      "get": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "List Rate Limit Overrides",
+        "description": "List rate limit overrides.\n\nAdmin only.",
+        "operationId": "list_rate_limit_overrides_api_v1_admin_fraud_rate_limits_get",
+        "parameters": [
+          {
+            "name": "active_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Active Only"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RateLimitOverrideResponse"
+                  },
+                  "title": "Response List Rate Limit Overrides Api V1 Admin Fraud Rate Limits Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "Create Rate Limit Override",
+        "description": "Create a rate limit override.\n\nUse to increase or decrease limits for specific users/IPs.\nAdmin only.",
+        "operationId": "create_rate_limit_override_api_v1_admin_fraud_rate_limits_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RateLimitOverrideCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitOverrideResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/fraud/rate-limits/{override_id}": {
+      "delete": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "Delete Rate Limit Override",
+        "description": "Delete a rate limit override.\n\nAdmin only.",
+        "operationId": "delete_rate_limit_override_api_v1_admin_fraud_rate_limits__override_id__delete",
+        "parameters": [
+          {
+            "name": "override_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Override Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/fraud/check-user/{user_id}": {
+      "post": {
+        "tags": [
+          "Admin - Fraud"
+        ],
+        "summary": "Check User Fraud Risk",
+        "description": "Manually check fraud risk for a user.\n\nAdmin only.",
+        "operationId": "check_user_fraud_risk_api_v1_admin_fraud_check_user__user_id__post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Metrics Endpoint",
+        "description": "Prometheus metrics endpoint.",
+        "operationId": "metrics_endpoint_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountCreate": {
+        "properties": {
+          "platform": {
+            "type": "string",
+            "title": "Platform",
+            "description": "Platform: telegram, vk, instagram, tiktok, youtube"
+          },
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "Platform access token"
+          },
+          "platform_user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform User Id",
+            "description": "Platform user ID"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username",
+            "description": "Platform username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform",
+          "access_token"
+        ],
+        "title": "AccountCreate"
+      },
+      "AccountResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "platform": {
+            "type": "string",
+            "title": "Platform"
+          },
+          "platform_user_id": {
+            "type": "string",
+            "title": "Platform User Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "is_verified": {
+            "type": "boolean",
+            "title": "Is Verified"
+          },
+          "can_publish": {
+            "type": "boolean",
+            "title": "Can Publish"
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "platform",
+          "platform_user_id",
+          "username",
+          "display_name",
+          "is_active",
+          "is_verified",
+          "can_publish",
+          "is_primary",
+          "created_at"
+        ],
+        "title": "AccountResponse"
+      },
+      "AuthResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In"
+          },
+          "user": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "User"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "access_token",
+          "expires_in",
+          "user"
+        ],
+        "title": "AuthResponse",
+        "description": "Authentication response."
+      },
+      "BlockedIPCreate": {
+        "properties": {
+          "ip_address": {
+            "type": "string",
+            "title": "Ip Address"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ip_address",
+          "reason"
+        ],
+        "title": "BlockedIPCreate"
+      },
+      "BlockedIPResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "ip_address": {
+            "type": "string",
+            "title": "Ip Address"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "blocked_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked By"
+          },
+          "blocked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Blocked At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ip_address",
+          "reason",
+          "blocked_by",
+          "blocked_at",
+          "expires_at",
+          "is_active"
+        ],
+        "title": "BlockedIPResponse"
+      },
+      "CloudConnectionResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "folder_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Name"
+          },
+          "folder_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Url"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public"
+          },
+          "sync_enabled": {
+            "type": "boolean",
+            "title": "Sync Enabled"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "files_synced_total": {
+            "type": "integer",
+            "title": "Files Synced Total"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "provider",
+          "folder_name",
+          "folder_url",
+          "status",
+          "is_public",
+          "sync_enabled",
+          "last_sync_at",
+          "files_synced_total",
+          "error_message",
+          "created_at"
+        ],
+        "title": "CloudConnectionResponse",
+        "description": "Cloud connection details."
+      },
+      "CloudConnectionsListResponse": {
+        "properties": {
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/CloudConnectionResponse"
+            },
+            "type": "array",
+            "title": "Connections"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "connections",
+          "total"
+        ],
+        "title": "CloudConnectionsListResponse",
+        "description": "List of cloud connections."
+      },
+      "CloudFileResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "cloud_file_name": {
+            "type": "string",
+            "title": "Cloud File Name"
+          },
+          "cloud_file_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloud File Path"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "cloud_file_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloud File Size"
+          },
+          "is_synced": {
+            "type": "boolean",
+            "title": "Is Synced"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "cloud_file_name",
+          "cloud_file_path",
+          "media_type",
+          "cloud_file_size",
+          "is_synced",
+          "last_synced_at"
+        ],
+        "title": "CloudFileResponse",
+        "description": "Synced file info."
+      },
+      "CloudFilesListResponse": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/CloudFileResponse"
+            },
+            "type": "array",
+            "title": "Files"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CloudFilesListResponse",
+        "description": "List of synced files."
+      },
+      "ConnectCloudRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider: google_drive or yandex_disk"
+          },
+          "folder_url": {
+            "type": "string",
+            "title": "Folder Url",
+            "description": "Sharing URL or folder path"
+          },
+          "is_public": {
+            "type": "boolean",
+            "title": "Is Public",
+            "description": "Is public folder (no OAuth needed)",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "folder_url"
+        ],
+        "title": "ConnectCloudRequest",
+        "description": "Request to connect cloud storage."
+      },
+      "ConnectCloudResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "connection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connection Id"
+          },
+          "oauth_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Url"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "folder_info": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Folder Info"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "ConnectCloudResponse",
+        "description": "Response for cloud connection."
+      },
+      "ContentPlanResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "niche": {
+            "type": "string",
+            "title": "Niche"
+          },
+          "duration_days": {
+            "type": "integer",
+            "title": "Duration Days"
+          },
+          "posts_per_day": {
+            "type": "integer",
+            "title": "Posts Per Day"
+          },
+          "tone": {
+            "type": "string",
+            "title": "Tone"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Platforms"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "posts": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedPostResponse"
+            },
+            "type": "array",
+            "title": "Posts"
+          },
+          "total_posts": {
+            "type": "integer",
+            "title": "Total Posts"
+          },
+          "posts_created": {
+            "type": "integer",
+            "title": "Posts Created",
+            "default": 0
+          },
+          "posts_published": {
+            "type": "integer",
+            "title": "Posts Published",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "niche",
+          "duration_days",
+          "posts_per_day",
+          "tone",
+          "platforms",
+          "status",
+          "posts",
+          "total_posts"
+        ],
+        "title": "ContentPlanResponse",
+        "description": "Content plan response."
+      },
+      "DebugPublishRequest": {
+        "properties": {
+          "post_id": {
+            "type": "string",
+            "title": "Post Id",
+            "description": "Post ID to publish"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Platforms",
+            "description": "Target platforms"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "description": "Force republish",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "post_id",
+          "platforms"
+        ],
+        "title": "DebugPublishRequest",
+        "description": "Debug publish request schema."
+      },
+      "DebugPublishResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Publishing success status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Response message"
+          },
+          "results": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Results",
+            "description": "Per-platform results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "results"
+        ],
+        "title": "DebugPublishResponse",
+        "description": "Debug publish response schema."
+      },
+      "FolderStructureResponse": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "structure": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Structure"
+          },
+          "supported_video_formats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Video Formats"
+          },
+          "supported_image_formats": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supported Image Formats"
+          },
+          "tips": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tips"
+          }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "structure",
+          "supported_video_formats",
+          "supported_image_formats",
+          "tips"
+        ],
+        "title": "FolderStructureResponse",
+        "description": "Expected folder structure guide."
+      },
+      "FraudEventResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "event_type": {
+            "type": "string",
+            "title": "Event Type"
+          },
+          "risk_level": {
+            "type": "string",
+            "title": "Risk Level"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "device_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Fingerprint"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "risk_level",
+          "score",
+          "user_id",
+          "ip_address",
+          "device_fingerprint",
+          "details",
+          "created_at"
+        ],
+        "title": "FraudEventResponse"
+      },
+      "FraudEventType": {
+        "type": "string",
+        "enum": [
+          "demo_abuse",
+          "multiple_accounts",
+          "rate_limit_exceeded",
+          "payment_fraud",
+          "bot_detected",
+          "ip_blocked",
+          "suspicious_activity"
+        ],
+        "title": "FraudEventType",
+        "description": "Types of fraud events."
+      },
+      "FraudRiskLevel": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+        ],
+        "title": "FraudRiskLevel",
+        "description": "Risk levels for fraud events."
+      },
+      "FraudStatsResponse": {
+        "properties": {
+          "total_events_24h": {
+            "type": "integer",
+            "title": "Total Events 24H"
+          },
+          "high_risk_events_24h": {
+            "type": "integer",
+            "title": "High Risk Events 24H"
+          },
+          "blocked_ips_count": {
+            "type": "integer",
+            "title": "Blocked Ips Count"
+          },
+          "events_by_type": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Events By Type"
+          },
+          "events_by_risk": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Events By Risk"
+          },
+          "top_ips": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Top Ips"
+          },
+          "hourly_trend": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Hourly Trend"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_events_24h",
+          "high_risk_events_24h",
+          "blocked_ips_count",
+          "events_by_type",
+          "events_by_risk",
+          "top_ips",
+          "hourly_trend"
+        ],
+        "title": "FraudStatsResponse"
+      },
+      "GeneratePlanRequest": {
+        "properties": {
+          "niche": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Niche",
+            "description": "Business niche"
+          },
+          "duration_days": {
+            "type": "integer",
+            "maximum": 90,
+            "minimum": 1,
+            "title": "Duration Days",
+            "description": "Plan duration in days",
+            "default": 7
+          },
+          "posts_per_day": {
+            "type": "integer",
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Posts Per Day",
+            "description": "Posts per day",
+            "default": 1
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Platforms",
+            "description": "Target platforms",
+            "default": [
+              "telegram",
+              "instagram"
+            ]
+          },
+          "tone": {
+            "type": "string",
+            "title": "Tone",
+            "description": "Content tone",
+            "default": "professional"
+          },
+          "target_audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Audience",
+            "description": "Target audience description"
+          },
+          "brand_guidelines": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Guidelines",
+            "description": "Brand guidelines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "niche"
+        ],
+        "title": "GeneratePlanRequest",
+        "description": "Request to generate content plan."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Application status"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "Response timestamp"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Application version"
+          },
+          "environment": {
+            "type": "string",
+            "title": "Environment",
+            "description": "Environment name"
+          },
+          "services": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Services",
+            "description": "Service health status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "timestamp",
+          "version",
+          "environment",
+          "services"
+        ],
+        "title": "HealthResponse",
+        "description": "Health check response schema."
+      },
+      "ImageGenerateRequest": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Prompt"
+          },
+          "size": {
+            "type": "string",
+            "pattern": "^\\d+x\\d+$",
+            "title": "Size",
+            "default": "1024x1024"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "ImageGenerateRequest"
+      },
+      "ImageGenerateResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "image_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Base64"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "cost_estimate": {
+            "type": "number",
+            "title": "Cost Estimate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "provider",
+          "cost_estimate"
+        ],
+        "title": "ImageGenerateResponse"
+      },
+      "ImageProviderInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "quality": {
+            "type": "string",
+            "title": "Quality"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "cost_per_image": {
+            "type": "number",
+            "title": "Cost Per Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "quality",
+          "description",
+          "cost_per_image"
+        ],
+        "title": "ImageProviderInfo",
+        "description": "Image provider information."
+      },
+      "ImageToVideoRequest": {
+        "properties": {
+          "image_url": {
+            "type": "string",
+            "title": "Image Url",
+            "description": "Source image URL"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Prompt",
+            "description": "Optional motion guidance",
+            "default": ""
+          },
+          "duration": {
+            "type": "integer",
+            "maximum": 10,
+            "minimum": 5,
+            "title": "Duration",
+            "description": "Duration in seconds",
+            "default": 5
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_url"
+        ],
+        "title": "ImageToVideoRequest",
+        "description": "Request for image-to-video generation."
+      },
+      "PlannedPostResponse": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "day_of_week": {
+            "type": "string",
+            "title": "Day Of Week"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "caption_draft": {
+            "type": "string",
+            "title": "Caption Draft"
+          },
+          "hashtags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hashtags"
+          },
+          "platforms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Platforms"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "image_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Prompt"
+          },
+          "call_to_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call To Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "day_of_week",
+          "time",
+          "topic",
+          "caption_draft",
+          "hashtags",
+          "platforms",
+          "media_type"
+        ],
+        "title": "PlannedPostResponse",
+        "description": "Single planned post."
+      },
+      "PlatformInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "cost_per_post": {
+            "type": "number",
+            "title": "Cost Per Post"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "description",
+          "cost_per_post"
+        ],
+        "title": "PlatformInfo",
+        "description": "Platform information."
+      },
+      "PriceBreakdownItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "cost_per_post": {
+            "type": "number",
+            "title": "Cost Per Post"
+          },
+          "posts": {
+            "type": "integer",
+            "title": "Posts"
+          },
+          "total": {
+            "type": "number",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "display_name",
+          "cost_per_post",
+          "posts",
+          "total"
+        ],
+        "title": "PriceBreakdownItem",
+        "description": "Price breakdown item."
+      },
+      "PriceBreakdownResponse": {
+        "properties": {
+          "platform_cost": {
+            "type": "number",
+            "title": "Platform Cost"
+          },
+          "image_gen_cost": {
+            "type": "number",
+            "title": "Image Gen Cost"
+          },
+          "video_gen_cost": {
+            "type": "number",
+            "title": "Video Gen Cost"
+          },
+          "base_subscription": {
+            "type": "number",
+            "title": "Base Subscription"
+          },
+          "total_usd": {
+            "type": "number",
+            "title": "Total Usd"
+          },
+          "total_rub": {
+            "type": "number",
+            "title": "Total Rub"
+          },
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/PriceBreakdownItem"
+            },
+            "type": "array",
+            "title": "Platforms"
+          },
+          "image_provider": {
+            "type": "string",
+            "title": "Image Provider"
+          },
+          "video_provider": {
+            "type": "string",
+            "title": "Video Provider"
+          },
+          "posts_per_month": {
+            "type": "integer",
+            "title": "Posts Per Month"
+          },
+          "images_per_post": {
+            "type": "number",
+            "title": "Images Per Post"
+          },
+          "video_seconds_per_post": {
+            "type": "number",
+            "title": "Video Seconds Per Post"
+          }
+        },
+        "type": "object",
+        "required": [
+          "platform_cost",
+          "image_gen_cost",
+          "video_gen_cost",
+          "base_subscription",
+          "total_usd",
+          "total_rub",
+          "platforms",
+          "image_provider",
+          "video_provider",
+          "posts_per_month",
+          "images_per_post",
+          "video_seconds_per_post"
+        ],
+        "title": "PriceBreakdownResponse",
+        "description": "Detailed price breakdown."
+      },
+      "PriceEstimateResponse": {
+        "properties": {
+          "monthly_cost_usd": {
+            "type": "number",
+            "title": "Monthly Cost Usd"
+          },
+          "monthly_cost_rub": {
+            "type": "number",
+            "title": "Monthly Cost Rub"
+          },
+          "recommended_plan": {
+            "type": "string",
+            "title": "Recommended Plan"
+          },
+          "savings_vs_manual": {
+            "type": "number",
+            "title": "Savings Vs Manual"
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/PriceBreakdownResponse"
+          }
+        },
+        "type": "object",
+        "required": [
+          "monthly_cost_usd",
+          "monthly_cost_rub",
+          "recommended_plan",
+          "savings_vs_manual",
+          "breakdown"
+        ],
+        "title": "PriceEstimateResponse",
+        "description": "Price estimate response."
+      },
+      "QueueInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Queue name"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "Number of pending tasks"
+          },
+          "active_tasks": {
+            "type": "integer",
+            "title": "Active Tasks",
+            "description": "Number of active tasks"
+          },
+          "failed_tasks": {
+            "type": "integer",
+            "title": "Failed Tasks",
+            "description": "Number of failed tasks"
+          },
+          "last_task_timestamp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Task Timestamp",
+            "description": "Last task timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "size",
+          "active_tasks",
+          "failed_tasks"
+        ],
+        "title": "QueueInfo",
+        "description": "Queue information schema."
+      },
+      "QueuesResponse": {
+        "properties": {
+          "queues": {
+            "items": {
+              "$ref": "#/components/schemas/QueueInfo"
+            },
+            "type": "array",
+            "title": "Queues",
+            "description": "Queue information list"
+          },
+          "total_pending": {
+            "type": "integer",
+            "title": "Total Pending",
+            "description": "Total pending tasks"
+          },
+          "total_active": {
+            "type": "integer",
+            "title": "Total Active",
+            "description": "Total active tasks"
+          },
+          "system_health": {
+            "type": "string",
+            "title": "System Health",
+            "description": "Overall system health"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queues",
+          "total_pending",
+          "total_active",
+          "system_health"
+        ],
+        "title": "QueuesResponse",
+        "description": "Queues status response schema."
+      },
+      "RateLimitOverrideCreate": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier"
+          },
+          "identifier_type": {
+            "type": "string",
+            "title": "Identifier Type"
+          },
+          "limit_per_minute": {
+            "type": "integer",
+            "title": "Limit Per Minute"
+          },
+          "limit_per_hour": {
+            "type": "integer",
+            "title": "Limit Per Hour"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "identifier",
+          "identifier_type",
+          "limit_per_minute",
+          "limit_per_hour",
+          "reason"
+        ],
+        "title": "RateLimitOverrideCreate"
+      },
+      "RateLimitOverrideResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "identifier": {
+            "type": "string",
+            "title": "Identifier"
+          },
+          "identifier_type": {
+            "type": "string",
+            "title": "Identifier Type"
+          },
+          "limit_per_minute": {
+            "type": "integer",
+            "title": "Limit Per Minute"
+          },
+          "limit_per_hour": {
+            "type": "integer",
+            "title": "Limit Per Hour"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "identifier",
+          "identifier_type",
+          "limit_per_minute",
+          "limit_per_hour",
+          "reason",
+          "created_by",
+          "created_at",
+          "expires_at",
+          "is_active"
+        ],
+        "title": "RateLimitOverrideResponse"
+      },
+      "RegeneratPostRequest": {
+        "properties": {
+          "post_index": {
+            "type": "integer",
+            "minimum": 0,
+            "title": "Post Index",
+            "description": "Index of post to regenerate"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback",
+            "description": "Feedback for regeneration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "post_index"
+        ],
+        "title": "RegeneratPostRequest",
+        "description": "Request to regenerate a single post."
+      },
+      "SendCodeRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username",
+            "description": "Telegram username (with or without @)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "SendCodeRequest",
+        "description": "Request to send auth code."
+      },
+      "SendCodeResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "SendCodeResponse",
+        "description": "Response after sending code."
+      },
+      "SubscriptionPlanInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "price_rub": {
+            "type": "number",
+            "title": "Price Rub"
+          },
+          "price_usd": {
+            "type": "number",
+            "title": "Price Usd"
+          },
+          "posts_limit": {
+            "type": "integer",
+            "title": "Posts Limit"
+          },
+          "images_limit": {
+            "type": "integer",
+            "title": "Images Limit"
+          },
+          "video_seconds_limit": {
+            "type": "integer",
+            "title": "Video Seconds Limit"
+          },
+          "platforms_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platforms Limit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "price_rub",
+          "price_usd",
+          "posts_limit",
+          "images_limit",
+          "video_seconds_limit"
+        ],
+        "title": "SubscriptionPlanInfo",
+        "description": "Subscription plan information."
+      },
+      "SyncTriggerResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message"
+        ],
+        "title": "SyncTriggerResponse",
+        "description": "Sync trigger response."
+      },
+      "TelegramAuthData": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "Telegram user ID"
+          },
+          "first_name": {
+            "type": "string",
+            "title": "First Name",
+            "description": "User first name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name",
+            "description": "User last name"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username",
+            "description": "Telegram username"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url",
+            "description": "Profile photo URL"
+          },
+          "auth_date": {
+            "type": "integer",
+            "title": "Auth Date",
+            "description": "Auth timestamp"
+          },
+          "hash": {
+            "type": "string",
+            "title": "Hash",
+            "description": "Data hash for verification"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "first_name",
+          "auth_date",
+          "hash"
+        ],
+        "title": "TelegramAuthData",
+        "description": "Telegram Login Widget data."
+      },
+      "TelegramWebhookRequest": {
+        "properties": {
+          "update_id": {
+            "type": "integer",
+            "title": "Update Id",
+            "description": "Telegram update ID"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Message object"
+          },
+          "channel_post": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Post",
+            "description": "Channel post object"
+          },
+          "edited_message": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited Message",
+            "description": "Edited message object"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "update_id"
+        ],
+        "title": "TelegramWebhookRequest",
+        "description": "Telegram webhook request schema."
+      },
+      "TelegramWebhookResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Processing success status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Response message"
+          },
+          "post_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Post Id",
+            "description": "Created post ID"
+          },
+          "processing_time": {
+            "type": "number",
+            "title": "Processing Time",
+            "description": "Processing time in seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "processing_time"
+        ],
+        "title": "TelegramWebhookResponse",
+        "description": "Telegram webhook response schema."
+      },
+      "TextToVideoRequest": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Prompt",
+            "description": "Video description"
+          },
+          "duration": {
+            "type": "integer",
+            "maximum": 10,
+            "minimum": 5,
+            "title": "Duration",
+            "description": "Duration in seconds (5 or 10)",
+            "default": 5
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "title": "Aspect Ratio",
+            "description": "Aspect ratio (16:9, 9:16, 1:1)",
+            "default": "16:9"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "TextToVideoRequest",
+        "description": "Request for text-to-video generation."
+      },
+      "TopicCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$",
+            "title": "Color",
+            "default": "#6366f1"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone",
+            "description": "Content tone: professional, casual, humorous"
+          },
+          "hashtags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hashtags"
+          },
+          "call_to_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call To Action"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TopicCreate"
+      },
+      "TopicResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "hashtags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hashtags"
+          },
+          "call_to_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call To Action"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "color",
+          "tone",
+          "hashtags",
+          "call_to_action",
+          "is_active",
+          "created_at"
+        ],
+        "title": "TopicResponse"
+      },
+      "TopicUpdate": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^#[0-9a-fA-F]{6}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "tone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tone"
+          },
+          "hashtags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hashtags"
+          },
+          "call_to_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call To Action"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "TopicUpdate"
+      },
+      "UpdateConnectionRequest": {
+        "properties": {
+          "sync_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Enabled"
+          },
+          "sync_videos": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Videos"
+          },
+          "sync_photos": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Photos"
+          },
+          "sync_interval_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Interval Minutes"
+          }
+        },
+        "type": "object",
+        "title": "UpdateConnectionRequest",
+        "description": "Update connection settings."
+      },
+      "UserResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "telegram_id": {
+            "type": "integer",
+            "title": "Telegram Id"
+          },
+          "telegram_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telegram Username"
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "last_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Name"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "subscription_plan": {
+            "type": "string",
+            "title": "Subscription Plan"
+          },
+          "subscription_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Expires At"
+          },
+          "demo_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo Started At"
+          },
+          "demo_days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo Days Left"
+          },
+          "image_gen_provider": {
+            "type": "string",
+            "title": "Image Gen Provider"
+          },
+          "posts_count_this_month": {
+            "type": "integer",
+            "title": "Posts Count This Month"
+          },
+          "images_generated_this_month": {
+            "type": "integer",
+            "title": "Images Generated This Month"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "telegram_id",
+          "telegram_username",
+          "first_name",
+          "last_name",
+          "photo_url",
+          "subscription_plan",
+          "subscription_expires_at",
+          "demo_started_at",
+          "demo_days_left",
+          "image_gen_provider",
+          "posts_count_this_month",
+          "images_generated_this_month",
+          "is_active",
+          "created_at"
+        ],
+        "title": "UserResponse",
+        "description": "User info response."
+      },
+      "UserSettingsUpdate": {
+        "properties": {
+          "image_gen_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Gen Provider",
+            "description": "openai, stability, flux"
+          }
+        },
+        "type": "object",
+        "title": "UserSettingsUpdate"
+      },
+      "UserStatsResponse": {
+        "properties": {
+          "posts_count_this_month": {
+            "type": "integer",
+            "title": "Posts Count This Month"
+          },
+          "images_generated_this_month": {
+            "type": "integer",
+            "title": "Images Generated This Month"
+          },
+          "subscription_plan": {
+            "type": "string",
+            "title": "Subscription Plan"
+          },
+          "demo_days_left": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo Days Left"
+          },
+          "accounts_count": {
+            "type": "integer",
+            "title": "Accounts Count"
+          },
+          "topics_count": {
+            "type": "integer",
+            "title": "Topics Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "posts_count_this_month",
+          "images_generated_this_month",
+          "subscription_plan",
+          "demo_days_left",
+          "accounts_count",
+          "topics_count"
+        ],
+        "title": "UserStatsResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VerifyCodeRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username",
+            "description": "Telegram username"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "6-digit verification code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "code"
+        ],
+        "title": "VerifyCodeRequest",
+        "description": "Request to verify auth code."
+      },
+      "VideoProviderInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "quality": {
+            "type": "string",
+            "title": "Quality"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "cost_per_second": {
+            "type": "number",
+            "title": "Cost Per Second"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "display_name",
+          "quality",
+          "description",
+          "cost_per_second"
+        ],
+        "title": "VideoProviderInfo",
+        "description": "Video provider information."
+      },
+      "VideoTaskResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "title": "Duration Seconds"
+          },
+          "video_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Url"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "cost_estimate": {
+            "type": "number",
+            "title": "Cost Estimate"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "prompt",
+          "duration_seconds",
+          "cost_estimate",
+          "created_at"
+        ],
+        "title": "VideoTaskResponse",
+        "description": "Video generation task response."
+      }
+    }
+  }
+}
