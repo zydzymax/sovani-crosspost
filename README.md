@@ -1,6 +1,12 @@
 # SoVAni Crosspost
 
-MVP кроссплатформенной публикации контента из Telegram в социальные сети с автоматическим транскодированием медиа и адаптацией под требования каждой платформы.
+[![CI](https://github.com/zydzymax/sovani-crosspost/actions/workflows/ci.yml/badge.svg)](https://github.com/zydzymax/sovani-crosspost/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+Кроссплатформенная публикация контента из Telegram в социальные сети с автоматическим транскодированием медиа и адаптацией под требования каждой платформы.
+
+> **Quick Start:** See [QUICK_START.md](QUICK_START.md) for fast setup.
 
 ## Архитектура
 
