@@ -19,38 +19,42 @@ logger = get_logger("media.smart_crop")
 
 class CropStrategy(Enum):
     """Smart cropping strategies."""
-    PAD = "pad"              # Add padding (safe, no content loss)
-    CENTER_CROP = "center"   # Crop from center
-    FACE_AWARE = "face"      # Crop focusing on detected faces
+
+    PAD = "pad"  # Add padding (safe, no content loss)
+    CENTER_CROP = "center"  # Crop from center
+    FACE_AWARE = "face"  # Crop focusing on detected faces
     CONTENT_AWARE = "content"  # Crop based on content analysis
     MOTION_AWARE = "motion"  # Crop based on motion detection
-    TEXT_AWARE = "text"      # Crop avoiding text overlays
+    TEXT_AWARE = "text"  # Crop avoiding text overlays
 
 
 class ContentType(Enum):
     """Types of content for smart cropping."""
-    PORTRAIT = "portrait"     # Person/people focused
-    PRODUCT = "product"       # Product showcase
-    LANDSCAPE = "landscape"   # Scenic/environmental
-    TEXT_OVERLAY = "text"     # Content with text
-    MIXED = "mixed"          # Mixed content
-    UNKNOWN = "unknown"      # Content type not determined
+
+    PORTRAIT = "portrait"  # Person/people focused
+    PRODUCT = "product"  # Product showcase
+    LANDSCAPE = "landscape"  # Scenic/environmental
+    TEXT_OVERLAY = "text"  # Content with text
+    MIXED = "mixed"  # Mixed content
+    UNKNOWN = "unknown"  # Content type not determined
 
 
 @dataclass
 class CropRegion:
     """Represents a crop region in the video."""
-    x: int           # X coordinate (left)
-    y: int           # Y coordinate (top)
-    width: int       # Width of crop region
-    height: int      # Height of crop region
+
+    x: int  # X coordinate (left)
+    y: int  # Y coordinate (top)
+    width: int  # Width of crop region
+    height: int  # Height of crop region
     confidence: float = 1.0  # Confidence score for this region
-    reason: str = "manual"   # Reason for this crop region
+    reason: str = "manual"  # Reason for this crop region
 
 
 @dataclass
 class SmartCropAnalysis:
     """Result of smart crop analysis."""
+
     content_type: ContentType
     recommended_strategy: CropStrategy
     crop_regions: list[CropRegion]
@@ -62,6 +66,7 @@ class SmartCropAnalysis:
 @dataclass
 class SmartCropParams:
     """Parameters for smart cropping."""
+
     input_path: str
     target_aspect_ratio: AspectRatio
     content_type_hint: ContentType | None = None
@@ -99,7 +104,7 @@ class SmartCropStub:
         logger.info(
             "Analyzing content for smart cropping",
             input_path=params.input_path,
-            target_aspect=params.target_aspect_ratio.value
+            target_aspect=params.target_aspect_ratio.value,
         )
 
         # Simulate analysis delay
@@ -121,16 +126,16 @@ class SmartCropStub:
                     "Text overlay detection",
                     "Motion analysis for dynamic cropping",
                     "Content-aware importance mapping",
-                    "Multi-frame analysis for video"
-                ]
-            }
+                    "Multi-frame analysis for video",
+                ],
+            },
         )
 
         logger.info(
             "Content analysis completed",
             recommended_strategy=analysis.recommended_strategy.value,
             confidence=analysis.confidence_score,
-            analysis_time=analysis.analysis_time
+            analysis_time=analysis.analysis_time,
         )
 
         return analysis
@@ -155,12 +160,7 @@ class SmartCropStub:
         # Note: This is stub behavior - real implementation would
         # calculate optimal regions based on content analysis
         return CropRegion(
-            x=0,
-            y=0,
-            width=1920,  # Placeholder dimensions
-            height=1080,
-            confidence=0.5,
-            reason="center_crop_fallback"
+            x=0, y=0, width=1920, height=1080, confidence=0.5, reason="center_crop_fallback"  # Placeholder dimensions
         )
 
     def get_conversion_strategy(self, crop_strategy: CropStrategy) -> ConversionStrategy:
@@ -179,14 +179,14 @@ class SmartCropStub:
             CropStrategy.FACE_AWARE: ConversionStrategy.CROP,
             CropStrategy.CONTENT_AWARE: ConversionStrategy.CROP,
             CropStrategy.MOTION_AWARE: ConversionStrategy.CROP,
-            CropStrategy.TEXT_AWARE: ConversionStrategy.PAD  # Prefer padding when text is present
+            CropStrategy.TEXT_AWARE: ConversionStrategy.PAD,  # Prefer padding when text is present
         }
 
         return strategy_mapping.get(crop_strategy, ConversionStrategy.PAD)
 
-    async def recommend_strategy_for_platform(self, input_path: str,
-                                            platform: str,
-                                            content_type_hint: ContentType | None = None) -> CropStrategy:
+    async def recommend_strategy_for_platform(
+        self, input_path: str, platform: str, content_type_hint: ContentType | None = None
+    ) -> CropStrategy:
         """
         Recommend cropping strategy for specific platform.
 
@@ -202,13 +202,13 @@ class SmartCropStub:
 
         # Platform-specific strategy preferences (stub implementation)
         platform_preferences = {
-            "instagram_stories": CropStrategy.PAD,      # Stories prefer no content loss
-            "instagram_feed": CropStrategy.PAD,         # Feed posts are more flexible
-            "instagram_square": CropStrategy.PAD,       # Square format needs careful handling
-            "youtube": CropStrategy.PAD,                # YouTube prefers original content
-            "tiktok": CropStrategy.PAD,                 # TikTok vertical format
-            "vk": CropStrategy.PAD,                     # VK landscape format
-            "facebook": CropStrategy.PAD                # Facebook various formats
+            "instagram_stories": CropStrategy.PAD,  # Stories prefer no content loss
+            "instagram_feed": CropStrategy.PAD,  # Feed posts are more flexible
+            "instagram_square": CropStrategy.PAD,  # Square format needs careful handling
+            "youtube": CropStrategy.PAD,  # YouTube prefers original content
+            "tiktok": CropStrategy.PAD,  # TikTok vertical format
+            "vk": CropStrategy.PAD,  # VK landscape format
+            "facebook": CropStrategy.PAD,  # Facebook various formats
         }
 
         # Content type adjustments (future enhancement)
@@ -225,7 +225,7 @@ class SmartCropStub:
             "Platform strategy recommended",
             platform=platform,
             strategy=strategy.value,
-            content_type=content_type_hint.value if content_type_hint else "unknown"
+            content_type=content_type_hint.value if content_type_hint else "unknown",
         )
 
         return strategy
@@ -238,9 +238,9 @@ class SmartCropStub:
         """Check if a cropping strategy is available."""
         return strategy in self.available_strategies
 
-    async def validate_crop_region(self, crop_region: CropRegion,
-                                 input_dimensions: tuple[int, int],
-                                 target_aspect: AspectRatio) -> bool:
+    async def validate_crop_region(
+        self, crop_region: CropRegion, input_dimensions: tuple[int, int], target_aspect: AspectRatio
+    ) -> bool:
         """
         Validate that a crop region is feasible.
 
@@ -255,9 +255,12 @@ class SmartCropStub:
         input_width, input_height = input_dimensions
 
         # Check bounds
-        if (crop_region.x < 0 or crop_region.y < 0 or
-            crop_region.x + crop_region.width > input_width or
-            crop_region.y + crop_region.height > input_height):
+        if (
+            crop_region.x < 0
+            or crop_region.y < 0
+            or crop_region.x + crop_region.width > input_width
+            or crop_region.y + crop_region.height > input_height
+        ):
             return False
 
         # Check minimum size
@@ -269,10 +272,10 @@ class SmartCropStub:
 
         # Define target ratios
         target_ratios = {
-            AspectRatio.NINE_SIXTEEN: 9/16,
-            AspectRatio.FOUR_FIVE: 4/5,
-            AspectRatio.ONE_ONE: 1/1,
-            AspectRatio.SIXTEEN_NINE: 16/9
+            AspectRatio.NINE_SIXTEEN: 9 / 16,
+            AspectRatio.FOUR_FIVE: 4 / 5,
+            AspectRatio.ONE_ONE: 1 / 1,
+            AspectRatio.SIXTEEN_NINE: 16 / 9,
         }
 
         expected_ratio = target_ratios.get(target_aspect, 1.0)
@@ -283,7 +286,7 @@ class SmartCropStub:
                 "Crop region aspect ratio mismatch",
                 crop_ratio=crop_ratio,
                 expected_ratio=expected_ratio,
-                tolerance=ratio_tolerance
+                tolerance=ratio_tolerance,
             )
             return False
 
@@ -300,7 +303,7 @@ class SmartCropStub:
                     "Safe padding strategy",
                     "Platform-specific recommendations",
                     "Strategy validation",
-                    "Conversion strategy mapping"
+                    "Conversion strategy mapping",
                 ],
                 "planned": [
                     "Face detection and preservation",
@@ -309,14 +312,10 @@ class SmartCropStub:
                     "Content importance mapping",
                     "Multi-frame video analysis",
                     "AI-powered content understanding",
-                    "Custom crop region optimization"
-                ]
+                    "Custom crop region optimization",
+                ],
             },
-            "safety": {
-                "default_strategy": "pad",
-                "content_preservation": "high",
-                "distortion_risk": "none"
-            }
+            "safety": {"default_strategy": "pad", "content_preservation": "high", "distortion_risk": "none"},
         }
 
 
@@ -325,8 +324,9 @@ smart_crop_stub = SmartCropStub()
 
 
 # Convenience functions
-async def analyze_for_smart_crop(input_path: str, target_aspect: AspectRatio,
-                               content_type_hint: ContentType | None = None) -> SmartCropAnalysis:
+async def analyze_for_smart_crop(
+    input_path: str, target_aspect: AspectRatio, content_type_hint: ContentType | None = None
+) -> SmartCropAnalysis:
     """
     Analyze video for smart cropping recommendations.
 
@@ -339,16 +339,15 @@ async def analyze_for_smart_crop(input_path: str, target_aspect: AspectRatio,
         Analysis result with recommendations
     """
     params = SmartCropParams(
-        input_path=input_path,
-        target_aspect_ratio=target_aspect,
-        content_type_hint=content_type_hint
+        input_path=input_path, target_aspect_ratio=target_aspect, content_type_hint=content_type_hint
     )
 
     return await smart_crop_stub.analyze_content(params)
 
 
-async def get_platform_strategy(input_path: str, platform: str,
-                              content_type: ContentType | None = None) -> ConversionStrategy:
+async def get_platform_strategy(
+    input_path: str, platform: str, content_type: ContentType | None = None
+) -> ConversionStrategy:
     """
     Get recommended conversion strategy for platform.
 
@@ -360,9 +359,7 @@ async def get_platform_strategy(input_path: str, platform: str,
     Returns:
         Recommended FFmpeg conversion strategy
     """
-    crop_strategy = await smart_crop_stub.recommend_strategy_for_platform(
-        input_path, platform, content_type
-    )
+    crop_strategy = await smart_crop_stub.recommend_strategy_for_platform(input_path, platform, content_type)
 
     return smart_crop_stub.get_conversion_strategy(crop_strategy)
 

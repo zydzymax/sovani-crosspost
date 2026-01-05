@@ -19,26 +19,31 @@ logger = get_logger("services.video_gen_minimax")
 
 class MinimaxError(Exception):
     """Base exception for Minimax API errors."""
+
     pass
 
 
 class MinimaxRateLimitError(MinimaxError):
     """Rate limit exceeded."""
+
     pass
 
 
 class MinimaxGenerationError(MinimaxError):
     """Video generation failed."""
+
     pass
 
 
 class MinimaxAuthError(MinimaxError):
     """Authentication failed."""
+
     pass
 
 
 class VideoStatus(str, Enum):
     """Minimax video generation status."""
+
     PENDING = "Queueing"
     PROCESSING = "Processing"
     COMPLETED = "Success"
@@ -47,14 +52,16 @@ class VideoStatus(str, Enum):
 
 class MinimaxModel(str, Enum):
     """Minimax video models."""
-    VIDEO_01 = "video-01"          # Standard quality
+
+    VIDEO_01 = "video-01"  # Standard quality
     VIDEO_01_LIVE = "video-01-live"  # Faster, slightly lower quality
-    S2V_01 = "S2V-01"              # Subject-to-video
+    S2V_01 = "S2V-01"  # Subject-to-video
 
 
 @dataclass
 class MinimaxVideoResult:
     """Result of Minimax video generation."""
+
     success: bool
     video_url: str | None = None
     thumbnail_url: str | None = None
@@ -78,41 +85,28 @@ class MinimaxService:
 
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(300.0),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
         )
 
         logger.info("MiniMax (Hailuo) service initialized")
 
     def _get_api_key(self) -> str:
         """Get Minimax API key from settings or environment."""
-        return os.getenv('MINIMAX_API_KEY', '')
+        return os.getenv("MINIMAX_API_KEY", "")
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((httpx.TimeoutException, MinimaxRateLimitError))
+        retry=retry_if_exception_type((httpx.TimeoutException, MinimaxRateLimitError)),
     )
-    async def generate_from_text(
-        self,
-        prompt: str,
-        model: MinimaxModel = MinimaxModel.VIDEO_01
-    ) -> MinimaxVideoResult:
+    async def generate_from_text(self, prompt: str, model: MinimaxModel = MinimaxModel.VIDEO_01) -> MinimaxVideoResult:
         """Generate video from text prompt."""
         logger.info("Starting Minimax text-to-video generation", prompt=prompt[:50])
 
-        payload = {
-            "model": model.value,
-            "prompt": prompt
-        }
+        payload = {"model": model.value, "prompt": prompt}
 
         try:
-            response = await self.http_client.post(
-                f"{self.API_BASE}/video_generation",
-                json=payload
-            )
+            response = await self.http_client.post(f"{self.API_BASE}/video_generation", json=payload)
 
             if response.status_code == 401:
                 raise MinimaxAuthError("Invalid API credentials")
@@ -142,28 +136,18 @@ class MinimaxService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((httpx.TimeoutException, MinimaxRateLimitError))
+        retry=retry_if_exception_type((httpx.TimeoutException, MinimaxRateLimitError)),
     )
     async def generate_from_image(
-        self,
-        image_url: str,
-        prompt: str = "",
-        model: MinimaxModel = MinimaxModel.VIDEO_01
+        self, image_url: str, prompt: str = "", model: MinimaxModel = MinimaxModel.VIDEO_01
     ) -> MinimaxVideoResult:
         """Generate video from image."""
         logger.info("Starting Minimax image-to-video generation")
 
-        payload = {
-            "model": model.value,
-            "first_frame_image": image_url,
-            "prompt": prompt
-        }
+        payload = {"model": model.value, "first_frame_image": image_url, "prompt": prompt}
 
         try:
-            response = await self.http_client.post(
-                f"{self.API_BASE}/video_generation",
-                json=payload
-            )
+            response = await self.http_client.post(f"{self.API_BASE}/video_generation", json=payload)
 
             if response.status_code == 401:
                 raise MinimaxAuthError("Invalid API credentials")
@@ -190,18 +174,14 @@ class MinimaxService:
             raise
 
     async def _poll_for_result(
-        self,
-        task_id: str,
-        max_attempts: int = 180,  # Up to 15 minutes
-        poll_interval: int = 5
+        self, task_id: str, max_attempts: int = 180, poll_interval: int = 5  # Up to 15 minutes
     ) -> MinimaxVideoResult:
         """Poll for video generation result."""
         logger.info("Polling for Minimax result", task_id=task_id)
 
         for _attempt in range(max_attempts):
             response = await self.http_client.get(
-                f"{self.API_BASE}/query/video_generation",
-                params={"task_id": task_id}
+                f"{self.API_BASE}/query/video_generation", params={"task_id": task_id}
             )
 
             if response.status_code != 200:
@@ -217,8 +197,7 @@ class MinimaxService:
 
                 # Get download URL
                 download_response = await self.http_client.get(
-                    f"{self.API_BASE}/files/retrieve",
-                    params={"file_id": file_id}
+                    f"{self.API_BASE}/files/retrieve", params={"file_id": file_id}
                 )
 
                 if download_response.status_code == 200:
@@ -230,37 +209,22 @@ class MinimaxService:
                         video_url=video_url,
                         task_id=task_id,
                         duration_seconds=6,  # Default Hailuo duration
-                        cost_estimate=self.COST_PER_VIDEO
+                        cost_estimate=self.COST_PER_VIDEO,
                     )
                 else:
-                    return MinimaxVideoResult(
-                        success=False,
-                        task_id=task_id,
-                        error="Failed to get download URL"
-                    )
+                    return MinimaxVideoResult(success=False, task_id=task_id, error="Failed to get download URL")
 
             elif status == VideoStatus.FAILED.value:
                 error_msg = data.get("base_resp", {}).get("status_msg", "Generation failed")
-                return MinimaxVideoResult(
-                    success=False,
-                    task_id=task_id,
-                    error=error_msg
-                )
+                return MinimaxVideoResult(success=False, task_id=task_id, error=error_msg)
 
             await asyncio.sleep(poll_interval)
 
-        return MinimaxVideoResult(
-            success=False,
-            task_id=task_id,
-            error="Timeout waiting for video generation"
-        )
+        return MinimaxVideoResult(success=False, task_id=task_id, error="Timeout waiting for video generation")
 
     async def get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get status of a video generation task."""
-        response = await self.http_client.get(
-            f"{self.API_BASE}/query/video_generation",
-            params={"task_id": task_id}
-        )
+        response = await self.http_client.get(f"{self.API_BASE}/query/video_generation", params={"task_id": task_id})
         return response.json()
 
     async def close(self):

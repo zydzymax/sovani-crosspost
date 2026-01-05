@@ -22,31 +22,37 @@ logger = get_logger("adapters.facebook")
 
 class FacebookError(Exception):
     """Base exception for Facebook API errors."""
+
     pass
 
 
 class FacebookRateLimitError(FacebookError):
     """Raised when Facebook API rate limit is exceeded."""
+
     pass
 
 
 class FacebookAuthError(FacebookError):
     """Raised when Facebook API authentication fails."""
+
     pass
 
 
 class FacebookValidationError(FacebookError):
     """Raised when Facebook API validation fails."""
+
     pass
 
 
 class FacebookUploadError(FacebookError):
     """Raised when Facebook media upload fails."""
+
     pass
 
 
 class MediaType(Enum):
     """Facebook media types."""
+
     PHOTO = "photo"
     VIDEO = "video"
     REEL = "reel"
@@ -54,6 +60,7 @@ class MediaType(Enum):
 
 class PostStatus(Enum):
     """Facebook post status."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     PUBLISHED = "published"
@@ -64,6 +71,7 @@ class PostStatus(Enum):
 @dataclass
 class FacebookMediaItem:
     """Represents a media item for Facebook."""
+
     file_path: str
     media_type: MediaType
     caption: str | None = None
@@ -72,6 +80,7 @@ class FacebookMediaItem:
 @dataclass
 class FacebookPost:
     """Represents a Facebook post."""
+
     message: str
     media_items: list[FacebookMediaItem]
     page_id: str | None = None
@@ -87,6 +96,7 @@ class FacebookPost:
 @dataclass
 class FacebookUploadResult:
     """Result of media upload to Facebook."""
+
     media_type: MediaType
     media_id: str
     upload_time: float
@@ -96,6 +106,7 @@ class FacebookUploadResult:
 @dataclass
 class FacebookPublishResult:
     """Result of Facebook post publishing."""
+
     post_id: str | None
     status: PostStatus
     message: str
@@ -119,9 +130,7 @@ class FacebookAdapter:
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(120.0),  # Facebook uploads can be slow
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
-            headers={
-                "User-Agent": "Crosspost/1.0"
-            }
+            headers={"User-Agent": "Crosspost/1.0"},
         )
 
         # Rate limiting
@@ -133,14 +142,15 @@ class FacebookAdapter:
 
     def _get_access_token(self) -> str:
         """Get Facebook page access token from settings."""
-        if hasattr(settings, 'facebook') and hasattr(settings.facebook, 'page_access_token'):
+        if hasattr(settings, "facebook") and hasattr(settings.facebook, "page_access_token"):
             token = settings.facebook.page_access_token
-            if hasattr(token, 'get_secret_value'):
+            if hasattr(token, "get_secret_value"):
                 return token.get_secret_value()
             return str(token)
 
         import os
-        token = os.getenv('FACEBOOK_PAGE_ACCESS_TOKEN')
+
+        token = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN")
         if token:
             return token
 
@@ -148,11 +158,12 @@ class FacebookAdapter:
 
     def _get_page_id(self) -> str:
         """Get Facebook page ID from settings."""
-        if hasattr(settings, 'facebook') and hasattr(settings.facebook, 'page_id'):
+        if hasattr(settings, "facebook") and hasattr(settings.facebook, "page_id"):
             return str(settings.facebook.page_id)
 
         import os
-        page_id = os.getenv('FACEBOOK_PAGE_ID')
+
+        page_id = os.getenv("FACEBOOK_PAGE_ID")
         if page_id:
             return page_id
 
@@ -169,7 +180,7 @@ class FacebookAdapter:
                 message_length=len(post.message),
                 media_count=len(post.media_items),
                 page_id=page_id,
-                is_scheduled=bool(post.scheduled_publish_time)
+                is_scheduled=bool(post.scheduled_publish_time),
             )
 
             try:
@@ -186,17 +197,14 @@ class FacebookAdapter:
                 processing_time = time.time() - start_time
 
                 metrics.track_external_api_call(
-                    service="facebook",
-                    endpoint="publish",
-                    status_code=200,
-                    duration=processing_time
+                    service="facebook", endpoint="publish", status_code=200, duration=processing_time
                 )
 
                 logger.info(
                     "Facebook post published successfully",
                     post_id=result.post_id,
                     processing_time=processing_time,
-                    post_url=result.post_url
+                    post_url=result.post_url,
                 )
 
                 return result
@@ -205,34 +213,22 @@ class FacebookAdapter:
                 processing_time = time.time() - start_time
 
                 metrics.track_external_api_call(
-                    service="facebook",
-                    endpoint="publish",
-                    status_code=500,
-                    duration=processing_time,
-                    error=str(e)
+                    service="facebook", endpoint="publish", status_code=500, duration=processing_time, error=str(e)
                 )
 
                 logger.error(
-                    "Failed to publish Facebook post",
-                    error=str(e),
-                    processing_time=processing_time,
-                    exc_info=True
+                    "Failed to publish Facebook post", error=str(e), processing_time=processing_time, exc_info=True
                 )
 
                 return FacebookPublishResult(
-                    post_id=None,
-                    status=PostStatus.ERROR,
-                    message=str(e),
-                    error_code=getattr(e, 'error_code', None)
+                    post_id=None, status=PostStatus.ERROR, message=str(e), error_code=getattr(e, "error_code", None)
                 )
 
-    async def _publish_text_post(self, post: FacebookPost, page_id: str,
-                                  correlation_id: str = None) -> FacebookPublishResult:
+    async def _publish_text_post(
+        self, post: FacebookPost, page_id: str, correlation_id: str = None
+    ) -> FacebookPublishResult:
         """Publish text-only post."""
-        params = {
-            "message": post.message,
-            "access_token": self.page_access_token
-        }
+        params = {"message": post.message, "access_token": self.page_access_token}
 
         if post.link:
             params["link"] = post.link
@@ -241,11 +237,7 @@ class FacebookAdapter:
             params["scheduled_publish_time"] = int(post.scheduled_publish_time.timestamp())
             params["published"] = "false"
 
-        response = await self._make_api_request(
-            f"/{page_id}/feed",
-            method="POST",
-            params=params
-        )
+        response = await self._make_api_request(f"/{page_id}/feed", method="POST", params=params)
 
         post_id = response.get("id")
         post_url = f"https://www.facebook.com/{post_id}" if post_id else None
@@ -255,11 +247,12 @@ class FacebookAdapter:
             status=PostStatus.SCHEDULED if post.scheduled_publish_time else PostStatus.PUBLISHED,
             message="Post published successfully",
             post_url=post_url,
-            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None
+            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None,
         )
 
-    async def _publish_single_media(self, post: FacebookPost, page_id: str,
-                                     correlation_id: str = None) -> FacebookPublishResult:
+    async def _publish_single_media(
+        self, post: FacebookPost, page_id: str, correlation_id: str = None
+    ) -> FacebookPublishResult:
         """Publish post with single media item."""
         media_item = post.media_items[0]
 
@@ -270,8 +263,9 @@ class FacebookAdapter:
         else:
             raise FacebookValidationError(f"Unsupported media type: {media_item.media_type}")
 
-    async def _publish_multi_media(self, post: FacebookPost, page_id: str,
-                                    correlation_id: str = None) -> FacebookPublishResult:
+    async def _publish_multi_media(
+        self, post: FacebookPost, page_id: str, correlation_id: str = None
+    ) -> FacebookPublishResult:
         """Publish post with multiple media items (carousel)."""
         # Upload all photos first
         photo_ids = []
@@ -285,10 +279,7 @@ class FacebookAdapter:
             raise FacebookValidationError("No photos uploaded successfully")
 
         # Create post with attached photos
-        params = {
-            "message": post.message,
-            "access_token": self.page_access_token
-        }
+        params = {"message": post.message, "access_token": self.page_access_token}
 
         # Attach photos
         for i, photo_id in enumerate(photo_ids):
@@ -298,11 +289,7 @@ class FacebookAdapter:
             params["scheduled_publish_time"] = int(post.scheduled_publish_time.timestamp())
             params["published"] = "false"
 
-        response = await self._make_api_request(
-            f"/{page_id}/feed",
-            method="POST",
-            params=params
-        )
+        response = await self._make_api_request(f"/{page_id}/feed", method="POST", params=params)
 
         post_id = response.get("id")
         post_url = f"https://www.facebook.com/{post_id}" if post_id else None
@@ -312,34 +299,24 @@ class FacebookAdapter:
             status=PostStatus.SCHEDULED if post.scheduled_publish_time else PostStatus.PUBLISHED,
             message="Multi-media post published successfully",
             post_url=post_url,
-            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None
+            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None,
         )
 
-    async def _publish_photo(self, post: FacebookPost, page_id: str,
-                             media_item: FacebookMediaItem,
-                             correlation_id: str = None) -> FacebookPublishResult:
+    async def _publish_photo(
+        self, post: FacebookPost, page_id: str, media_item: FacebookMediaItem, correlation_id: str = None
+    ) -> FacebookPublishResult:
         """Publish single photo post."""
         file_content, file_name, mime_type = await self._prepare_file(media_item.file_path)
 
-        params = {
-            "caption": post.message,
-            "access_token": self.page_access_token
-        }
+        params = {"caption": post.message, "access_token": self.page_access_token}
 
         if post.scheduled_publish_time:
             params["scheduled_publish_time"] = int(post.scheduled_publish_time.timestamp())
             params["published"] = "false"
 
-        files = {
-            "source": (file_name, file_content, mime_type)
-        }
+        files = {"source": (file_name, file_content, mime_type)}
 
-        response = await self._make_api_request(
-            f"/{page_id}/photos",
-            method="POST",
-            params=params,
-            files=files
-        )
+        response = await self._make_api_request(f"/{page_id}/photos", method="POST", params=params, files=files)
 
         post_id = response.get("post_id") or response.get("id")
         post_url = f"https://www.facebook.com/{post_id}" if post_id else None
@@ -349,19 +326,16 @@ class FacebookAdapter:
             status=PostStatus.SCHEDULED if post.scheduled_publish_time else PostStatus.PUBLISHED,
             message="Photo published successfully",
             post_url=post_url,
-            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None
+            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None,
         )
 
-    async def _publish_video(self, post: FacebookPost, page_id: str,
-                             media_item: FacebookMediaItem,
-                             correlation_id: str = None) -> FacebookPublishResult:
+    async def _publish_video(
+        self, post: FacebookPost, page_id: str, media_item: FacebookMediaItem, correlation_id: str = None
+    ) -> FacebookPublishResult:
         """Publish video post."""
         file_content, file_name, mime_type = await self._prepare_file(media_item.file_path)
 
-        params = {
-            "description": post.message,
-            "access_token": self.page_access_token
-        }
+        params = {"description": post.message, "access_token": self.page_access_token}
 
         if post.scheduled_publish_time:
             params["scheduled_publish_time"] = int(post.scheduled_publish_time.timestamp())
@@ -371,24 +345,15 @@ class FacebookAdapter:
         file_size = len(file_content)
 
         if file_size > 10 * 1024 * 1024:  # > 10MB
-            return await self._resumable_video_upload(
-                post, page_id, file_content, file_name, correlation_id
-            )
+            return await self._resumable_video_upload(post, page_id, file_content, file_name, correlation_id)
 
-        files = {
-            "source": (file_name, file_content, mime_type)
-        }
+        files = {"source": (file_name, file_content, mime_type)}
 
         endpoint = f"/{page_id}/videos"
         if media_item.media_type == MediaType.REEL:
             endpoint = f"/{page_id}/video_reels"
 
-        response = await self._make_api_request(
-            endpoint,
-            method="POST",
-            params=params,
-            files=files
-        )
+        response = await self._make_api_request(endpoint, method="POST", params=params, files=files)
 
         video_id = response.get("id")
         post_url = f"https://www.facebook.com/{video_id}" if video_id else None
@@ -398,39 +363,28 @@ class FacebookAdapter:
             status=PostStatus.SCHEDULED if post.scheduled_publish_time else PostStatus.PUBLISHED,
             message="Video published successfully",
             post_url=post_url,
-            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None
+            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None,
         )
 
-    async def _upload_photo_unpublished(self, media_item: FacebookMediaItem, page_id: str,
-                                         correlation_id: str = None) -> FacebookUploadResult:
+    async def _upload_photo_unpublished(
+        self, media_item: FacebookMediaItem, page_id: str, correlation_id: str = None
+    ) -> FacebookUploadResult:
         """Upload photo without publishing (for multi-photo posts)."""
         start_time = time.time()
 
         try:
             file_content, file_name, mime_type = await self._prepare_file(media_item.file_path)
 
-            params = {
-                "published": "false",
-                "access_token": self.page_access_token
-            }
+            params = {"published": "false", "access_token": self.page_access_token}
 
-            files = {
-                "source": (file_name, file_content, mime_type)
-            }
+            files = {"source": (file_name, file_content, mime_type)}
 
-            response = await self._make_api_request(
-                f"/{page_id}/photos",
-                method="POST",
-                params=params,
-                files=files
-            )
+            response = await self._make_api_request(f"/{page_id}/photos", method="POST", params=params, files=files)
 
             upload_time = time.time() - start_time
 
             return FacebookUploadResult(
-                media_type=MediaType.PHOTO,
-                media_id=response.get("id"),
-                upload_time=upload_time
+                media_type=MediaType.PHOTO, media_id=response.get("id"), upload_time=upload_time
             )
 
         except Exception as e:
@@ -438,15 +392,12 @@ class FacebookAdapter:
             logger.error(f"Failed to upload photo: {e}", exc_info=True)
 
             return FacebookUploadResult(
-                media_type=MediaType.PHOTO,
-                media_id="",
-                upload_time=upload_time,
-                error_message=str(e)
+                media_type=MediaType.PHOTO, media_id="", upload_time=upload_time, error_message=str(e)
             )
 
-    async def _resumable_video_upload(self, post: FacebookPost, page_id: str,
-                                       file_content: bytes, file_name: str,
-                                       correlation_id: str = None) -> FacebookPublishResult:
+    async def _resumable_video_upload(
+        self, post: FacebookPost, page_id: str, file_content: bytes, file_name: str, correlation_id: str = None
+    ) -> FacebookPublishResult:
         """Upload large video using resumable upload."""
         file_size = len(file_content)
 
@@ -454,11 +405,7 @@ class FacebookAdapter:
         init_response = await self._make_api_request(
             f"/{page_id}/videos",
             method="POST",
-            params={
-                "upload_phase": "start",
-                "file_size": file_size,
-                "access_token": self.page_access_token
-            }
+            params={"upload_phase": "start", "file_size": file_size, "access_token": self.page_access_token},
         )
 
         upload_session_id = init_response.get("upload_session_id")
@@ -479,11 +426,9 @@ class FacebookAdapter:
                     "upload_phase": "transfer",
                     "upload_session_id": upload_session_id,
                     "start_offset": start_offset,
-                    "access_token": self.page_access_token
+                    "access_token": self.page_access_token,
                 },
-                files={
-                    "video_file_chunk": (file_name, chunk, "application/octet-stream")
-                }
+                files={"video_file_chunk": (file_name, chunk, "application/octet-stream")},
             )
 
             start_offset = int(chunk_response.get("end_offset", end_offset))
@@ -493,18 +438,14 @@ class FacebookAdapter:
             "upload_phase": "finish",
             "upload_session_id": upload_session_id,
             "access_token": self.page_access_token,
-            "description": post.message
+            "description": post.message,
         }
 
         if post.scheduled_publish_time:
             finish_params["scheduled_publish_time"] = int(post.scheduled_publish_time.timestamp())
             finish_params["published"] = "false"
 
-        await self._make_api_request(
-            f"/{page_id}/videos",
-            method="POST",
-            params=finish_params
-        )
+        await self._make_api_request(f"/{page_id}/videos", method="POST", params=finish_params)
 
         post_url = f"https://www.facebook.com/{video_id}" if video_id else None
 
@@ -513,12 +454,12 @@ class FacebookAdapter:
             status=PostStatus.SCHEDULED if post.scheduled_publish_time else PostStatus.PUBLISHED,
             message="Video uploaded successfully",
             post_url=post_url,
-            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None
+            published_at=datetime.now(timezone.utc) if not post.scheduled_publish_time else None,
         )
 
     async def _prepare_file(self, file_path: str) -> tuple:
         """Prepare file for upload."""
-        if file_path.startswith(('http://', 'https://')):
+        if file_path.startswith(("http://", "https://")):
             async with self.http_client.stream("GET", file_path) as response:
                 response.raise_for_status()
                 file_content = await response.aread()
@@ -550,11 +491,11 @@ class FacebookAdapter:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, FacebookRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, FacebookRateLimitError)),
     )
-    async def _make_api_request(self, endpoint: str, method: str = "GET",
-                                 params: dict[str, Any] = None,
-                                 files: dict = None) -> dict[str, Any]:
+    async def _make_api_request(
+        self, endpoint: str, method: str = "GET", params: dict[str, Any] = None, files: dict = None
+    ) -> dict[str, Any]:
         """Make API request to Facebook Graph API."""
         await self._check_rate_limits()
 
@@ -589,12 +530,7 @@ class FacebookAdapter:
         error_subcode = error_data.get("error_subcode")
         error_msg = error_data.get("message", "Unknown error")
 
-        logger.error(
-            "Facebook API error",
-            error_code=error_code,
-            error_subcode=error_subcode,
-            error_message=error_msg
-        )
+        logger.error("Facebook API error", error_code=error_code, error_subcode=error_subcode, error_message=error_msg)
 
         # Handle specific error codes
         if error_code == 190:  # Invalid OAuth access token
@@ -616,10 +552,7 @@ class FacebookAdapter:
         """Get information about the configured page."""
         response = await self._make_api_request(
             f"/{self.page_id}",
-            params={
-                "fields": "id,name,link,fan_count,followers_count",
-                "access_token": self.page_access_token
-            }
+            params={"fields": "id,name,link,fan_count,followers_count", "access_token": self.page_access_token},
         )
         return response
 
@@ -627,12 +560,7 @@ class FacebookAdapter:
         """Delete a Facebook post."""
         try:
             await self._make_api_request(
-                f"/{post_id}",
-                method="POST",
-                params={
-                    "access_token": self.page_access_token,
-                    "_method": "delete"
-                }
+                f"/{post_id}", method="POST", params={"access_token": self.page_access_token, "_method": "delete"}
             )
             logger.info("Facebook post deleted", post_id=post_id)
             return True
@@ -653,7 +581,7 @@ async def publish_facebook_post(
     page_access_token: str = None,
     page_id: str = None,
     scheduled_time: datetime = None,
-    correlation_id: str = None
+    correlation_id: str = None,
 ) -> FacebookPublishResult:
     """Publish post to Facebook."""
     adapter = FacebookAdapter(page_access_token, page_id)
@@ -663,23 +591,17 @@ async def publish_facebook_post(
         if media_files:
             for file_path in media_files:
                 file_ext = Path(file_path).suffix.lower()
-                if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                if file_ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
                     media_type = MediaType.PHOTO
-                elif file_ext in ['.mp4', '.mov', '.avi']:
+                elif file_ext in [".mp4", ".mov", ".avi"]:
                     media_type = MediaType.VIDEO
                 else:
                     media_type = MediaType.PHOTO
 
-                media_items.append(FacebookMediaItem(
-                    file_path=file_path,
-                    media_type=media_type
-                ))
+                media_items.append(FacebookMediaItem(file_path=file_path, media_type=media_type))
 
         post = FacebookPost(
-            message=message,
-            media_items=media_items,
-            page_id=page_id,
-            scheduled_publish_time=scheduled_time
+            message=message, media_items=media_items, page_id=page_id, scheduled_publish_time=scheduled_time
         )
 
         return await adapter.publish_post(post, correlation_id)

@@ -61,17 +61,19 @@ PLATFORM_SPECS = {
 
 class CropMode(Enum):
     """Cropping modes for content adaptation."""
-    SMART = "smart"          # AI-based smart crop (face/content aware)
-    CENTER = "center"        # Simple center crop
-    TOP = "top"              # Crop from top (good for portraits)
-    BOTTOM = "bottom"        # Crop from bottom
-    FILL = "fill"            # Scale to fill (may crop edges)
-    FIT = "fit"              # Scale to fit (may add blur background)
+
+    SMART = "smart"  # AI-based smart crop (face/content aware)
+    CENTER = "center"  # Simple center crop
+    TOP = "top"  # Crop from top (good for portraits)
+    BOTTOM = "bottom"  # Crop from bottom
+    FILL = "fill"  # Scale to fill (may crop edges)
+    FIT = "fit"  # Scale to fit (may add blur background)
 
 
 @dataclass
 class RegionOfInterest:
     """Region of interest in media."""
+
     x: int
     y: int
     width: int
@@ -83,6 +85,7 @@ class RegionOfInterest:
 @dataclass
 class AdaptationResult:
     """Result of media adaptation."""
+
     success: bool
     input_path: str
     output_path: str
@@ -108,6 +111,7 @@ class FaceDetector:
         """Initialize face detection cascade."""
         try:
             import cv2
+
             # Try common cascade paths
             cascade_paths = [
                 "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
@@ -123,8 +127,8 @@ class FaceDetector:
                     return
 
             # Try to use cv2.data if available
-            if hasattr(cv2, 'data'):
-                cascade_file = os.path.join(cv2.data.haarcascades, 'haarcascade_frontalface_default.xml')
+            if hasattr(cv2, "data"):
+                cascade_file = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
                 if os.path.exists(cascade_file):
                     self.cascade_path = cascade_file
                     self.cascade = cv2.CascadeClassifier(cascade_file)
@@ -145,29 +149,26 @@ class FaceDetector:
             import cv2
 
             # Convert PIL to OpenCV format
-            img_array = np.array(image.convert('RGB'))
+            img_array = np.array(image.convert("RGB"))
             gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
 
             # Detect faces
-            faces = self.cascade.detectMultiScale(
-                gray,
-                scaleFactor=1.1,
-                minNeighbors=5,
-                minSize=(30, 30)
-            )
+            faces = self.cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
             regions = []
-            for (x, y, w, h) in faces:
+            for x, y, w, h in faces:
                 # Add padding around face
                 padding = int(max(w, h) * 0.3)
-                regions.append(RegionOfInterest(
-                    x=max(0, x - padding),
-                    y=max(0, y - padding),
-                    width=w + 2 * padding,
-                    height=h + 2 * padding,
-                    importance=0.9,
-                    type="face"
-                ))
+                regions.append(
+                    RegionOfInterest(
+                        x=max(0, x - padding),
+                        y=max(0, y - padding),
+                        width=w + 2 * padding,
+                        height=h + 2 * padding,
+                        importance=0.9,
+                        type="face",
+                    )
+                )
 
             return regions
 
@@ -183,7 +184,7 @@ class SaliencyDetector:
         """Detect salient regions using edge detection and contrast."""
         try:
             # Convert to grayscale
-            gray = image.convert('L')
+            gray = image.convert("L")
 
             # Apply edge detection
             edges = gray.filter(ImageFilter.FIND_EDGES)
@@ -200,8 +201,7 @@ class SaliencyDetector:
             logger.warning(f"Saliency detection failed: {e}")
             return []
 
-    def _find_salient_regions(self, edge_array: np.ndarray,
-                             image_size: tuple[int, int]) -> list[RegionOfInterest]:
+    def _find_salient_regions(self, edge_array: np.ndarray, image_size: tuple[int, int]) -> list[RegionOfInterest]:
         """Find regions with high visual importance."""
         regions = []
         width, height = image_size
@@ -216,7 +216,7 @@ class SaliencyDetector:
 
         for i in range(grid_size):
             for j in range(grid_size):
-                cell = edge_array[j*cell_h:(j+1)*cell_h, i*cell_w:(i+1)*cell_w]
+                cell = edge_array[j * cell_h : (j + 1) * cell_h, i * cell_w : (i + 1) * cell_w]
                 density = np.mean(cell)
 
                 if density > max_density:
@@ -225,14 +225,16 @@ class SaliencyDetector:
 
         # Create region around most salient cell
         i, j = max_cell
-        regions.append(RegionOfInterest(
-            x=i * cell_w,
-            y=j * cell_h,
-            width=cell_w * 2,  # Expand region
-            height=cell_h * 2,
-            importance=min(max_density / 128.0, 1.0),
-            type="salient"
-        ))
+        regions.append(
+            RegionOfInterest(
+                x=i * cell_w,
+                y=j * cell_h,
+                width=cell_w * 2,  # Expand region
+                height=cell_h * 2,
+                importance=min(max_density / 128.0, 1.0),
+                type="salient",
+            )
+        )
 
         return regions
 
@@ -261,7 +263,7 @@ class SmartMediaAdapter:
         platform: str,
         format_type: str = "feed",
         crop_mode: CropMode = CropMode.SMART,
-        quality: int = 95
+        quality: int = 95,
     ) -> AdaptationResult:
         """
         Adapt image for specific platform and format.
@@ -278,11 +280,13 @@ class SmartMediaAdapter:
             AdaptationResult with details
         """
         import time
+
         start_time = time.time()
 
         try:
-            logger.info(f"Adapting image for {platform}/{format_type}",
-                       input_path=input_path, crop_mode=crop_mode.value)
+            logger.info(
+                f"Adapting image for {platform}/{format_type}", input_path=input_path, crop_mode=crop_mode.value
+            )
 
             # Load image
             img = Image.open(input_path)
@@ -303,39 +307,39 @@ class SmartMediaAdapter:
 
             # Calculate crop area
             if target_ratio:
-                crop_box = self._calculate_smart_crop(
-                    img.size, target_ratio, regions, crop_mode
-                )
+                crop_box = self._calculate_smart_crop(img.size, target_ratio, regions, crop_mode)
                 img = img.crop(crop_box)
 
             # Resize to target size maintaining quality
             img = self._smart_resize(img, max_size)
 
             # Ensure output directory exists
-            os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
             # Save with appropriate format
-            output_format = 'JPEG' if output_path.lower().endswith(('.jpg', '.jpeg')) else 'PNG'
+            output_format = "JPEG" if output_path.lower().endswith((".jpg", ".jpeg")) else "PNG"
 
-            if output_format == 'JPEG':
+            if output_format == "JPEG":
                 # Convert to RGB if necessary
-                if img.mode in ('RGBA', 'LA', 'P'):
-                    background = Image.new('RGB', img.size, (255, 255, 255))
-                    if img.mode == 'P':
-                        img = img.convert('RGBA')
-                    background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                if img.mode in ("RGBA", "LA", "P"):
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    if img.mode == "P":
+                        img = img.convert("RGBA")
+                    background.paste(img, mask=img.split()[-1] if img.mode == "RGBA" else None)
                     img = background
-                img.save(output_path, 'JPEG', quality=quality, optimize=True)
+                img.save(output_path, "JPEG", quality=quality, optimize=True)
             else:
-                img.save(output_path, 'PNG', optimize=True)
+                img.save(output_path, "PNG", optimize=True)
 
             processing_time = time.time() - start_time
 
-            logger.info("Image adapted successfully",
-                       platform=platform,
-                       original_size=original_size,
-                       output_size=img.size,
-                       processing_time=processing_time)
+            logger.info(
+                "Image adapted successfully",
+                platform=platform,
+                original_size=original_size,
+                output_size=img.size,
+                processing_time=processing_time,
+            )
 
             return AdaptationResult(
                 success=True,
@@ -347,7 +351,7 @@ class SmartMediaAdapter:
                 output_size=img.size,
                 crop_mode=crop_mode,
                 regions_detected=regions,
-                processing_time=processing_time
+                processing_time=processing_time,
             )
 
         except Exception as e:
@@ -363,7 +367,7 @@ class SmartMediaAdapter:
                 crop_mode=crop_mode,
                 regions_detected=[],
                 processing_time=time.time() - start_time,
-                error_message=str(e)
+                error_message=str(e),
             )
 
     async def adapt_video(
@@ -372,7 +376,7 @@ class SmartMediaAdapter:
         output_path: str,
         platform: str,
         format_type: str = "video",
-        crop_mode: CropMode = CropMode.SMART
+        crop_mode: CropMode = CropMode.SMART,
     ) -> AdaptationResult:
         """
         Adapt video for specific platform.
@@ -390,15 +394,15 @@ class SmartMediaAdapter:
             AdaptationResult with details
         """
         import time
+
         start_time = time.time()
 
         try:
-            logger.info(f"Adapting video for {platform}/{format_type}",
-                       input_path=input_path)
+            logger.info(f"Adapting video for {platform}/{format_type}", input_path=input_path)
 
             # Get video info
             video_info = await self._get_video_info(input_path)
-            original_size = (video_info['width'], video_info['height'])
+            original_size = (video_info["width"], video_info["height"])
 
             # Get platform specs
             specs = self._get_platform_specs(platform, format_type)
@@ -414,54 +418,58 @@ class SmartMediaAdapter:
                 regions = await self._detect_video_regions(input_path)
 
             # Build ffmpeg filter for smart crop
-            filter_chain = self._build_video_filter(
-                original_size, target_ratio, max_size, regions, crop_mode
-            )
+            filter_chain = self._build_video_filter(original_size, target_ratio, max_size, regions, crop_mode)
 
             # Ensure output directory exists
-            os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
             # Execute ffmpeg
             cmd = [
-                'ffmpeg', '-y',
-                '-i', input_path,
-                '-vf', filter_chain,
-                '-c:v', 'libx264',
-                '-preset', 'medium',
-                '-crf', '23',
-                '-c:a', 'aac',
-                '-b:a', '128k',
-                '-movflags', '+faststart',
-                output_path
+                "ffmpeg",
+                "-y",
+                "-i",
+                input_path,
+                "-vf",
+                filter_chain,
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "23",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
+                "-movflags",
+                "+faststart",
+                output_path,
             ]
 
             logger.debug(f"FFmpeg command: {' '.join(cmd)}")
 
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
 
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=600  # 10 min timeout
-            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=600)  # 10 min timeout
 
             if process.returncode != 0:
                 raise RuntimeError(f"FFmpeg failed: {stderr.decode()}")
 
             # Get output info
             output_info = await self._get_video_info(output_path)
-            output_size = (output_info['width'], output_info['height'])
+            output_size = (output_info["width"], output_info["height"])
 
             processing_time = time.time() - start_time
 
-            logger.info("Video adapted successfully",
-                       platform=platform,
-                       original_size=original_size,
-                       output_size=output_size,
-                       processing_time=processing_time)
+            logger.info(
+                "Video adapted successfully",
+                platform=platform,
+                original_size=original_size,
+                output_size=output_size,
+                processing_time=processing_time,
+            )
 
             return AdaptationResult(
                 success=True,
@@ -473,7 +481,7 @@ class SmartMediaAdapter:
                 output_size=output_size,
                 crop_mode=crop_mode,
                 regions_detected=regions,
-                processing_time=processing_time
+                processing_time=processing_time,
             )
 
         except Exception as e:
@@ -489,15 +497,11 @@ class SmartMediaAdapter:
                 crop_mode=crop_mode,
                 regions_detected=[],
                 processing_time=time.time() - start_time,
-                error_message=str(e)
+                error_message=str(e),
             )
 
     async def adapt_for_all_platforms(
-        self,
-        input_path: str,
-        output_dir: str,
-        platforms: list[str],
-        media_type: str = "image"
+        self, input_path: str, output_dir: str, platforms: list[str], media_type: str = "image"
     ) -> dict[str, AdaptationResult]:
         """
         Adapt media for multiple platforms simultaneously.
@@ -537,13 +541,9 @@ class SmartMediaAdapter:
             output_path = os.path.join(output_dir, f"{platform}_{format_type}{ext}")
 
             if media_type == "image":
-                result = await self.adapt_image(
-                    input_path, output_path, platform, format_type
-                )
+                result = await self.adapt_image(input_path, output_path, platform, format_type)
             else:
-                result = await self.adapt_video(
-                    input_path, output_path, platform, format_type
-                )
+                result = await self.adapt_video(input_path, output_path, platform, format_type)
 
             results[platform] = result
 
@@ -575,18 +575,13 @@ class SmartMediaAdapter:
         """Detect regions of interest from video's first frame."""
         try:
             # Extract first frame
-            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+            with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                 temp_frame = tmp.name
 
-            cmd = [
-                'ffmpeg', '-y', '-i', video_path,
-                '-vframes', '1', '-q:v', '2', temp_frame
-            ]
+            cmd = ["ffmpeg", "-y", "-i", video_path, "-vframes", "1", "-q:v", "2", temp_frame]
 
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             await process.communicate()
 
@@ -607,7 +602,7 @@ class SmartMediaAdapter:
         image_size: tuple[int, int],
         target_ratio: tuple[int, int],
         regions: list[RegionOfInterest],
-        crop_mode: CropMode
+        crop_mode: CropMode,
     ) -> tuple[int, int, int, int]:
         """
         Calculate optimal crop box that preserves regions of interest.
@@ -640,12 +635,8 @@ class SmartMediaAdapter:
             total_importance = sum(r.importance for r in regions)
 
             if total_importance > 0:
-                center_x = sum(
-                    (r.x + r.width / 2) * r.importance for r in regions
-                ) / total_importance
-                center_y = sum(
-                    (r.y + r.height / 2) * r.importance for r in regions
-                ) / total_importance
+                center_x = sum((r.x + r.width / 2) * r.importance for r in regions) / total_importance
+                center_y = sum((r.y + r.height / 2) * r.importance for r in regions) / total_importance
             else:
                 center_x = width / 2
                 center_y = height / 2
@@ -668,11 +659,7 @@ class SmartMediaAdapter:
 
         return (left, top, right, bottom)
 
-    def _smart_resize(
-        self,
-        img: Image.Image,
-        max_size: tuple[int, int]
-    ) -> Image.Image:
+    def _smart_resize(self, img: Image.Image, max_size: tuple[int, int]) -> Image.Image:
         """Resize image to fit within max_size while maintaining quality."""
         max_w, max_h = max_size
         width, height = img.size
@@ -692,7 +679,7 @@ class SmartMediaAdapter:
         target_ratio: tuple[int, int] | None,
         max_size: tuple[int, int],
         regions: list[RegionOfInterest],
-        crop_mode: CropMode
+        crop_mode: CropMode,
     ) -> str:
         """Build ffmpeg filter chain for video adaptation."""
         width, height = original_size
@@ -721,12 +708,8 @@ class SmartMediaAdapter:
                     # Calculate weighted center
                     total_importance = sum(r.importance for r in regions)
                     if total_importance > 0:
-                        center_x = sum(
-                            (r.x + r.width / 2) * r.importance for r in regions
-                        ) / total_importance
-                        center_y = sum(
-                            (r.y + r.height / 2) * r.importance for r in regions
-                        ) / total_importance
+                        center_x = sum((r.x + r.width / 2) * r.importance for r in regions) / total_importance
+                        center_y = sum((r.y + r.height / 2) * r.importance for r in regions) / total_importance
                     else:
                         center_x = width / 2
                         center_y = height / 2
@@ -751,37 +734,30 @@ class SmartMediaAdapter:
             new_h = new_h - (new_h % 2)
             filters.append(f"scale={new_w}:{new_h}")
 
-        return ','.join(filters) if filters else 'null'
+        return ",".join(filters) if filters else "null"
 
     async def _get_video_info(self, video_path: str) -> dict[str, Any]:
         """Get video dimensions and info using ffprobe."""
-        cmd = [
-            'ffprobe', '-v', 'quiet',
-            '-print_format', 'json',
-            '-show_streams',
-            video_path
-        ]
+        cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", video_path]
 
         process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
 
         stdout, _ = await process.communicate()
 
         if process.returncode == 0:
             data = json.loads(stdout.decode())
-            for stream in data.get('streams', []):
-                if stream.get('codec_type') == 'video':
+            for stream in data.get("streams", []):
+                if stream.get("codec_type") == "video":
                     return {
-                        'width': stream.get('width', 0),
-                        'height': stream.get('height', 0),
-                        'duration': float(stream.get('duration', 0)),
-                        'codec': stream.get('codec_name', ''),
+                        "width": stream.get("width", 0),
+                        "height": stream.get("height", 0),
+                        "duration": float(stream.get("duration", 0)),
+                        "codec": stream.get("codec_name", ""),
                     }
 
-        return {'width': 0, 'height': 0, 'duration': 0, 'codec': ''}
+        return {"width": 0, "height": 0, "duration": 0, "codec": ""}
 
 
 # Global instance
@@ -790,36 +766,21 @@ smart_adapter = SmartMediaAdapter()
 
 # Convenience functions
 async def adapt_image_for_platform(
-    input_path: str,
-    output_path: str,
-    platform: str,
-    format_type: str = "feed"
+    input_path: str, output_path: str, platform: str, format_type: str = "feed"
 ) -> AdaptationResult:
     """Adapt image for specific platform."""
-    return await smart_adapter.adapt_image(
-        input_path, output_path, platform, format_type
-    )
+    return await smart_adapter.adapt_image(input_path, output_path, platform, format_type)
 
 
 async def adapt_video_for_platform(
-    input_path: str,
-    output_path: str,
-    platform: str,
-    format_type: str = "video"
+    input_path: str, output_path: str, platform: str, format_type: str = "video"
 ) -> AdaptationResult:
     """Adapt video for specific platform."""
-    return await smart_adapter.adapt_video(
-        input_path, output_path, platform, format_type
-    )
+    return await smart_adapter.adapt_video(input_path, output_path, platform, format_type)
 
 
 async def adapt_for_platforms(
-    input_path: str,
-    output_dir: str,
-    platforms: list[str],
-    media_type: str = "image"
+    input_path: str, output_dir: str, platforms: list[str], media_type: str = "image"
 ) -> dict[str, AdaptationResult]:
     """Adapt media for multiple platforms."""
-    return await smart_adapter.adapt_for_all_platforms(
-        input_path, output_dir, platforms, media_type
-    )
+    return await smart_adapter.adapt_for_all_platforms(input_path, output_dir, platforms, media_type)

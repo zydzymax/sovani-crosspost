@@ -22,6 +22,7 @@ logger = get_logger("services.antifraud")
 
 class FraudRiskLevel(str, Enum):
     """Fraud risk levels."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -30,6 +31,7 @@ class FraudRiskLevel(str, Enum):
 
 class FraudType(str, Enum):
     """Types of fraud detected."""
+
     DEMO_ABUSE = "demo_abuse"
     MULTIPLE_ACCOUNTS = "multiple_accounts"
     SUSPICIOUS_IP = "suspicious_ip"
@@ -44,6 +46,7 @@ class FraudType(str, Enum):
 @dataclass
 class FraudSignal:
     """A detected fraud signal."""
+
     fraud_type: FraudType
     risk_level: FraudRiskLevel
     score: float  # 0.0 - 1.0
@@ -55,6 +58,7 @@ class FraudSignal:
 @dataclass
 class FraudCheckResult:
     """Result of fraud check."""
+
     passed: bool
     risk_level: FraudRiskLevel
     total_score: float
@@ -66,6 +70,7 @@ class FraudCheckResult:
 @dataclass
 class RateLimitResult:
     """Result of rate limit check."""
+
     allowed: bool
     current_count: int
     limit: int
@@ -76,6 +81,7 @@ class RateLimitResult:
 @dataclass
 class TelegramTrustResult:
     """Result of Telegram account trust check."""
+
     score: float  # 0.0 - 1.0, higher = more trustworthy
     reason: str
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -105,22 +111,18 @@ class AntifraudService:
             "demo_per_device_limit": 1,  # Max demo accounts per device
             "demo_per_phone_limit": 1,  # Max demo accounts per phone
             "demo_cooldown_days": 30,  # Days before allowing new demo
-
             # Rate limits (requests per minute)
             "api_rate_limit_anonymous": 30,
             "api_rate_limit_demo": 60,
             "api_rate_limit_paid": 300,
             "api_rate_limit_business": 1000,
-
             # Burst limits (requests per second)
             "burst_limit_anonymous": 5,
             "burst_limit_authenticated": 20,
-
             # Payment thresholds
             "high_risk_countries": ["NG", "GH", "KE", "PH", "IN"],
             "max_failed_payments": 3,
             "chargeback_threshold": 0.01,  # 1% chargeback rate triggers review
-
             # Scoring thresholds
             "block_threshold": 0.8,
             "challenge_threshold": 0.5,
@@ -141,7 +143,7 @@ class AntifraudService:
         device_fingerprint: str | None = None,
         phone_hash: str | None = None,
         telegram_user_data: dict[str, Any] | None = None,
-        browser_data: dict[str, Any] | None = None
+        browser_data: dict[str, Any] | None = None,
     ) -> FraudCheckResult:
         """
         Check if user is eligible for demo account.
@@ -159,13 +161,15 @@ class AntifraudService:
         # ===== LAYER 1: VPN/Proxy - STRICT BLOCK for demo =====
         is_vpn = await self._check_vpn_proxy(ip_address)
         if is_vpn:
-            signals.append(FraudSignal(
-                fraud_type=FraudType.PROXY_VPN,
-                risk_level=FraudRiskLevel.CRITICAL,  # Critical for demo
-                score=0.95,
-                description="VPN/Proxy detected - not allowed for demo",
-                metadata={"ip": ip_address[:8] + "...", "blocked": True}
-            ))
+            signals.append(
+                FraudSignal(
+                    fraud_type=FraudType.PROXY_VPN,
+                    risk_level=FraudRiskLevel.CRITICAL,  # Critical for demo
+                    score=0.95,
+                    description="VPN/Proxy detected - not allowed for demo",
+                    metadata={"ip": ip_address[:8] + "...", "blocked": True},
+                )
+            )
             # Early return - VPN users cannot get demo
             return self._calculate_result(signals, force_block=True)
 
@@ -173,87 +177,93 @@ class AntifraudService:
         if telegram_user_data:
             tg_trust = await self._check_telegram_trust(telegram_id, telegram_user_data)
             if tg_trust.score < 0.5:
-                signals.append(FraudSignal(
-                    fraud_type=FraudType.DEMO_ABUSE,
-                    risk_level=FraudRiskLevel.HIGH if tg_trust.score < 0.3 else FraudRiskLevel.MEDIUM,
-                    score=1.0 - tg_trust.score,
-                    description=tg_trust.reason,
-                    metadata=tg_trust.metadata
-                ))
+                signals.append(
+                    FraudSignal(
+                        fraud_type=FraudType.DEMO_ABUSE,
+                        risk_level=FraudRiskLevel.HIGH if tg_trust.score < 0.3 else FraudRiskLevel.MEDIUM,
+                        score=1.0 - tg_trust.score,
+                        description=tg_trust.reason,
+                        metadata=tg_trust.metadata,
+                    )
+                )
 
         # ===== LAYER 3: Phone Hash - Most Reliable =====
         if phone_hash:
             phone_count = await self._get_demo_count_by_phone(phone_hash)
             if phone_count >= self.config["demo_per_phone_limit"]:
-                signals.append(FraudSignal(
-                    fraud_type=FraudType.MULTIPLE_ACCOUNTS,
-                    risk_level=FraudRiskLevel.CRITICAL,
-                    score=0.98,
-                    description="Phone number already used for demo",
-                    metadata={"phone_count": phone_count}
-                ))
+                signals.append(
+                    FraudSignal(
+                        fraud_type=FraudType.MULTIPLE_ACCOUNTS,
+                        risk_level=FraudRiskLevel.CRITICAL,
+                        score=0.98,
+                        description="Phone number already used for demo",
+                        metadata={"phone_count": phone_count},
+                    )
+                )
 
         # ===== LAYER 4: Device Fingerprint + Similarity =====
         if device_fingerprint:
             device_count = await self._get_demo_count_by_device(device_fingerprint)
             if device_count >= self.config["demo_per_device_limit"]:
-                signals.append(FraudSignal(
-                    fraud_type=FraudType.DEVICE_FINGERPRINT,
-                    risk_level=FraudRiskLevel.CRITICAL,
-                    score=0.95,
-                    description="Device already used for demo",
-                    metadata={"device_count": device_count}
-                ))
+                signals.append(
+                    FraudSignal(
+                        fraud_type=FraudType.DEVICE_FINGERPRINT,
+                        risk_level=FraudRiskLevel.CRITICAL,
+                        score=0.95,
+                        description="Device already used for demo",
+                        metadata={"device_count": device_count},
+                    )
+                )
             else:
                 # Check for similar fingerprints (fuzzy matching)
                 similar = await self._find_similar_fingerprints(device_fingerprint, browser_data)
                 if similar:
-                    signals.append(FraudSignal(
-                        fraud_type=FraudType.DEVICE_FINGERPRINT,
-                        risk_level=FraudRiskLevel.HIGH,
-                        score=0.85,
-                        description=f"Similar device fingerprint detected ({similar['similarity']}% match)",
-                        metadata=similar
-                    ))
+                    signals.append(
+                        FraudSignal(
+                            fraud_type=FraudType.DEVICE_FINGERPRINT,
+                            risk_level=FraudRiskLevel.HIGH,
+                            score=0.85,
+                            description=f"Similar device fingerprint detected ({similar['similarity']}% match)",
+                            metadata=similar,
+                        )
+                    )
 
         # ===== LAYER 5: Telegram ID History =====
         previous_demo = await self._get_previous_demo(telegram_id)
         if previous_demo:
             days_since = (datetime.utcnow() - previous_demo).days
             if days_since < self.config["demo_cooldown_days"]:
-                signals.append(FraudSignal(
-                    fraud_type=FraudType.DEMO_ABUSE,
-                    risk_level=FraudRiskLevel.CRITICAL,
-                    score=0.99,
-                    description=f"Demo used {days_since} days ago, cooldown: {self.config['demo_cooldown_days']} days",
-                    metadata={"days_since": days_since, "cooldown": self.config["demo_cooldown_days"]}
-                ))
+                signals.append(
+                    FraudSignal(
+                        fraud_type=FraudType.DEMO_ABUSE,
+                        risk_level=FraudRiskLevel.CRITICAL,
+                        score=0.99,
+                        description=f"Demo used {days_since} days ago, cooldown: {self.config['demo_cooldown_days']} days",
+                        metadata={"days_since": days_since, "cooldown": self.config["demo_cooldown_days"]},
+                    )
+                )
 
         # ===== LAYER 6: IP Address (least reliable) =====
         ip_count = await self._get_demo_count_by_ip(ip_address)
         if ip_count >= self.config["demo_per_ip_limit"]:
-            signals.append(FraudSignal(
-                fraud_type=FraudType.DEMO_ABUSE,
-                risk_level=FraudRiskLevel.MEDIUM,  # Lower priority than device/phone
-                score=0.6,
-                description=f"IP {ip_address[:8]}... has {ip_count} demo accounts",
-                metadata={"ip_count": ip_count, "limit": self.config["demo_per_ip_limit"]}
-            ))
+            signals.append(
+                FraudSignal(
+                    fraud_type=FraudType.DEMO_ABUSE,
+                    risk_level=FraudRiskLevel.MEDIUM,  # Lower priority than device/phone
+                    score=0.6,
+                    description=f"IP {ip_address[:8]}... has {ip_count} demo accounts",
+                    metadata={"ip_count": ip_count, "limit": self.config["demo_per_ip_limit"]},
+                )
+            )
 
         # ===== LAYER 7: Cross-correlation =====
-        cross_signals = await self._check_cross_correlation(
-            telegram_id, ip_address, device_fingerprint, phone_hash
-        )
+        cross_signals = await self._check_cross_correlation(telegram_id, ip_address, device_fingerprint, phone_hash)
         signals.extend(cross_signals)
 
         return self._calculate_result(signals)
 
     async def register_demo_usage(
-        self,
-        telegram_id: int,
-        ip_address: str,
-        device_fingerprint: str | None = None,
-        phone_hash: str | None = None
+        self, telegram_id: int, ip_address: str, device_fingerprint: str | None = None, phone_hash: str | None = None
     ):
         """Register demo account usage for future checks."""
         timestamp = datetime.utcnow().isoformat()
@@ -287,11 +297,7 @@ class AntifraudService:
 
             await pipe.execute()
 
-        logger.info(
-            "Demo usage registered",
-            telegram_id=telegram_id,
-            ip_hash=self._hash(ip_address)[:8]
-        )
+        logger.info("Demo usage registered", telegram_id=telegram_id, ip_hash=self._hash(ip_address)[:8])
 
     # ==================== Payment Fraud Protection ====================
 
@@ -303,7 +309,7 @@ class AntifraudService:
         card_bin: str | None = None,
         card_country: str | None = None,
         ip_address: str | None = None,
-        email: str | None = None
+        email: str | None = None,
     ) -> FraudCheckResult:
         """
         Check payment for fraud risk.
@@ -319,35 +325,41 @@ class AntifraudService:
 
         # Check high-risk countries
         if card_country and card_country.upper() in self.config["high_risk_countries"]:
-            signals.append(FraudSignal(
-                fraud_type=FraudType.PAYMENT_FRAUD,
-                risk_level=FraudRiskLevel.MEDIUM,
-                score=0.5,
-                description=f"Card from high-risk country: {card_country}",
-                metadata={"country": card_country}
-            ))
+            signals.append(
+                FraudSignal(
+                    fraud_type=FraudType.PAYMENT_FRAUD,
+                    risk_level=FraudRiskLevel.MEDIUM,
+                    score=0.5,
+                    description=f"Card from high-risk country: {card_country}",
+                    metadata={"country": card_country},
+                )
+            )
 
         # Check failed payment history
         failed_count = await self._get_failed_payments(user_id)
         if failed_count >= self.config["max_failed_payments"]:
-            signals.append(FraudSignal(
-                fraud_type=FraudType.PAYMENT_FRAUD,
-                risk_level=FraudRiskLevel.HIGH,
-                score=0.7,
-                description=f"User has {failed_count} failed payments",
-                metadata={"failed_count": failed_count}
-            ))
+            signals.append(
+                FraudSignal(
+                    fraud_type=FraudType.PAYMENT_FRAUD,
+                    risk_level=FraudRiskLevel.HIGH,
+                    score=0.7,
+                    description=f"User has {failed_count} failed payments",
+                    metadata={"failed_count": failed_count},
+                )
+            )
 
         # Check payment velocity (multiple payments in short time)
         recent_payments = await self._get_recent_payments(user_id, minutes=60)
         if recent_payments > 3:
-            signals.append(FraudSignal(
-                fraud_type=FraudType.PAYMENT_FRAUD,
-                risk_level=FraudRiskLevel.MEDIUM,
-                score=0.5,
-                description=f"High payment velocity: {recent_payments} in last hour",
-                metadata={"recent_payments": recent_payments}
-            ))
+            signals.append(
+                FraudSignal(
+                    fraud_type=FraudType.PAYMENT_FRAUD,
+                    risk_level=FraudRiskLevel.MEDIUM,
+                    score=0.5,
+                    description=f"High payment velocity: {recent_payments} in last hour",
+                    metadata={"recent_payments": recent_payments},
+                )
+            )
 
         # Check if IP differs from registration IP
         if ip_address:
@@ -356,56 +368,51 @@ class AntifraudService:
                 ip_country = await self._get_ip_country(ip_address)
                 reg_country = await self._get_ip_country(registration_ip)
                 if ip_country != reg_country:
-                    signals.append(FraudSignal(
-                        fraud_type=FraudType.PAYMENT_FRAUD,
-                        risk_level=FraudRiskLevel.MEDIUM,
-                        score=0.4,
-                        description="Payment from different country than registration",
-                        metadata={"payment_country": ip_country, "reg_country": reg_country}
-                    ))
+                    signals.append(
+                        FraudSignal(
+                            fraud_type=FraudType.PAYMENT_FRAUD,
+                            risk_level=FraudRiskLevel.MEDIUM,
+                            score=0.4,
+                            description="Payment from different country than registration",
+                            metadata={"payment_country": ip_country, "reg_country": reg_country},
+                        )
+                    )
 
         # Check for disposable email
         if email and self._is_disposable_email(email):
-            signals.append(FraudSignal(
-                fraud_type=FraudType.PAYMENT_FRAUD,
-                risk_level=FraudRiskLevel.MEDIUM,
-                score=0.3,
-                description="Disposable email domain detected",
-                metadata={"email_domain": email.split("@")[-1]}
-            ))
+            signals.append(
+                FraudSignal(
+                    fraud_type=FraudType.PAYMENT_FRAUD,
+                    risk_level=FraudRiskLevel.MEDIUM,
+                    score=0.3,
+                    description="Disposable email domain detected",
+                    metadata={"email_domain": email.split("@")[-1]},
+                )
+            )
 
         # Check user chargeback history
         chargeback_rate = await self._get_chargeback_rate(user_id)
         if chargeback_rate > self.config["chargeback_threshold"]:
-            signals.append(FraudSignal(
-                fraud_type=FraudType.CHARGEBACK_RISK,
-                risk_level=FraudRiskLevel.CRITICAL,
-                score=0.9,
-                description=f"High chargeback rate: {chargeback_rate:.1%}",
-                metadata={"chargeback_rate": chargeback_rate}
-            ))
+            signals.append(
+                FraudSignal(
+                    fraud_type=FraudType.CHARGEBACK_RISK,
+                    risk_level=FraudRiskLevel.CRITICAL,
+                    score=0.9,
+                    description=f"High chargeback rate: {chargeback_rate:.1%}",
+                    metadata={"chargeback_rate": chargeback_rate},
+                )
+            )
 
         return self._calculate_result(signals)
 
-    async def record_payment_attempt(
-        self,
-        user_id: str,
-        success: bool,
-        amount: float,
-        payment_id: str
-    ):
+    async def record_payment_attempt(self, user_id: str, success: bool, amount: float, payment_id: str):
         """Record payment attempt for fraud analysis."""
         if self._redis:
             timestamp = datetime.utcnow().isoformat()
 
             # Record in user's payment history
             key = f"antifraud:payments:{user_id}"
-            payment_data = json.dumps({
-                "id": payment_id,
-                "success": success,
-                "amount": amount,
-                "timestamp": timestamp
-            })
+            payment_data = json.dumps({"id": payment_id, "success": success, "amount": amount, "timestamp": timestamp})
             await self._redis.lpush(key, payment_data)
             await self._redis.ltrim(key, 0, 99)  # Keep last 100
             await self._redis.expire(key, 86400 * 90)  # 90 days
@@ -419,10 +426,7 @@ class AntifraudService:
     # ==================== API Rate Limiting ====================
 
     async def check_rate_limit(
-        self,
-        identifier: str,
-        tier: str = "anonymous",
-        endpoint: str | None = None
+        self, identifier: str, tier: str = "anonymous", endpoint: str | None = None
     ) -> RateLimitResult:
         """
         Check if request is within rate limits.
@@ -457,10 +461,7 @@ class AntifraudService:
             if burst_count == 1:
                 await self._redis.expire(burst_key, 2)
 
-            burst_limit = self.config.get(
-                f"burst_limit_{'authenticated' if tier != 'anonymous' else 'anonymous'}",
-                5
-            )
+            burst_limit = self.config.get(f"burst_limit_{'authenticated' if tier != 'anonymous' else 'anonymous'}", 5)
 
             if burst_count > burst_limit:
                 return RateLimitResult(
@@ -468,7 +469,7 @@ class AntifraudService:
                     current_count=burst_count,
                     limit=burst_limit,
                     reset_at=datetime.utcnow() + timedelta(seconds=1),
-                    retry_after=1
+                    retry_after=1,
                 )
 
             allowed = current_count <= rate_limit
@@ -479,22 +480,16 @@ class AntifraudService:
                 current_count=current_count,
                 limit=rate_limit,
                 reset_at=reset_at,
-                retry_after=None if allowed else int((reset_at - datetime.utcnow()).total_seconds())
+                retry_after=None if allowed else int((reset_at - datetime.utcnow()).total_seconds()),
             )
 
         # Fallback without Redis (allow all)
         return RateLimitResult(
-            allowed=True,
-            current_count=0,
-            limit=rate_limit,
-            reset_at=datetime.utcnow() + timedelta(minutes=1)
+            allowed=True, current_count=0, limit=rate_limit, reset_at=datetime.utcnow() + timedelta(minutes=1)
         )
 
     async def check_bot_activity(
-        self,
-        user_agent: str,
-        ip_address: str,
-        request_patterns: list[dict] | None = None
+        self, user_agent: str, ip_address: str, request_patterns: list[dict] | None = None
     ) -> FraudSignal:
         """
         Detect bot or automated activity.
@@ -508,10 +503,7 @@ class AntifraudService:
         reasons = []
 
         # Check user agent
-        bot_signatures = [
-            "bot", "spider", "crawl", "scrape", "curl", "wget",
-            "python-requests", "postman", "insomnia"
-        ]
+        bot_signatures = ["bot", "spider", "crawl", "scrape", "curl", "wget", "python-requests", "postman", "insomnia"]
         ua_lower = user_agent.lower()
 
         for sig in bot_signatures:
@@ -530,7 +522,7 @@ class AntifraudService:
             # Calculate time deltas between requests
             times = [p.get("timestamp", 0) for p in request_patterns]
             if len(times) > 1:
-                deltas = [times[i+1] - times[i] for i in range(len(times)-1)]
+                deltas = [times[i + 1] - times[i] for i in range(len(times) - 1)]
                 avg_delta = sum(deltas) / len(deltas)
 
                 # Very consistent timing suggests automation
@@ -540,10 +532,9 @@ class AntifraudService:
                     reasons.append("Suspicious request timing pattern")
 
         risk_level = (
-            FraudRiskLevel.CRITICAL if score > 0.8 else
-            FraudRiskLevel.HIGH if score > 0.6 else
-            FraudRiskLevel.MEDIUM if score > 0.3 else
-            FraudRiskLevel.LOW
+            FraudRiskLevel.CRITICAL
+            if score > 0.8
+            else FraudRiskLevel.HIGH if score > 0.6 else FraudRiskLevel.MEDIUM if score > 0.3 else FraudRiskLevel.LOW
         )
 
         return FraudSignal(
@@ -551,24 +542,16 @@ class AntifraudService:
             risk_level=risk_level,
             score=min(score, 1.0),
             description="; ".join(reasons) if reasons else "No bot activity detected",
-            metadata={"user_agent": user_agent[:100], "checks": reasons}
+            metadata={"user_agent": user_agent[:100], "checks": reasons},
         )
 
     # ==================== Helper Methods ====================
 
-    def _calculate_result(
-        self,
-        signals: list[FraudSignal],
-        force_block: bool = False
-    ) -> FraudCheckResult:
+    def _calculate_result(self, signals: list[FraudSignal], force_block: bool = False) -> FraudCheckResult:
         """Calculate final fraud check result from signals."""
         if not signals:
             return FraudCheckResult(
-                passed=True,
-                risk_level=FraudRiskLevel.LOW,
-                total_score=0.0,
-                signals=[],
-                action="allow"
+                passed=True, risk_level=FraudRiskLevel.LOW, total_score=0.0, signals=[], action="allow"
             )
 
         # Force block overrides everything
@@ -580,7 +563,7 @@ class AntifraudService:
                 total_score=1.0,
                 signals=signals,
                 action="block",
-                reason=highest_signal.description
+                reason=highest_signal.description,
             )
 
         # Calculate weighted score
@@ -609,7 +592,7 @@ class AntifraudService:
             total_score=total_score,
             signals=signals,
             action=action,
-            reason=highest_signal.description if action != "allow" else None
+            reason=highest_signal.description if action != "allow" else None,
         )
 
     def _hash(self, value: str) -> str:
@@ -649,11 +632,7 @@ class AntifraudService:
                 return datetime.fromisoformat(timestamp)
         return None
 
-    async def _check_telegram_trust(
-        self,
-        telegram_id: int,
-        user_data: dict[str, Any]
-    ) -> "TelegramTrustResult":
+    async def _check_telegram_trust(self, telegram_id: int, user_data: dict[str, Any]) -> "TelegramTrustResult":
         """
         Calculate trust score for Telegram account.
 
@@ -698,7 +677,8 @@ class AntifraudService:
         if username:
             # Random-looking usernames (lots of numbers at end)
             import re
-            if re.search(r'\d{5,}$', username):
+
+            if re.search(r"\d{5,}$", username):
                 score -= 0.2
                 factors.append("suspicious_username")
             # Very short usernames
@@ -727,15 +707,11 @@ class AntifraudService:
             reason = "Acceptable trust level"
 
         return TelegramTrustResult(
-            score=score,
-            reason=reason,
-            metadata={"factors": factors, "telegram_id": telegram_id}
+            score=score, reason=reason, metadata={"factors": factors, "telegram_id": telegram_id}
         )
 
     async def _find_similar_fingerprints(
-        self,
-        fingerprint: str,
-        browser_data: dict[str, Any] | None
+        self, fingerprint: str, browser_data: dict[str, Any] | None
     ) -> dict[str, Any] | None:
         """
         Find similar device fingerprints using fuzzy matching.
@@ -767,7 +743,7 @@ class AntifraudService:
                         return {
                             "similarity": similarity,
                             "matched_key": key.split(":")[-1][:8] + "...",
-                            "matching_components": self._get_matching_components(browser_data, stored)
+                            "matching_components": self._get_matching_components(browser_data, stored),
                         }
                 except json.JSONDecodeError:
                     continue
@@ -776,11 +752,7 @@ class AntifraudService:
 
         return None
 
-    def _calculate_fingerprint_similarity(
-        self,
-        fp1: dict[str, Any],
-        fp2: dict[str, Any]
-    ) -> int:
+    def _calculate_fingerprint_similarity(self, fp1: dict[str, Any], fp2: dict[str, Any]) -> int:
         """Calculate similarity percentage between two fingerprints."""
         components = [
             "screen_resolution",
@@ -793,7 +765,7 @@ class AntifraudService:
             "canvas_hash",
             "webgl_vendor",
             "webgl_renderer",
-            "fonts_hash"
+            "fonts_hash",
         ]
 
         matches = 0
@@ -810,15 +782,16 @@ class AntifraudService:
 
         return int((matches / total) * 100)
 
-    def _get_matching_components(
-        self,
-        fp1: dict[str, Any],
-        fp2: dict[str, Any]
-    ) -> list[str]:
+    def _get_matching_components(self, fp1: dict[str, Any], fp2: dict[str, Any]) -> list[str]:
         """Get list of matching fingerprint components."""
         components = [
-            "screen_resolution", "timezone", "language", "platform",
-            "canvas_hash", "webgl_vendor", "webgl_renderer"
+            "screen_resolution",
+            "timezone",
+            "language",
+            "platform",
+            "canvas_hash",
+            "webgl_vendor",
+            "webgl_renderer",
         ]
 
         matches = []
@@ -829,11 +802,7 @@ class AntifraudService:
         return matches
 
     async def _check_cross_correlation(
-        self,
-        telegram_id: int,
-        ip_address: str,
-        device_fingerprint: str | None,
-        phone_hash: str | None
+        self, telegram_id: int, ip_address: str, device_fingerprint: str | None, phone_hash: str | None
     ) -> list[FraudSignal]:
         """
         Cross-correlation analysis to detect fraud patterns.
@@ -855,13 +824,15 @@ class AntifraudService:
 
             if seen_tg_ids and str(telegram_id) not in seen_tg_ids:
                 # This device was used with OTHER Telegram accounts
-                signals.append(FraudSignal(
-                    fraud_type=FraudType.MULTIPLE_ACCOUNTS,
-                    risk_level=FraudRiskLevel.HIGH,
-                    score=0.85,
-                    description=f"Device used with {len(seen_tg_ids)} other Telegram accounts",
-                    metadata={"other_accounts": len(seen_tg_ids)}
-                ))
+                signals.append(
+                    FraudSignal(
+                        fraud_type=FraudType.MULTIPLE_ACCOUNTS,
+                        risk_level=FraudRiskLevel.HIGH,
+                        score=0.85,
+                        description=f"Device used with {len(seen_tg_ids)} other Telegram accounts",
+                        metadata={"other_accounts": len(seen_tg_ids)},
+                    )
+                )
 
             # Track this combination
             await self._redis.sadd(device_tg_key, str(telegram_id))
@@ -873,13 +844,15 @@ class AntifraudService:
             seen_devices = await self._redis.smembers(phone_devices_key)
 
             if seen_devices and device_fingerprint not in seen_devices:
-                signals.append(FraudSignal(
-                    fraud_type=FraudType.MULTIPLE_ACCOUNTS,
-                    risk_level=FraudRiskLevel.MEDIUM,
-                    score=0.6,
-                    description=f"Phone number used from {len(seen_devices)} different devices",
-                    metadata={"device_count": len(seen_devices)}
-                ))
+                signals.append(
+                    FraudSignal(
+                        fraud_type=FraudType.MULTIPLE_ACCOUNTS,
+                        risk_level=FraudRiskLevel.MEDIUM,
+                        score=0.6,
+                        description=f"Phone number used from {len(seen_devices)} different devices",
+                        metadata={"device_count": len(seen_devices)},
+                    )
+                )
 
             await self._redis.sadd(phone_devices_key, device_fingerprint)
             await self._redis.expire(phone_devices_key, 30 * 86400)
@@ -891,13 +864,15 @@ class AntifraudService:
             ip_hash = self._hash(ip_address)
 
             if len(seen_ips) >= 5 and ip_hash not in seen_ips:
-                signals.append(FraudSignal(
-                    fraud_type=FraudType.SUSPICIOUS_IP,
-                    risk_level=FraudRiskLevel.MEDIUM,
-                    score=0.5,
-                    description=f"Device seen from {len(seen_ips)}+ different IPs (VPN hopping?)",
-                    metadata={"ip_count": len(seen_ips)}
-                ))
+                signals.append(
+                    FraudSignal(
+                        fraud_type=FraudType.SUSPICIOUS_IP,
+                        risk_level=FraudRiskLevel.MEDIUM,
+                        score=0.5,
+                        description=f"Device seen from {len(seen_ips)}+ different IPs (VPN hopping?)",
+                        metadata={"ip_count": len(seen_ips)},
+                    )
+                )
 
             await self._redis.sadd(device_ips_key, ip_hash)
             await self._redis.expire(device_ips_key, 7 * 86400)  # 7 days
@@ -982,9 +957,15 @@ class AntifraudService:
     def _is_disposable_email(self, email: str) -> bool:
         """Check if email domain is disposable."""
         disposable_domains = {
-            "tempmail.com", "throwaway.email", "guerrillamail.com",
-            "mailinator.com", "10minutemail.com", "temp-mail.org",
-            "fakeinbox.com", "trashmail.com", "yopmail.com"
+            "tempmail.com",
+            "throwaway.email",
+            "guerrillamail.com",
+            "mailinator.com",
+            "10minutemail.com",
+            "temp-mail.org",
+            "fakeinbox.com",
+            "trashmail.com",
+            "yopmail.com",
         }
         domain = email.lower().split("@")[-1]
         return domain in disposable_domains

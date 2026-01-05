@@ -40,7 +40,7 @@ try:
         smtp_password=settings.email.password.get_secret_value() if settings.email.password else "",
         from_email=settings.email.from_email,
         use_ssl=settings.email.use_ssl,
-        timeout=settings.email.timeout
+        timeout=settings.email.timeout,
     )
     init_email_service(email_config)
 except Exception as e:
@@ -49,8 +49,10 @@ except Exception as e:
 
 # ==================== SCHEMAS ====================
 
+
 class TelegramAuthData(BaseModel):
     """Telegram Login Widget data (legacy support)."""
+
     id: int = Field(..., description="Telegram user ID")
     first_name: str = Field(..., description="User first name")
     last_name: str | None = Field(None, description="User last name")
@@ -62,6 +64,7 @@ class TelegramAuthData(BaseModel):
 
 class AuthResponse(BaseModel):
     """Authentication response."""
+
     success: bool
     access_token: str
     token_type: str = "bearer"
@@ -71,11 +74,13 @@ class AuthResponse(BaseModel):
 
 class SendCodeRequest(BaseModel):
     """Request to send auth code via email."""
+
     email: EmailStr = Field(..., description="User email address")
 
 
 class SendCodeResponse(BaseModel):
     """Response after sending code."""
+
     success: bool
     message: str
     expires_in: int = 300
@@ -83,12 +88,14 @@ class SendCodeResponse(BaseModel):
 
 class VerifyCodeRequest(BaseModel):
     """Request to verify auth code."""
+
     email: EmailStr = Field(..., description="User email address")
     code: str = Field(..., description="6-digit verification code")
 
 
 class UserResponse(BaseModel):
     """User info response."""
+
     id: str
     email: str | None
     email_verified: bool = False
@@ -104,6 +111,7 @@ class UserResponse(BaseModel):
 
 class SubscriptionInfo(BaseModel):
     """User subscription info."""
+
     product_code: str
     product_name: str
     plan_code: str
@@ -114,11 +122,13 @@ class SubscriptionInfo(BaseModel):
 
 class MeResponse(BaseModel):
     """Full user info with subscriptions."""
+
     user: UserResponse
     subscriptions: list[SubscriptionInfo] = []
 
 
 # ==================== HELPERS ====================
+
 
 def verify_telegram_auth(data: TelegramAuthData) -> bool:
     """Verify Telegram Login Widget data."""
@@ -140,20 +150,14 @@ def verify_telegram_auth(data: TelegramAuthData) -> bool:
         check_dict["photo_url"] = data.photo_url
 
     # Sort and join
-    data_check_string = "\n".join(
-        f"{k}={v}" for k, v in sorted(check_dict.items())
-    )
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(check_dict.items()))
 
     # Create secret key from bot token
     bot_token = settings.telegram.bot_token.get_secret_value()
     secret_key = hashlib.sha256(bot_token.encode()).digest()
 
     # Calculate hash
-    calculated_hash = hmac.new(
-        secret_key,
-        data_check_string.encode(),
-        hashlib.sha256
-    ).hexdigest()
+    calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
     return calculated_hash == data.hash
 
@@ -196,7 +200,7 @@ def decode_jwt_token(token: str) -> dict | None:
             token,
             secret_key,
             algorithms=["HS256"],
-            options={"verify_aud": False}  # Allow any audience for cross-service
+            options={"verify_aud": False},  # Allow any audience for cross-service
         )
         return payload
     except jwt.ExpiredSignatureError:
@@ -207,29 +211,22 @@ def decode_jwt_token(token: str) -> dict | None:
 
 # ==================== ROUTES ====================
 
+
 @router.post("/telegram", response_model=AuthResponse)
-async def telegram_login(
-    auth_data: TelegramAuthData,
-    db: AsyncSession = Depends(get_db_async_session)
-):
+async def telegram_login(auth_data: TelegramAuthData, db: AsyncSession = Depends(get_db_async_session)):
     """
     Authenticate user via Telegram Login Widget.
     Creates new user if not exists, returns JWT token.
     """
     # Verify Telegram auth data
     if not verify_telegram_auth(auth_data):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Telegram auth data"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Telegram auth data")
 
     # Import here to avoid circular imports
     from ..models.entities import SubscriptionPlan, User
 
     # Find or create user
-    result = await db.execute(
-        select(User).where(User.telegram_id == auth_data.id)
-    )
+    result = await db.execute(select(User).where(User.telegram_id == auth_data.id))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -280,7 +277,7 @@ async def telegram_login(
             "first_name": user.telegram_first_name,
             "last_name": user.telegram_last_name,
             "photo_url": user.telegram_photo_url,
-        }
+        },
     )
 
 
@@ -292,8 +289,7 @@ async def get_me(
     """Get current authenticated user info with subscriptions."""
     # This will be implemented with proper auth dependency
     raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Use Authorization header with Bearer token"
+        status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Use Authorization header with Bearer token"
     )
 
 
@@ -305,9 +301,10 @@ async def logout():
 
 # ==================== CODE-BASED AUTH ====================
 
+
 def generate_auth_code() -> str:
     """Generate 6-digit auth code."""
-    return ''.join(random.choices(string.digits, k=6))
+    return "".join(random.choices(string.digits, k=6))
 
 
 async def send_telegram_message(chat_id: int, text: str) -> bool:
@@ -317,11 +314,7 @@ async def send_telegram_message(chat_id: int, text: str) -> bool:
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(url, json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "HTML"
-            })
+            response = await client.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
             return response.status_code == 200
         except Exception as e:
             logger.error(f"Failed to send Telegram message: {e}")
@@ -334,7 +327,7 @@ async def get_telegram_user_by_username(username: str) -> dict | None:
     url = f"https://api.telegram.org/bot{bot_token}/getChat"
 
     # Clean username
-    clean_username = username.lstrip('@')
+    clean_username = username.lstrip("@")
 
     async with httpx.AsyncClient() as client:
         try:
@@ -349,10 +342,7 @@ async def get_telegram_user_by_username(username: str) -> dict | None:
 
 
 @router.post("/send-code", response_model=SendCodeResponse)
-async def send_auth_code(
-    request: SendCodeRequest,
-    redis = Depends(get_redis_client)
-):
+async def send_auth_code(request: SendCodeRequest, redis=Depends(get_redis_client)):
     """
     Send authentication code to user's email.
     Works for both new and existing users.
@@ -360,25 +350,18 @@ async def send_auth_code(
     email = request.email.lower().strip()
 
     if not email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email is required"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
 
     # Basic email validation
-    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid email format"
-        )
+    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email format")
 
     # Check rate limiting (max 5 codes per email per hour)
     rate_key = f"auth:rate:{email}"
     rate_count = await redis.get(rate_key)
     if rate_count and int(rate_count) >= 5:
         raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Слишком много запросов. Попробуйте через час."
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Слишком много запросов. Попробуйте через час."
         )
 
     # Generate code
@@ -396,11 +379,7 @@ async def send_auth_code(
     sent = False
     try:
         email_service = get_email_service()
-        sent = await email_service.send_auth_code(
-            to_email=email,
-            code=code,
-            expires_minutes=5
-        )
+        sent = await email_service.send_auth_code(to_email=email, code=code, expires_minutes=5)
     except RuntimeError:
         # Email service not configured
         logger.warning("Email service not configured")
@@ -414,24 +393,17 @@ async def send_auth_code(
             sent = True  # Allow login in dev mode
         else:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Не удалось отправить код. Попробуйте позже."
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось отправить код. Попробуйте позже."
             )
 
     logger.info(f"Auth code {'sent' if sent else 'generated'} for {email}")
 
-    return SendCodeResponse(
-        success=True,
-        message=f"Код отправлен на {email}",
-        expires_in=AUTH_CODE_TTL
-    )
+    return SendCodeResponse(success=True, message=f"Код отправлен на {email}", expires_in=AUTH_CODE_TTL)
 
 
 @router.post("/verify-code", response_model=AuthResponse)
 async def verify_auth_code(
-    request: VerifyCodeRequest,
-    db: AsyncSession = Depends(get_db_async_session),
-    redis = Depends(get_redis_client)
+    request: VerifyCodeRequest, db: AsyncSession = Depends(get_db_async_session), redis=Depends(get_redis_client)
 ):
     """
     Verify email authentication code and return JWT token.
@@ -442,10 +414,7 @@ async def verify_auth_code(
     code = request.code.strip()
 
     if not email or not code:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email and code are required"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email and code are required")
 
     # Get stored code from Redis
     redis_key = f"{AUTH_CODE_PREFIX}{email}"
@@ -453,16 +422,12 @@ async def verify_auth_code(
 
     if not stored_code:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Код истёк или не существует. Запросите новый код."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Код истёк или не существует. Запросите новый код."
         )
 
     # Verify code
     if code != stored_code:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный код"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный код")
 
     # Delete used code
     await redis.delete(redis_key)
@@ -471,9 +436,7 @@ async def verify_auth_code(
     from ..models.entities import SubscriptionPlan, User
 
     # Find user by email
-    result = await db.execute(
-        select(User).where(User.email == email)
-    )
+    result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -514,5 +477,5 @@ async def verify_auth_code(
             "last_name": user.telegram_last_name or user.last_name,
             "company_name": user.company_name,
             "is_active": user.is_active,
-        }
+        },
     )

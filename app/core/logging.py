@@ -23,9 +23,9 @@ from structlog.types import FilteringBoundLogger
 from .config import settings
 
 # Context variables for request tracking
-request_id_ctx: ContextVar[str | None] = ContextVar('request_id', default=None)
-user_id_ctx: ContextVar[str | None] = ContextVar('user_id', default=None)
-task_id_ctx: ContextVar[str | None] = ContextVar('task_id', default=None)
+request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
+user_id_ctx: ContextVar[str | None] = ContextVar("user_id", default=None)
+task_id_ctx: ContextVar[str | None] = ContextVar("task_id", default=None)
 
 
 class StructlogFormatter(logging.Formatter):
@@ -39,35 +39,53 @@ class StructlogFormatter(logging.Formatter):
         """Format log record using structlog processor."""
         # Convert LogRecord to structlog event
         event_dict = {
-            'event': record.getMessage(),
-            'level': record.levelname.lower(),
-            'logger': record.name,
-            'timestamp': datetime.fromtimestamp(record.created).isoformat(),
-            'module': record.module,
-            'function': record.funcName,
-            'line': record.lineno,
+            "event": record.getMessage(),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "timestamp": datetime.fromtimestamp(record.created).isoformat(),
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
         }
 
         # Add context variables
         if request_id := request_id_ctx.get():
-            event_dict['request_id'] = request_id
+            event_dict["request_id"] = request_id
         if user_id := user_id_ctx.get():
-            event_dict['user_id'] = user_id
+            event_dict["user_id"] = user_id
         if task_id := task_id_ctx.get():
-            event_dict['task_id'] = task_id
+            event_dict["task_id"] = task_id
 
         # Add exception info if present
         if record.exc_info:
-            event_dict['exception'] = self.formatException(record.exc_info)
+            event_dict["exception"] = self.formatException(record.exc_info)
 
         # Add extra fields
-        if hasattr(record, '__dict__'):
+        if hasattr(record, "__dict__"):
             for key, value in record.__dict__.items():
-                if key not in {'name', 'msg', 'args', 'levelname', 'levelno', 'pathname',
-                              'filename', 'module', 'lineno', 'funcName', 'created',
-                              'msecs', 'relativeCreated', 'thread', 'threadName',
-                              'processName', 'process', 'getMessage', 'exc_info',
-                              'exc_text', 'stack_info'}:
+                if key not in {
+                    "name",
+                    "msg",
+                    "args",
+                    "levelname",
+                    "levelno",
+                    "pathname",
+                    "filename",
+                    "module",
+                    "lineno",
+                    "funcName",
+                    "created",
+                    "msecs",
+                    "relativeCreated",
+                    "thread",
+                    "threadName",
+                    "processName",
+                    "process",
+                    "getMessage",
+                    "exc_info",
+                    "exc_text",
+                    "stack_info",
+                }:
                     event_dict[key] = value
 
         return self.processor(None, None, event_dict)
@@ -77,38 +95,38 @@ def add_context_fields(logger, method_name, event_dict):
     """Add context fields to every log entry."""
     # Add request context
     if request_id := request_id_ctx.get():
-        event_dict['request_id'] = request_id
+        event_dict["request_id"] = request_id
     if user_id := user_id_ctx.get():
-        event_dict['user_id'] = user_id
+        event_dict["user_id"] = user_id
     if task_id := task_id_ctx.get():
-        event_dict['task_id'] = task_id
+        event_dict["task_id"] = task_id
 
     # Add application context
-    event_dict['app'] = settings.app.app_name
-    event_dict['version'] = settings.app.version
-    event_dict['environment'] = settings.app.environment
+    event_dict["app"] = settings.app.app_name
+    event_dict["version"] = settings.app.version
+    event_dict["environment"] = settings.app.environment
 
     return event_dict
 
 
 def add_timestamps(logger, method_name, event_dict):
     """Add timestamp in ISO format."""
-    event_dict['timestamp'] = datetime.utcnow().isoformat() + 'Z'
+    event_dict["timestamp"] = datetime.utcnow().isoformat() + "Z"
     return event_dict
 
 
 def filter_sensitive_data(logger, method_name, event_dict):
     """Filter sensitive data from logs."""
-    sensitive_fields = {
-        'password', 'secret', 'token', 'key', 'api_key',
-        'access_token', 'refresh_token', 'jwt', 'auth'
-    }
+    sensitive_fields = {"password", "secret", "token", "key", "api_key", "access_token", "refresh_token", "jwt", "auth"}
 
-    def _filter_dict(obj, path=''):
+    def _filter_dict(obj, path=""):
         if isinstance(obj, dict):
             return {
-                key: '[REDACTED]' if any(field in key.lower() for field in sensitive_fields)
-                else _filter_dict(value, f"{path}.{key}" if path else key)
+                key: (
+                    "[REDACTED]"
+                    if any(field in key.lower() for field in sensitive_fields)
+                    else _filter_dict(value, f"{path}.{key}" if path else key)
+                )
                 for key, value in obj.items()
             }
         elif isinstance(obj, list):
@@ -133,7 +151,7 @@ def setup_structlog():
         structlog.processors.UnicodeDecoder(),
     ]
 
-    if settings.app.log_format == 'json':
+    if settings.app.log_format == "json":
         processors.append(structlog.processors.JSONRenderer())
     else:
         processors.append(structlog.dev.ConsoleRenderer(colors=True))
@@ -149,7 +167,8 @@ def setup_structlog():
 def setup_stdlib_logging():
     """Configure standard library logging to work with structlog."""
     formatter = StructlogFormatter(
-        structlog.processors.JSONRenderer() if settings.app.log_format == 'json'
+        structlog.processors.JSONRenderer()
+        if settings.app.log_format == "json"
         else structlog.dev.ConsoleRenderer(colors=True)
     )
 
@@ -168,15 +187,15 @@ def setup_stdlib_logging():
     root_logger.addHandler(console_handler)
 
     # Configure specific loggers
-    logging.getLogger('uvicorn.access').handlers = []
-    logging.getLogger('uvicorn.access').propagate = True
+    logging.getLogger("uvicorn.access").handlers = []
+    logging.getLogger("uvicorn.access").propagate = True
 
     # Reduce noise from third-party libraries
-    logging.getLogger('boto3').setLevel(logging.WARNING)
-    logging.getLogger('botocore').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    logging.getLogger('httpx').setLevel(logging.WARNING)
-    logging.getLogger('asyncio').setLevel(logging.WARNING)
+    logging.getLogger("boto3").setLevel(logging.WARNING)
+    logging.getLogger("botocore").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 
 def setup_loguru():
@@ -192,22 +211,11 @@ def setup_loguru():
         "<level>{message}</level>"
     )
 
-    if settings.app.log_format == 'json':
-        logger.add(
-            sys.stdout,
-            level=settings.app.log_level,
-            serialize=True,
-            backtrace=True,
-            diagnose=True
-        )
+    if settings.app.log_format == "json":
+        logger.add(sys.stdout, level=settings.app.log_level, serialize=True, backtrace=True, diagnose=True)
     else:
         logger.add(
-            sys.stdout,
-            level=settings.app.log_level,
-            format=log_format,
-            backtrace=True,
-            diagnose=True,
-            colorize=True
+            sys.stdout, level=settings.app.log_level, format=log_format, backtrace=True, diagnose=True, colorize=True
         )
 
     # Add file handler for errors (production)
@@ -220,16 +228,14 @@ def setup_loguru():
             compression="gz",
             serialize=True,
             backtrace=True,
-            diagnose=True
+            diagnose=True,
         )
 
 
 class LoggingContextManager:
     """Context manager for setting logging context."""
 
-    def __init__(self, request_id: str | None = None,
-                 user_id: str | None = None,
-                 task_id: str | None = None):
+    def __init__(self, request_id: str | None = None, user_id: str | None = None, task_id: str | None = None):
         self.request_id = request_id or str(uuid.uuid4())
         self.user_id = user_id
         self.task_id = task_id
@@ -245,7 +251,7 @@ class LoggingContextManager:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         for token in reversed(self._tokens):
-            if hasattr(token, 'var'):
+            if hasattr(token, "var"):
                 token.var.set(token.old_value)
 
 
@@ -255,8 +261,7 @@ class AuditLogger:
     def __init__(self):
         self.logger = structlog.get_logger("audit")
 
-    def log_post_created(self, post_id: str, platform: str, user_id: str,
-                        product_id: str, **kwargs):
+    def log_post_created(self, post_id: str, platform: str, user_id: str, product_id: str, **kwargs):
         """Log post creation event."""
         self.logger.info(
             "post_created",
@@ -265,11 +270,10 @@ class AuditLogger:
             user_id=user_id,
             product_id=product_id,
             action="create_post",
-            **kwargs
+            **kwargs,
         )
 
-    def log_post_published(self, post_id: str, platform: str, platform_post_id: str,
-                          platform_url: str, **kwargs):
+    def log_post_published(self, post_id: str, platform: str, platform_post_id: str, platform_url: str, **kwargs):
         """Log successful post publication."""
         self.logger.info(
             "post_published",
@@ -278,7 +282,7 @@ class AuditLogger:
             platform_post_id=platform_post_id,
             platform_url=platform_url,
             action="publish_post",
-            **kwargs
+            **kwargs,
         )
 
     def log_post_failed(self, post_id: str, platform: str, error: str, **kwargs):
@@ -290,11 +294,10 @@ class AuditLogger:
             error=error,
             action="publish_post",
             status="failed",
-            **kwargs
+            **kwargs,
         )
 
-    def log_media_processed(self, media_id: str, rendition_id: str,
-                           platform: str, processing_time: float, **kwargs):
+    def log_media_processed(self, media_id: str, rendition_id: str, platform: str, processing_time: float, **kwargs):
         """Log media processing completion."""
         self.logger.info(
             "media_processed",
@@ -303,11 +306,12 @@ class AuditLogger:
             platform=platform,
             processing_time_seconds=processing_time,
             action="process_media",
-            **kwargs
+            **kwargs,
         )
 
-    def log_api_access(self, method: str, path: str, status_code: int,
-                      response_time: float, user_id: str | None = None, **kwargs):
+    def log_api_access(
+        self, method: str, path: str, status_code: int, response_time: float, user_id: str | None = None, **kwargs
+    ):
         """Log API access."""
         self.logger.info(
             "api_access",
@@ -317,7 +321,7 @@ class AuditLogger:
             response_time_seconds=response_time,
             user_id=user_id,
             action="api_request",
-            **kwargs
+            **kwargs,
         )
 
 
@@ -327,8 +331,7 @@ class PerformanceLogger:
     def __init__(self):
         self.logger = structlog.get_logger("performance")
 
-    def log_task_performance(self, task_name: str, execution_time: float,
-                           queue: str, success: bool, **kwargs):
+    def log_task_performance(self, task_name: str, execution_time: float, queue: str, success: bool, **kwargs):
         """Log Celery task performance."""
         self.logger.info(
             "task_performance",
@@ -337,11 +340,12 @@ class PerformanceLogger:
             queue=queue,
             success=success,
             metric_type="task_performance",
-            **kwargs
+            **kwargs,
         )
 
-    def log_database_query(self, query_type: str, execution_time: float,
-                          table: str, rows_affected: int | None = None, **kwargs):
+    def log_database_query(
+        self, query_type: str, execution_time: float, table: str, rows_affected: int | None = None, **kwargs
+    ):
         """Log database query performance."""
         self.logger.info(
             "database_query",
@@ -350,11 +354,10 @@ class PerformanceLogger:
             table=table,
             rows_affected=rows_affected,
             metric_type="database_performance",
-            **kwargs
+            **kwargs,
         )
 
-    def log_external_api_call(self, service: str, endpoint: str,
-                            response_time: float, status_code: int, **kwargs):
+    def log_external_api_call(self, service: str, endpoint: str, response_time: float, status_code: int, **kwargs):
         """Log external API call performance."""
         self.logger.info(
             "external_api_call",
@@ -363,7 +366,7 @@ class PerformanceLogger:
             response_time_seconds=response_time,
             status_code=status_code,
             metric_type="api_performance",
-            **kwargs
+            **kwargs,
         )
 
 
@@ -385,8 +388,7 @@ def get_logger(name: str = None) -> FilteringBoundLogger:
     return structlog.get_logger(name)
 
 
-def with_logging_context(request_id: str = None, user_id: str = None,
-                        task_id: str = None) -> LoggingContextManager:
+def with_logging_context(request_id: str = None, user_id: str = None, task_id: str = None) -> LoggingContextManager:
     """Create logging context manager."""
     return LoggingContextManager(request_id, user_id, task_id)
 
@@ -420,11 +422,7 @@ if __name__ == "__main__":
 
     # Test audit logging
     audit_logger.log_post_created(
-        post_id="post_123",
-        platform="instagram",
-        user_id="user_456",
-        product_id="prod_789",
-        title="Test Post"
+        post_id="post_123", platform="instagram", user_id="user_456", product_id="prod_789", title="Test Post"
     )
 
     # Test performance logging
@@ -434,7 +432,7 @@ if __name__ == "__main__":
         queue="transcode",
         success=True,
         input_format="mov",
-        output_format="mp4"
+        output_format="mp4",
     )
 
     # Test Loguru
@@ -447,5 +445,6 @@ def get_test_logger() -> FilteringBoundLogger:
     """Get logger configured for testing."""
     # Set test log level
     import logging
+
     logging.getLogger().setLevel(logging.DEBUG)
     return get_logger("test")

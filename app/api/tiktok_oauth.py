@@ -31,12 +31,12 @@ TIKTOK_USER_INFO_URL = "https://open.tiktokapis.com/v2/user/info/"
 
 # Required scopes for content posting
 TIKTOK_SCOPES = [
-    "user.info.basic",      # Get username, display name, avatar
-    "user.info.profile",    # Get bio link
-    "user.info.stats",      # Get follower count
-    "video.upload",         # Upload videos (required for posting)
-    "video.publish",        # Publish videos (for approved apps)
-    "video.list",           # List user videos
+    "user.info.basic",  # Get username, display name, avatar
+    "user.info.profile",  # Get bio link
+    "user.info.stats",  # Get follower count
+    "video.upload",  # Upload videos (required for posting)
+    "video.publish",  # Publish videos (for approved apps)
+    "video.list",  # List user videos
 ]
 
 # State storage (in production, use Redis)
@@ -58,17 +58,14 @@ class TikTokCallbackResponse(BaseModel):
 
 @router.get("/authorize", response_model=TikTokAuthURLResponse)
 async def get_tiktok_auth_url(
-    user = Depends(get_current_user),
+    user=Depends(get_current_user),
 ):
     """
     Get TikTok authorization URL.
     User will be redirected to TikTok to grant permissions.
     """
     if not settings.tiktok_client_key:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="TikTok integration not configured"
-        )
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="TikTok integration not configured")
 
     # Generate state for CSRF protection
     state = secrets.token_urlsafe(32)
@@ -117,25 +114,16 @@ async def tiktok_oauth_callback(
         )
 
     if not code or not state:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing code or state parameter"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing code or state parameter")
 
     # Validate state
     state_data = _oauth_states.get(state)
     if not state_data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired state"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired state")
 
     if datetime.utcnow() > state_data["expires_at"]:
         del _oauth_states[state]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="State expired, please try again"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="State expired, please try again")
 
     user_id = state_data["user_id"]
     del _oauth_states[state]  # One-time use
@@ -214,9 +202,7 @@ async def tiktok_oauth_callback(
         from ..models.entities import Platform, SocialAccount, User, UserSocialAccount
 
         # Get user
-        user_result = await db.execute(
-            select(User).where(User.id == UUID(user_id))
-        )
+        user_result = await db.execute(select(User).where(User.id == UUID(user_id)))
         user = user_result.scalar_one_or_none()
 
         if not user:
@@ -227,8 +213,7 @@ async def tiktok_oauth_callback(
         # Check if account already exists
         existing_result = await db.execute(
             select(SocialAccount).where(
-                SocialAccount.platform == Platform.TIKTOK,
-                SocialAccount.platform_user_id == open_id
+                SocialAccount.platform == Platform.TIKTOK, SocialAccount.platform_user_id == open_id
             )
         )
         existing_account = existing_result.scalar_one_or_none()
@@ -249,8 +234,7 @@ async def tiktok_oauth_callback(
             # Check if already linked to user
             link_result = await db.execute(
                 select(UserSocialAccount).where(
-                    UserSocialAccount.user_id == user.id,
-                    UserSocialAccount.account_id == existing_account.id
+                    UserSocialAccount.user_id == user.id, UserSocialAccount.account_id == existing_account.id
                 )
             )
             if not link_result.scalar_one_or_none():
@@ -312,7 +296,7 @@ async def tiktok_oauth_callback(
 @router.post("/refresh")
 async def refresh_tiktok_token(
     account_id: str,
-    user = Depends(get_current_user),
+    user=Depends(get_current_user),
     db: AsyncSession = Depends(get_db_async_session),
 ):
     """Refresh TikTok access token."""
@@ -333,17 +317,13 @@ async def refresh_tiktok_token(
     row = result.first()
 
     if not row:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="TikTok account not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="TikTok account not found")
 
     account, _ = row
 
     if not account.refresh_token:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No refresh token available, please reconnect account"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="No refresh token available, please reconnect account"
         )
 
     # Refresh token
@@ -363,10 +343,7 @@ async def refresh_tiktok_token(
             )
 
             if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail="Failed to refresh TikTok token"
-                )
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Failed to refresh TikTok token")
 
             data = response.json()
 
@@ -382,7 +359,4 @@ async def refresh_tiktok_token(
 
     except Exception as e:
         logger.exception(f"Token refresh failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Token refresh failed"
-        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Token refresh failed")

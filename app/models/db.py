@@ -30,10 +30,8 @@ metadata = MetaData()
 
 class DatabaseConfig(BaseSettings):
     """Database configuration from environment variables."""
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql://saleswhisper:saleswhisper_pass@localhost:5432/saleswhisper_crosspost"
     database_url_async: str | None = None
@@ -50,8 +48,9 @@ class DatabaseConfig(BaseSettings):
     def model_post_init(self, __context) -> None:
         """Generate async database URL if not provided."""
         if not self.database_url_async:
-            object.__setattr__(self, 'database_url_async',
-                self.database_url.replace("postgresql://", "postgresql+asyncpg://"))
+            object.__setattr__(
+                self, "database_url_async", self.database_url.replace("postgresql://", "postgresql+asyncpg://")
+            )
 
 
 # Global database configuration
@@ -79,7 +78,7 @@ class DatabaseManager:
                 pool_timeout=self.config.pool_timeout,
                 pool_recycle=self.config.pool_recycle,
                 pool_pre_ping=True,  # Check connection health before use
-                echo=False  # Set to True for SQL debugging
+                echo=False,  # Set to True for SQL debugging
             )
         return self._sync_engine
 
@@ -94,7 +93,7 @@ class DatabaseManager:
                 pool_timeout=self.config.pool_timeout,
                 pool_recycle=self.config.pool_recycle,
                 pool_pre_ping=True,  # Check connection health before use
-                echo=False  # Set to True for SQL debugging
+                echo=False,  # Set to True for SQL debugging
             )
         return self._async_engine
 
@@ -103,10 +102,7 @@ class DatabaseManager:
         """Get or create synchronous session factory."""
         if self._sync_session_factory is None:
             self._sync_session_factory = sessionmaker(
-                bind=self.sync_engine,
-                class_=Session,
-                autoflush=True,
-                autocommit=False
+                bind=self.sync_engine, class_=Session, autoflush=True, autocommit=False
             )
         return self._sync_session_factory
 
@@ -115,11 +111,7 @@ class DatabaseManager:
         """Get or create asynchronous session factory."""
         if self._async_session_factory is None:
             self._async_session_factory = async_sessionmaker(
-                bind=self.async_engine,
-                class_=AsyncSession,
-                autoflush=True,
-                autocommit=False,
-                expire_on_commit=False
+                bind=self.async_engine, class_=AsyncSession, autoflush=True, autocommit=False, expire_on_commit=False
             )
         return self._async_session_factory
 
@@ -205,7 +197,7 @@ class MigrationManager:
         try:
             logger.info(f"Executing migration: {migration_file.name}")
 
-            with migration_file.open('r', encoding='utf-8') as f:
+            with migration_file.open("r", encoding="utf-8") as f:
                 sql_content = f.read()
 
             with db_manager.get_sync_session() as session:
@@ -244,18 +236,18 @@ class MigrationManager:
         try:
             # Parse database URL to extract database name
             from urllib.parse import urlparse
+
             parsed_url = urlparse(self.config.database_url)
-            db_name = parsed_url.path.lstrip('/')
+            db_name = parsed_url.path.lstrip("/")
 
             # Connect to postgres database to create our database
-            postgres_url = self.config.database_url.replace(f'/{db_name}', '/postgres')
+            postgres_url = self.config.database_url.replace(f"/{db_name}", "/postgres")
 
             temp_engine = create_engine(postgres_url)
             with temp_engine.connect() as conn:
                 # Check if database exists
                 result = conn.execute(
-                    text("SELECT 1 FROM pg_database WHERE datname = :db_name"),
-                    {"db_name": db_name}
+                    text("SELECT 1 FROM pg_database WHERE datname = :db_name"), {"db_name": db_name}
                 ).fetchone()
 
                 if not result:
@@ -304,8 +296,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Database management utility")
-    parser.add_argument("command", choices=["init", "migrate", "health"],
-                       help="Command to execute")
+    parser.add_argument("command", choices=["init", "migrate", "health"], help="Command to execute")
 
     args = parser.parse_args()
 

@@ -37,8 +37,8 @@ class YandexDiskAdapter:
     TOKEN_URL = "https://oauth.yandex.ru/token"
 
     # Supported extensions
-    VIDEO_EXTENSIONS = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.wmv'}
-    IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff'}
+    VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".wmv"}
+    IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff"}
 
     def __init__(self):
         """Initialize Yandex Disk adapter."""
@@ -57,18 +57,15 @@ class YandexDiskAdapter:
 
         # Fallback to MIME type
         if mime_type:
-            if mime_type.startswith('video/'):
+            if mime_type.startswith("video/"):
                 return MediaType.VIDEO
-            elif mime_type.startswith('image/'):
+            elif mime_type.startswith("image/"):
                 return MediaType.IMAGE
 
         return MediaType.UNKNOWN
 
     async def list_folder_contents(
-        self,
-        folder_path: str,
-        access_token: str,
-        media_types: list[str] = None
+        self, folder_path: str, access_token: str, media_types: list[str] = None
     ) -> list[CloudFile]:
         """
         List all media files in a Yandex Disk folder.
@@ -93,13 +90,13 @@ class YandexDiskAdapter:
                     response = await client.get(
                         f"{self.API_BASE}/resources",
                         params={
-                            'path': folder_path,
-                            'limit': limit,
-                            'offset': offset,
-                            'fields': '_embedded.items.name,_embedded.items.path,_embedded.items.size,_embedded.items.mime_type,_embedded.items.modified,_embedded.items.preview,_embedded.items.type'
+                            "path": folder_path,
+                            "limit": limit,
+                            "offset": offset,
+                            "fields": "_embedded.items.name,_embedded.items.path,_embedded.items.size,_embedded.items.mime_type,_embedded.items.modified,_embedded.items.preview,_embedded.items.type",
                         },
-                        headers={'Authorization': f'OAuth {access_token}'},
-                        timeout=30
+                        headers={"Authorization": f"OAuth {access_token}"},
+                        timeout=30,
                     )
 
                     if response.status_code != 200:
@@ -107,56 +104,51 @@ class YandexDiskAdapter:
                         break
 
                     data = response.json()
-                    items = data.get('_embedded', {}).get('items', [])
+                    items = data.get("_embedded", {}).get("items", [])
 
                     if not items:
                         break
 
                     for item in items:
                         # Skip folders
-                        if item.get('type') == 'dir':
+                        if item.get("type") == "dir":
                             continue
 
-                        media_type = self._classify_file(
-                            item.get('name', ''),
-                            item.get('mime_type')
-                        )
+                        media_type = self._classify_file(item.get("name", ""), item.get("mime_type"))
 
                         # Filter by media type
                         if media_types:
-                            if media_type == MediaType.VIDEO and 'video' not in media_types:
+                            if media_type == MediaType.VIDEO and "video" not in media_types:
                                 continue
-                            if media_type == MediaType.IMAGE and 'image' not in media_types:
+                            if media_type == MediaType.IMAGE and "image" not in media_types:
                                 continue
 
                         if media_type == MediaType.UNKNOWN:
                             continue
 
                         # Parse modified time
-                        modified_str = item.get('modified', '')
+                        modified_str = item.get("modified", "")
                         try:
-                            modified_at = datetime.fromisoformat(
-                                modified_str.replace('Z', '+00:00')
-                            )
+                            modified_at = datetime.fromisoformat(modified_str.replace("Z", "+00:00"))
                         except:
                             modified_at = datetime.utcnow()
 
                         cloud_file = CloudFile(
-                            id=item.get('path', ''),
-                            name=item.get('name', ''),
-                            path=item.get('path', ''),
-                            size=item.get('size', 0),
-                            mime_type=item.get('mime_type', ''),
+                            id=item.get("path", ""),
+                            name=item.get("name", ""),
+                            path=item.get("path", ""),
+                            size=item.get("size", 0),
+                            mime_type=item.get("mime_type", ""),
                             media_type=media_type,
                             modified_at=modified_at,
-                            thumbnail_url=item.get('preview')
+                            thumbnail_url=item.get("preview"),
                         )
                         files.append(cloud_file)
 
                     offset += limit
 
                     # Check if there are more items
-                    total = data.get('_embedded', {}).get('total', 0)
+                    total = data.get("_embedded", {}).get("total", 0)
                     if offset >= total:
                         break
 
@@ -168,10 +160,7 @@ class YandexDiskAdapter:
             return []
 
     async def list_public_folder(
-        self,
-        public_key: str,
-        path: str = "/",
-        media_types: list[str] = None
+        self, public_key: str, path: str = "/", media_types: list[str] = None
     ) -> list[CloudFile]:
         """
         List contents of a public shared folder.
@@ -195,12 +184,12 @@ class YandexDiskAdapter:
                     response = await client.get(
                         f"{self.API_BASE}/public/resources",
                         params={
-                            'public_key': public_key,
-                            'path': path,
-                            'limit': limit,
-                            'offset': offset,
+                            "public_key": public_key,
+                            "path": path,
+                            "limit": limit,
+                            "offset": offset,
                         },
-                        timeout=30
+                        timeout=30,
                     )
 
                     if response.status_code != 200:
@@ -208,58 +197,51 @@ class YandexDiskAdapter:
                         break
 
                     data = response.json()
-                    items = data.get('_embedded', {}).get('items', [])
+                    items = data.get("_embedded", {}).get("items", [])
 
                     if not items:
                         break
 
                     for item in items:
-                        if item.get('type') == 'dir':
+                        if item.get("type") == "dir":
                             # Recursively list subdirectories
-                            subpath = item.get('path', '')
-                            subfiles = await self.list_public_folder(
-                                public_key, subpath, media_types
-                            )
+                            subpath = item.get("path", "")
+                            subfiles = await self.list_public_folder(public_key, subpath, media_types)
                             files.extend(subfiles)
                             continue
 
-                        media_type = self._classify_file(
-                            item.get('name', ''),
-                            item.get('mime_type')
-                        )
+                        media_type = self._classify_file(item.get("name", ""), item.get("mime_type"))
 
                         if media_types:
-                            if media_type == MediaType.VIDEO and 'video' not in media_types:
+                            if media_type == MediaType.VIDEO and "video" not in media_types:
                                 continue
-                            if media_type == MediaType.IMAGE and 'image' not in media_types:
+                            if media_type == MediaType.IMAGE and "image" not in media_types:
                                 continue
 
                         if media_type == MediaType.UNKNOWN:
                             continue
 
-                        modified_str = item.get('modified', '')
+                        modified_str = item.get("modified", "")
                         try:
-                            modified_at = datetime.fromisoformat(
-                                modified_str.replace('Z', '+00:00')
-                            )
+                            modified_at = datetime.fromisoformat(modified_str.replace("Z", "+00:00"))
                         except:
                             modified_at = datetime.utcnow()
 
                         cloud_file = CloudFile(
-                            id=item.get('path', ''),
-                            name=item.get('name', ''),
-                            path=item.get('path', ''),
-                            size=item.get('size', 0),
-                            mime_type=item.get('mime_type', ''),
+                            id=item.get("path", ""),
+                            name=item.get("name", ""),
+                            path=item.get("path", ""),
+                            size=item.get("size", 0),
+                            mime_type=item.get("mime_type", ""),
                             media_type=media_type,
                             modified_at=modified_at,
-                            download_url=item.get('file'),
-                            thumbnail_url=item.get('preview')
+                            download_url=item.get("file"),
+                            thumbnail_url=item.get("preview"),
                         )
                         files.append(cloud_file)
 
                     offset += limit
-                    total = data.get('_embedded', {}).get('total', 0)
+                    total = data.get("_embedded", {}).get("total", 0)
                     if offset >= total:
                         break
 
@@ -270,12 +252,7 @@ class YandexDiskAdapter:
             logger.error(f"Failed to list public folder: {e}")
             return []
 
-    async def download_file(
-        self,
-        file_path: str,
-        access_token: str,
-        output_path: str
-    ) -> bool:
+    async def download_file(self, file_path: str, access_token: str, output_path: str) -> bool:
         """
         Download a file from Yandex Disk.
 
@@ -292,29 +269,29 @@ class YandexDiskAdapter:
                 # Get download URL
                 response = await client.get(
                     f"{self.API_BASE}/resources/download",
-                    params={'path': file_path},
-                    headers={'Authorization': f'OAuth {access_token}'},
-                    timeout=30
+                    params={"path": file_path},
+                    headers={"Authorization": f"OAuth {access_token}"},
+                    timeout=30,
                 )
 
                 if response.status_code != 200:
                     logger.error(f"Failed to get download URL: {response.text}")
                     return False
 
-                download_url = response.json().get('href')
+                download_url = response.json().get("href")
                 if not download_url:
                     logger.error("No download URL in response")
                     return False
 
                 # Download file
-                os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+                os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-                async with client.stream('GET', download_url, timeout=300) as resp:
+                async with client.stream("GET", download_url, timeout=300) as resp:
                     if resp.status_code != 200:
                         logger.error(f"Download failed: {resp.status_code}")
                         return False
 
-                    with open(output_path, 'wb') as f:
+                    with open(output_path, "wb") as f:
                         async for chunk in resp.aiter_bytes(chunk_size=8192):
                             f.write(chunk)
 
@@ -325,12 +302,7 @@ class YandexDiskAdapter:
             logger.error(f"Failed to download file {file_path}: {e}")
             return False
 
-    async def download_public_file(
-        self,
-        public_key: str,
-        file_path: str,
-        output_path: str
-    ) -> bool:
+    async def download_public_file(self, public_key: str, file_path: str, output_path: str) -> bool:
         """
         Download a file from a public shared folder.
 
@@ -347,31 +319,28 @@ class YandexDiskAdapter:
                 # Get download URL
                 response = await client.get(
                     f"{self.API_BASE}/public/resources/download",
-                    params={
-                        'public_key': public_key,
-                        'path': file_path
-                    },
-                    timeout=30
+                    params={"public_key": public_key, "path": file_path},
+                    timeout=30,
                 )
 
                 if response.status_code != 200:
                     logger.error(f"Failed to get public download URL: {response.text}")
                     return False
 
-                download_url = response.json().get('href')
+                download_url = response.json().get("href")
                 if not download_url:
                     logger.error("No download URL in response")
                     return False
 
                 # Download file
-                os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+                os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-                async with client.stream('GET', download_url, timeout=300) as resp:
+                async with client.stream("GET", download_url, timeout=300) as resp:
                     if resp.status_code != 200:
                         logger.error(f"Download failed: {resp.status_code}")
                         return False
 
-                    with open(output_path, 'wb') as f:
+                    with open(output_path, "wb") as f:
                         async for chunk in resp.aiter_bytes(chunk_size=8192):
                             f.write(chunk)
 
@@ -383,11 +352,7 @@ class YandexDiskAdapter:
             return False
 
     async def sync_folder(
-        self,
-        folder_path: str,
-        access_token: str,
-        output_dir: str,
-        media_types: list[str] = None
+        self, folder_path: str, access_token: str, output_dir: str, media_types: list[str] = None
     ) -> SyncResult:
         """
         Sync all media from a Yandex Disk folder.
@@ -409,17 +374,12 @@ class YandexDiskAdapter:
 
         if not files:
             return SyncResult(
-                success=True,
-                files_found=0,
-                files_downloaded=0,
-                files_failed=0,
-                errors=[],
-                downloaded_files=[]
+                success=True, files_found=0, files_downloaded=0, files_failed=0, errors=[], downloaded_files=[]
             )
 
         # Create output directories
-        videos_dir = os.path.join(output_dir, 'videos')
-        photos_dir = os.path.join(output_dir, 'photos')
+        videos_dir = os.path.join(output_dir, "videos")
+        photos_dir = os.path.join(output_dir, "photos")
         os.makedirs(videos_dir, exist_ok=True)
         os.makedirs(photos_dir, exist_ok=True)
 
@@ -443,9 +403,7 @@ class YandexDiskAdapter:
                         logger.debug(f"Skipping {cloud_file.name} - already exists")
                         continue
 
-                success = await self.download_file(
-                    cloud_file.path, access_token, output_path
-                )
+                success = await self.download_file(cloud_file.path, access_token, output_path)
 
                 if success:
                     files_downloaded += 1
@@ -464,15 +422,10 @@ class YandexDiskAdapter:
             files_downloaded=files_downloaded,
             files_failed=files_failed,
             errors=errors,
-            downloaded_files=downloaded
+            downloaded_files=downloaded,
         )
 
-    async def sync_public_folder(
-        self,
-        public_url: str,
-        output_dir: str,
-        media_types: list[str] = None
-    ) -> SyncResult:
+    async def sync_public_folder(self, public_url: str, output_dir: str, media_types: list[str] = None) -> SyncResult:
         """
         Sync all media from a public shared folder.
 
@@ -492,7 +445,7 @@ class YandexDiskAdapter:
                 files_downloaded=0,
                 files_failed=0,
                 errors=["Invalid Yandex Disk sharing URL"],
-                downloaded_files=[]
+                downloaded_files=[],
             )
 
         errors = []
@@ -502,16 +455,11 @@ class YandexDiskAdapter:
 
         if not files:
             return SyncResult(
-                success=True,
-                files_found=0,
-                files_downloaded=0,
-                files_failed=0,
-                errors=[],
-                downloaded_files=[]
+                success=True, files_found=0, files_downloaded=0, files_failed=0, errors=[], downloaded_files=[]
             )
 
-        videos_dir = os.path.join(output_dir, 'videos')
-        photos_dir = os.path.join(output_dir, 'photos')
+        videos_dir = os.path.join(output_dir, "videos")
+        photos_dir = os.path.join(output_dir, "photos")
         os.makedirs(videos_dir, exist_ok=True)
         os.makedirs(photos_dir, exist_ok=True)
 
@@ -533,9 +481,7 @@ class YandexDiskAdapter:
                     if os.path.getsize(output_path) == cloud_file.size:
                         continue
 
-                success = await self.download_public_file(
-                    public_key, cloud_file.path, output_path
-                )
+                success = await self.download_public_file(public_key, cloud_file.path, output_path)
 
                 if success:
                     files_downloaded += 1
@@ -554,7 +500,7 @@ class YandexDiskAdapter:
             files_downloaded=files_downloaded,
             files_failed=files_failed,
             errors=errors,
-            downloaded_files=downloaded
+            downloaded_files=downloaded,
         )
 
     @staticmethod
@@ -570,8 +516,8 @@ class YandexDiskAdapter:
         import re
 
         patterns = [
-            r'(?:disk\.yandex\.(?:ru|com)|yadi\.sk)/d/([a-zA-Z0-9_-]+)',
-            r'(?:disk\.yandex\.(?:ru|com)|yadi\.sk)/i/([a-zA-Z0-9_-]+)',
+            r"(?:disk\.yandex\.(?:ru|com)|yadi\.sk)/d/([a-zA-Z0-9_-]+)",
+            r"(?:disk\.yandex\.(?:ru|com)|yadi\.sk)/i/([a-zA-Z0-9_-]+)",
         ]
 
         for pattern in patterns:
@@ -588,14 +534,14 @@ def get_yandex_oauth_url(redirect_uri: str, state: str = None) -> str:
     client_id = os.getenv("YANDEX_CLIENT_ID")
 
     params = {
-        'response_type': 'code',
-        'client_id': client_id,
-        'redirect_uri': redirect_uri,
-        'force_confirm': 'yes',
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "force_confirm": "yes",
     }
 
     if state:
-        params['state'] = state
+        params["state"] = state
 
     return f"https://oauth.yandex.ru/authorize?{urlencode(params)}"
 
@@ -608,14 +554,14 @@ async def exchange_yandex_code(code: str) -> dict[str, Any] | None:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                'https://oauth.yandex.ru/token',
+                "https://oauth.yandex.ru/token",
                 data={
-                    'grant_type': 'authorization_code',
-                    'code': code,
-                    'client_id': client_id,
-                    'client_secret': client_secret
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
                 },
-                timeout=30
+                timeout=30,
             )
 
             if response.status_code == 200:
@@ -637,14 +583,14 @@ async def refresh_yandex_token(refresh_token: str) -> dict[str, Any] | None:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                'https://oauth.yandex.ru/token',
+                "https://oauth.yandex.ru/token",
                 data={
-                    'grant_type': 'refresh_token',
-                    'refresh_token': refresh_token,
-                    'client_id': client_id,
-                    'client_secret': client_secret
+                    "grant_type": "refresh_token",
+                    "refresh_token": refresh_token,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
                 },
-                timeout=30
+                timeout=30,
             )
 
             if response.status_code == 200:

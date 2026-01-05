@@ -37,14 +37,17 @@ router = APIRouter(prefix="/checkout", tags=["Checkout"])
 
 # ==================== SCHEMAS ====================
 
+
 class CreateOrderRequest(BaseModel):
     """Request to create order from cart."""
+
     payment_method: str = Field(default="card", description="Payment method: card or sbp")
     return_url: str | None = Field(None, description="Custom return URL after payment")
 
 
 class OrderItemResponse(BaseModel):
     """Order item in response."""
+
     product_code: str
     product_name: str
     plan_code: str
@@ -55,6 +58,7 @@ class OrderItemResponse(BaseModel):
 
 class OrderResponse(BaseModel):
     """Order response."""
+
     id: str
     order_number: str
     status: str
@@ -69,6 +73,7 @@ class OrderResponse(BaseModel):
 
 class CreateOrderResponse(BaseModel):
     """Response after creating order."""
+
     success: bool
     order: OrderResponse
     payment_url: str | None = None
@@ -77,11 +82,13 @@ class CreateOrderResponse(BaseModel):
 
 class WebhookResponse(BaseModel):
     """Webhook processing response."""
+
     success: bool
     message: str
 
 
 # ==================== HELPERS ====================
+
 
 def generate_order_number() -> str:
     """Generate unique order number."""
@@ -90,11 +97,7 @@ def generate_order_number() -> str:
     return f"SW-{timestamp}-{random_suffix}"
 
 
-async def activate_subscription(
-    db: AsyncSession,
-    user: User,
-    order: Order
-):
+async def activate_subscription(db: AsyncSession, user: User, order: Order):
     """
     Activate subscriptions from paid order.
 
@@ -111,9 +114,7 @@ async def activate_subscription(
         billing_period = item.get("billing_period", "monthly")
 
         # Find product and plan
-        result = await db.execute(
-            select(SaaSProduct).where(SaaSProduct.code == product_code)
-        )
+        result = await db.execute(select(SaaSProduct).where(SaaSProduct.code == product_code))
         product = result.scalar_one_or_none()
 
         if not product:
@@ -121,10 +122,7 @@ async def activate_subscription(
             continue
 
         result = await db.execute(
-            select(SaaSProductPlan).where(
-                SaaSProductPlan.product_id == product.id,
-                SaaSProductPlan.code == plan_code
-            )
+            select(SaaSProductPlan).where(SaaSProductPlan.product_id == product.id, SaaSProductPlan.code == plan_code)
         )
         plan = result.scalar_one_or_none()
 
@@ -142,8 +140,7 @@ async def activate_subscription(
         # Check if subscription exists
         result = await db.execute(
             select(UserSubscription).where(
-                UserSubscription.user_id == user.id,
-                UserSubscription.product_id == product.id
+                UserSubscription.user_id == user.id, UserSubscription.product_id == product.id
             )
         )
         subscription = result.scalar_one_or_none()
@@ -186,13 +183,10 @@ async def send_order_confirmation_email(user: User, order: Order):
             to_email=user.email or order.customer_email,
             order_number=order.order_number,
             items=[
-                {
-                    "name": f"{item.get('product_name')} - {item.get('plan_name')}",
-                    "price": item.get("price_rub")
-                }
+                {"name": f"{item.get('product_name')} - {item.get('plan_name')}", "price": item.get("price_rub")}
                 for item in order.items
             ],
-            total_rub=float(order.total_rub)
+            total_rub=float(order.total_rub),
         )
     except Exception as e:
         logger.error(f"Failed to send order confirmation email: {e}")
@@ -200,12 +194,13 @@ async def send_order_confirmation_email(user: User, order: Order):
 
 # ==================== ROUTES ====================
 
+
 @router.post("/create-order", response_model=CreateOrderResponse)
 async def create_order(
     request: CreateOrderRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_async_session),
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
 ):
     """
     Create order from cart and initiate payment.
@@ -213,16 +208,11 @@ async def create_order(
     Returns order info and payment URL for redirect.
     """
     # Get user's cart
-    result = await db.execute(
-        select(Cart).where(Cart.user_id == user.id)
-    )
+    result = await db.execute(select(Cart).where(Cart.user_id == user.id))
     cart = result.scalar_one_or_none()
 
     if not cart or not cart.items:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Корзина пуста"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Корзина пуста")
 
     # Calculate totals
     subtotal = Decimal("0")
@@ -233,12 +223,7 @@ async def create_order(
     promo_code = cart.promo_code
 
     if promo_code:
-        result = await db.execute(
-            select(PromoCode).where(
-                PromoCode.code == promo_code,
-                PromoCode.is_active
-            )
-        )
+        result = await db.execute(select(PromoCode).where(PromoCode.code == promo_code, PromoCode.is_active))
         promo = result.scalar_one_or_none()
 
         if promo and promo.is_valid:
@@ -278,7 +263,7 @@ async def create_order(
         description=f"SalesWhisper - Заказ {order_number}",
         customer_email=user.email or order.customer_email,
         customer_phone=user.phone,
-        return_url=request.return_url
+        return_url=request.return_url,
     )
 
     if not payment_result.success:
@@ -287,8 +272,7 @@ async def create_order(
         await db.commit()
 
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка создания платежа: {payment_result.error}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Ошибка создания платежа: {payment_result.error}"
         )
 
     # Create payment record
@@ -306,9 +290,7 @@ async def create_order(
 
     # Increment promo code usage if applied
     if promo_code:
-        result = await db.execute(
-            select(PromoCode).where(PromoCode.code == promo_code)
-        )
+        result = await db.execute(select(PromoCode).where(PromoCode.code == promo_code))
         promo = result.scalar_one_or_none()
         if promo:
             promo.current_uses += 1
@@ -330,7 +312,7 @@ async def create_order(
             plan_code=item.get("plan_code", ""),
             plan_name=item.get("plan_name", ""),
             price_rub=float(item.get("price_rub", 0)),
-            billing_period=item.get("billing_period", "monthly")
+            billing_period=item.get("billing_period", "monthly"),
         )
         for item in order.items
     ]
@@ -347,35 +329,25 @@ async def create_order(
             promo_code=order.promo_code,
             total_rub=float(order.total_rub),
             payment_url=payment_result.payment_url,
-            created_at=order.created_at
+            created_at=order.created_at,
         ),
         payment_url=payment_result.payment_url,
-        message="Заказ создан. Перенаправляем на страницу оплаты..."
+        message="Заказ создан. Перенаправляем на страницу оплаты...",
     )
 
 
 @router.get("/order/{order_id}")
 async def get_order(
-    order_id: str,
-    db: AsyncSession = Depends(get_db_async_session),
-    user: User = Depends(get_current_user)
+    order_id: str, db: AsyncSession = Depends(get_db_async_session), user: User = Depends(get_current_user)
 ):
     """
     Get order details.
     """
-    result = await db.execute(
-        select(Order).where(
-            Order.id == order_id,
-            Order.user_id == user.id
-        )
-    )
+    result = await db.execute(select(Order).where(Order.id == order_id, Order.user_id == user.id))
     order = result.scalar_one_or_none()
 
     if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Заказ не найден"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
 
     response_items = [
         OrderItemResponse(
@@ -384,7 +356,7 @@ async def get_order(
             plan_code=item.get("plan_code", ""),
             plan_name=item.get("plan_name", ""),
             price_rub=float(item.get("price_rub", 0)),
-            billing_period=item.get("billing_period", "monthly")
+            billing_period=item.get("billing_period", "monthly"),
         )
         for item in order.items
     ]
@@ -399,24 +371,16 @@ async def get_order(
         promo_code=order.promo_code,
         total_rub=float(order.total_rub),
         payment_url=None,
-        created_at=order.created_at
+        created_at=order.created_at,
     )
 
 
 @router.get("/orders")
-async def list_orders(
-    db: AsyncSession = Depends(get_db_async_session),
-    user: User = Depends(get_current_user)
-):
+async def list_orders(db: AsyncSession = Depends(get_db_async_session), user: User = Depends(get_current_user)):
     """
     List user's orders.
     """
-    result = await db.execute(
-        select(Order)
-        .where(Order.user_id == user.id)
-        .order_by(Order.created_at.desc())
-        .limit(50)
-    )
+    result = await db.execute(select(Order).where(Order.user_id == user.id).order_by(Order.created_at.desc()).limit(50))
     orders = result.scalars().all()
 
     return {
@@ -427,7 +391,7 @@ async def list_orders(
                 "status": order.status.value,
                 "total_rub": float(order.total_rub),
                 "created_at": order.created_at,
-                "paid_at": order.paid_at
+                "paid_at": order.paid_at,
             }
             for order in orders
         ]
@@ -436,9 +400,7 @@ async def list_orders(
 
 @router.post("/webhook/tochka", response_model=WebhookResponse)
 async def tochka_webhook(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db_async_session)
+    request: Request, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db_async_session)
 ):
     """
     Handle payment webhook from Tochka Bank.
@@ -448,10 +410,7 @@ async def tochka_webhook(
     try:
         data = await request.json()
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid JSON payload"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
     logger.info(f"Received Tochka webhook: {data}")
 
@@ -461,10 +420,7 @@ async def tochka_webhook(
 
     if not webhook_info.get("verified"):
         logger.warning(f"Webhook verification failed: {webhook_info}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Webhook verification failed"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Webhook verification failed")
 
     # Find order
     order_id = webhook_info.get("order_id")
@@ -472,9 +428,7 @@ async def tochka_webhook(
         logger.error("Webhook missing order_id")
         return WebhookResponse(success=False, message="Missing order_id")
 
-    result = await db.execute(
-        select(Order).where(Order.id == order_id)
-    )
+    result = await db.execute(select(Order).where(Order.id == order_id))
     order = result.scalar_one_or_none()
 
     if not order:
@@ -482,9 +436,7 @@ async def tochka_webhook(
         return WebhookResponse(success=False, message="Order not found")
 
     # Find payment
-    result = await db.execute(
-        select(Payment).where(Payment.order_id == order.id)
-    )
+    result = await db.execute(select(Payment).where(Payment.order_id == order.id))
     payment = result.scalar_one_or_none()
 
     # Process based on status
@@ -502,9 +454,7 @@ async def tochka_webhook(
         await db.commit()
 
         # Get user for subscription activation
-        result = await db.execute(
-            select(User).where(User.id == order.user_id)
-        )
+        result = await db.execute(select(User).where(User.id == order.user_id))
         user = result.scalar_one_or_none()
 
         if user:
@@ -544,7 +494,7 @@ async def simulate_payment(
     order_id: str,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db_async_session),
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
 ):
     """
     Simulate successful payment (for testing/development).
@@ -552,38 +502,24 @@ async def simulate_payment(
     Only works when Tochka credentials are not configured.
     """
     if settings.payment.merchant_id and settings.payment.secret_key.get_secret_value():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Payment simulation disabled in production"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Payment simulation disabled in production")
 
-    result = await db.execute(
-        select(Order).where(
-            Order.id == order_id,
-            Order.user_id == user.id
-        )
-    )
+    result = await db.execute(select(Order).where(Order.id == order_id, Order.user_id == user.id))
     order = result.scalar_one_or_none()
 
     if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Заказ не найден"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
 
     if order.status != OrderStatus.AWAITING_PAYMENT:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Неверный статус заказа: {order.status.value}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Неверный статус заказа: {order.status.value}"
         )
 
     # Simulate payment completion
     order.status = OrderStatus.PAID
     order.paid_at = datetime.utcnow()
 
-    result = await db.execute(
-        select(Payment).where(Payment.order_id == order.id)
-    )
+    result = await db.execute(select(Payment).where(Payment.order_id == order.id))
     payment = result.scalar_one_or_none()
 
     if payment:

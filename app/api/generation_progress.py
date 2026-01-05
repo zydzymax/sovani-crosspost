@@ -1,6 +1,7 @@
 """
 Generation Progress API - tracks content generation checklist and progress.
 """
+
 import uuid
 from datetime import datetime
 from typing import Any
@@ -18,8 +19,10 @@ router = APIRouter(prefix="/progress", tags=["generation-progress"])
 
 # === Response Models ===
 
+
 class StepProgress(BaseModel):
     """Individual step progress."""
+
     status: str
     started_at: str | None = None
     completed_at: str | None = None
@@ -30,6 +33,7 @@ class StepProgress(BaseModel):
 
 class PostProgress(BaseModel):
     """Progress for a single post."""
+
     id: str
     post_index: int
     post_date: str
@@ -45,6 +49,7 @@ class PostProgress(BaseModel):
 
 class PlanProgressSummary(BaseModel):
     """Summary of progress for entire content plan."""
+
     content_plan_id: str
     total_posts: int
     completed_posts: int
@@ -56,6 +61,7 @@ class PlanProgressSummary(BaseModel):
 
 class UpdateStepRequest(BaseModel):
     """Request to update a step status."""
+
     step: str = Field(..., description="Step name: caption_generated, image_generated, etc.")
     status: str = Field(..., description="Status: pending, in_progress, completed, failed, skipped")
     result: Any | None = Field(None, description="Step result data")
@@ -65,16 +71,18 @@ class UpdateStepRequest(BaseModel):
 
 class InitProgressRequest(BaseModel):
     """Request to initialize progress tracking for a plan."""
+
     content_plan_id: str
 
 
 # === Endpoints ===
 
+
 @router.post("/init", response_model=PlanProgressSummary)
 async def initialize_progress(
     request: InitProgressRequest,
     db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Initialize progress tracking for all posts in a content plan."""
     try:
@@ -92,14 +100,11 @@ async def initialize_progress(
 
     # Check if progress already initialized
     result = await db.execute(
-        select(PostGenerationProgress)
-        .where(PostGenerationProgress.content_plan_id == plan_id)
-        .limit(1)
+        select(PostGenerationProgress).where(PostGenerationProgress.content_plan_id == plan_id).limit(1)
     )
     if result.scalars().first():
         raise HTTPException(
-            status_code=400,
-            detail="Progress already initialized. Use GET /progress/{plan_id} to view."
+            status_code=400, detail="Progress already initialized. Use GET /progress/{plan_id} to view."
         )
 
     # Create progress entries for each post
@@ -139,7 +144,7 @@ async def initialize_progress(
             post_topic=post.get("topic", "")[:500],
             steps=initial_steps,
             overall_status=GenerationStepStatus.PENDING,
-            progress_percent=0
+            progress_percent=0,
         )
         progress_entries.append(progress)
         db.add(progress)
@@ -155,9 +160,7 @@ async def initialize_progress(
 
 @router.get("/{plan_id}", response_model=PlanProgressSummary)
 async def get_plan_progress(
-    plan_id: str,
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    plan_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Get progress for all posts in a content plan."""
     try:
@@ -181,10 +184,7 @@ async def get_plan_progress(
     entries = result.scalars().all()
 
     if not entries:
-        raise HTTPException(
-            status_code=404,
-            detail="Progress not initialized. Use POST /progress/init first."
-        )
+        raise HTTPException(status_code=404, detail="Progress not initialized. Use POST /progress/init first.")
 
     return _build_plan_summary(plan_id, entries)
 
@@ -194,7 +194,7 @@ async def get_post_progress(
     plan_id: str,
     post_index: int,
     db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get progress for a specific post."""
     try:
@@ -229,7 +229,7 @@ async def update_step(
     post_index: int,
     request: UpdateStepRequest,
     db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Update a generation step status for a post."""
     try:
@@ -247,10 +247,7 @@ async def update_step(
     # Validate status
     valid_statuses = ["pending", "in_progress", "completed", "failed", "skipped"]
     if request.status not in valid_statuses:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid status. Must be one of: {valid_statuses}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
 
     # Get progress entry
     result = await db.execute(
@@ -298,9 +295,7 @@ async def update_step(
 
 @router.post("/{plan_id}/reset")
 async def reset_progress(
-    plan_id: str,
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    plan_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Reset progress for a content plan (delete and reinitialize)."""
     try:
@@ -316,10 +311,7 @@ async def reset_progress(
         raise HTTPException(status_code=403, detail="Access denied")
 
     # Delete existing progress
-    result = await db.execute(
-        select(PostGenerationProgress)
-        .where(PostGenerationProgress.content_plan_id == pid)
-    )
+    result = await db.execute(select(PostGenerationProgress).where(PostGenerationProgress.content_plan_id == pid))
     entries = result.scalars().all()
     for entry in entries:
         await db.delete(entry)
@@ -331,6 +323,7 @@ async def reset_progress(
 
 # === Helper Functions ===
 
+
 def _to_post_progress(p: PostGenerationProgress) -> PostProgress:
     """Convert DB model to response model."""
     steps_response = {}
@@ -341,7 +334,7 @@ def _to_post_progress(p: PostGenerationProgress) -> PostProgress:
             completed_at=step_data.get("completed_at"),
             result=step_data.get("result"),
             error=step_data.get("error"),
-            provider=step_data.get("provider")
+            provider=step_data.get("provider"),
         )
 
     return PostProgress(
@@ -355,7 +348,7 @@ def _to_post_progress(p: PostGenerationProgress) -> PostProgress:
         last_error=p.last_error,
         created_at=p.created_at.isoformat() if p.created_at else "",
         updated_at=p.updated_at.isoformat() if p.updated_at else None,
-        completed_at=p.completed_at.isoformat() if p.completed_at else None
+        completed_at=p.completed_at.isoformat() if p.completed_at else None,
     )
 
 
@@ -377,7 +370,7 @@ def _build_plan_summary(plan_id: str, entries: list[PostGenerationProgress]) -> 
         in_progress_posts=in_progress,
         failed_posts=failed,
         overall_progress_percent=overall_progress,
-        posts=posts
+        posts=posts,
     )
 
 
@@ -398,7 +391,7 @@ def _recalculate_progress(progress: PostGenerationProgress):
         "post_scheduled": 20,
         "post_published": 10,
         "content_reviewed": 5,
-        "compliance_checked": 5
+        "compliance_checked": 5,
     }
 
     total_weight = 0

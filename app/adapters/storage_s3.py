@@ -36,12 +36,7 @@ class S3Storage:
                 secure = parsed.scheme == "https"
                 endpoint = parsed.netloc or parsed.path
 
-                self._client = Minio(
-                    endpoint,
-                    access_key=self.access_key,
-                    secret_key=self.secret_key,
-                    secure=secure
-                )
+                self._client = Minio(endpoint, access_key=self.access_key, secret_key=self.secret_key, secure=secure)
 
                 # Ensure bucket exists
                 if not self._client.bucket_exists(self.bucket):
@@ -76,8 +71,7 @@ class S3Storage:
         try:
             # Upload file
             await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: client.fput_object(self.bucket, s3_key, local_path)
+                None, lambda: client.fput_object(self.bucket, s3_key, local_path)
             )
 
             url = f"{self.endpoint}/{self.bucket}/{s3_key}"
@@ -111,8 +105,7 @@ class S3Storage:
 
             # Download file
             await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: client.fget_object(self.bucket, s3_key, local_path)
+                None, lambda: client.fget_object(self.bucket, s3_key, local_path)
             )
 
             logger.info(f"Downloaded {s3_key} to {local_path}")
@@ -129,10 +122,7 @@ class S3Storage:
             return False
 
         try:
-            await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: client.remove_object(self.bucket, s3_key)
-            )
+            await asyncio.get_event_loop().run_in_executor(None, lambda: client.remove_object(self.bucket, s3_key))
             logger.info(f"Deleted {s3_key}")
             return True
         except Exception as e:
@@ -147,11 +137,9 @@ class S3Storage:
 
         try:
             from datetime import timedelta
+
             url = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: client.presigned_get_object(
-                    self.bucket, s3_key, expires=timedelta(hours=expires_hours)
-                )
+                None, lambda: client.presigned_get_object(self.bucket, s3_key, expires=timedelta(hours=expires_hours))
             )
             return url
         except Exception as e:

@@ -20,26 +20,31 @@ logger = get_logger("services.video_gen_runway")
 
 class RunwayError(Exception):
     """Base exception for Runway ML API errors."""
+
     pass
 
 
 class RunwayRateLimitError(RunwayError):
     """Rate limit exceeded."""
+
     pass
 
 
 class RunwayGenerationError(RunwayError):
     """Video generation failed."""
+
     pass
 
 
 class RunwayAuthError(RunwayError):
     """Authentication failed."""
+
     pass
 
 
 class VideoStatus(str, Enum):
     """Runway video generation status."""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -48,12 +53,14 @@ class VideoStatus(str, Enum):
 
 class VideoModel(str, Enum):
     """Runway video models."""
+
     GEN3_ALPHA = "gen3a_turbo"  # Gen-3 Alpha Turbo (faster)
-    GEN3_ALPHA_FULL = "gen3a"   # Gen-3 Alpha (higher quality)
+    GEN3_ALPHA_FULL = "gen3a"  # Gen-3 Alpha (higher quality)
 
 
 class AspectRatio(str, Enum):
     """Video aspect ratios."""
+
     LANDSCAPE = "16:9"
     PORTRAIT = "9:16"
     SQUARE = "1:1"
@@ -62,6 +69,7 @@ class AspectRatio(str, Enum):
 @dataclass
 class RunwayVideoResult:
     """Result of Runway video generation."""
+
     success: bool
     video_url: str | None = None
     thumbnail_url: str | None = None
@@ -89,22 +97,23 @@ class RunwayService:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "X-Runway-Version": "2024-11-01",
-                "Content-Type": "application/json"
-            }
+                "Content-Type": "application/json",
+            },
         )
 
         logger.info("Runway ML service initialized")
 
     def _get_api_key(self) -> str:
         """Get API key from settings or environment."""
-        if hasattr(settings, 'runway') and hasattr(settings.runway, 'api_key'):
+        if hasattr(settings, "runway") and hasattr(settings.runway, "api_key"):
             key = settings.runway.api_key
-            if hasattr(key, 'get_secret_value'):
+            if hasattr(key, "get_secret_value"):
                 return key.get_secret_value()
             return str(key)
 
         import os
-        key = os.getenv('RUNWAY_API_KEY')
+
+        key = os.getenv("RUNWAY_API_KEY")
         if key:
             return key
 
@@ -112,14 +121,15 @@ class RunwayService:
 
     def _get_api_secret(self) -> str | None:
         """Get API secret from settings or environment."""
-        if hasattr(settings, 'runway') and hasattr(settings.runway, 'api_secret'):
+        if hasattr(settings, "runway") and hasattr(settings.runway, "api_secret"):
             secret = settings.runway.api_secret
-            if hasattr(secret, 'get_secret_value'):
+            if hasattr(secret, "get_secret_value"):
                 return secret.get_secret_value()
             return str(secret) if secret else None
 
         import os
-        return os.getenv('RUNWAY_API_SECRET')
+
+        return os.getenv("RUNWAY_API_SECRET")
 
     async def generate_video_from_text(
         self,
@@ -127,7 +137,7 @@ class RunwayService:
         duration: int = 5,
         model: VideoModel = VideoModel.GEN3_ALPHA,
         aspect_ratio: AspectRatio = AspectRatio.LANDSCAPE,
-        seed: int = None
+        seed: int = None,
     ) -> RunwayVideoResult:
         """
         Generate video from text prompt.
@@ -149,17 +159,13 @@ class RunwayService:
             prompt_length=len(prompt),
             duration=duration,
             model=model.value,
-            aspect_ratio=aspect_ratio.value
+            aspect_ratio=aspect_ratio.value,
         )
 
         try:
             # Submit generation task
             task_id = await self._submit_text_to_video(
-                prompt=prompt,
-                duration=duration,
-                model=model,
-                aspect_ratio=aspect_ratio,
-                seed=seed
+                prompt=prompt, duration=duration, model=model, aspect_ratio=aspect_ratio, seed=seed
             )
 
             # Poll for completion
@@ -171,17 +177,14 @@ class RunwayService:
                 "Runway video generation completed",
                 task_id=task_id,
                 processing_time=processing_time,
-                success=result.success
+                success=result.success,
             )
 
             return result
 
         except Exception as e:
             logger.error(f"Runway video generation failed: {e}", exc_info=True)
-            return RunwayVideoResult(
-                success=False,
-                error=str(e)
-            )
+            return RunwayVideoResult(success=False, error=str(e))
 
     async def generate_video_from_image(
         self,
@@ -189,7 +192,7 @@ class RunwayService:
         prompt: str = "",
         duration: int = 5,
         model: VideoModel = VideoModel.GEN3_ALPHA,
-        seed: int = None
+        seed: int = None,
     ) -> RunwayVideoResult:
         """
         Generate video from image (image-to-video).
@@ -210,17 +213,13 @@ class RunwayService:
             "Starting Runway image-to-video generation",
             image_url=image_url[:50] + "...",
             duration=duration,
-            model=model.value
+            model=model.value,
         )
 
         try:
             # Submit generation task
             task_id = await self._submit_image_to_video(
-                image_url=image_url,
-                prompt=prompt,
-                duration=duration,
-                model=model,
-                seed=seed
+                image_url=image_url, prompt=prompt, duration=duration, model=model, seed=seed
             )
 
             # Poll for completion
@@ -232,30 +231,22 @@ class RunwayService:
                 "Runway image-to-video completed",
                 task_id=task_id,
                 processing_time=processing_time,
-                success=result.success
+                success=result.success,
             )
 
             return result
 
         except Exception as e:
             logger.error(f"Runway image-to-video failed: {e}", exc_info=True)
-            return RunwayVideoResult(
-                success=False,
-                error=str(e)
-            )
+            return RunwayVideoResult(success=False, error=str(e))
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, RunwayRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, RunwayRateLimitError)),
     )
     async def _submit_text_to_video(
-        self,
-        prompt: str,
-        duration: int,
-        model: VideoModel,
-        aspect_ratio: AspectRatio,
-        seed: int = None
+        self, prompt: str, duration: int, model: VideoModel, aspect_ratio: AspectRatio, seed: int = None
     ) -> str:
         """Submit text-to-video generation task."""
         request_data = {
@@ -263,16 +254,13 @@ class RunwayService:
             "promptText": prompt,
             "duration": duration,
             "ratio": aspect_ratio.value,
-            "watermark": False
+            "watermark": False,
         }
 
         if seed is not None:
             request_data["seed"] = seed
 
-        response = await self.http_client.post(
-            f"{self.API_BASE}/text-to-video",
-            json=request_data
-        )
+        response = await self.http_client.post(f"{self.API_BASE}/text-to-video", json=request_data)
 
         await self._handle_response_errors(response)
 
@@ -288,23 +276,13 @@ class RunwayService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, RunwayRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, RunwayRateLimitError)),
     )
     async def _submit_image_to_video(
-        self,
-        image_url: str,
-        prompt: str,
-        duration: int,
-        model: VideoModel,
-        seed: int = None
+        self, image_url: str, prompt: str, duration: int, model: VideoModel, seed: int = None
     ) -> str:
         """Submit image-to-video generation task."""
-        request_data = {
-            "model": model.value,
-            "promptImage": image_url,
-            "duration": duration,
-            "watermark": False
-        }
+        request_data = {"model": model.value, "promptImage": image_url, "duration": duration, "watermark": False}
 
         if prompt:
             request_data["promptText"] = prompt
@@ -312,10 +290,7 @@ class RunwayService:
         if seed is not None:
             request_data["seed"] = seed
 
-        response = await self.http_client.post(
-            f"{self.API_BASE}/image-to-video",
-            json=request_data
-        )
+        response = await self.http_client.post(f"{self.API_BASE}/image-to-video", json=request_data)
 
         await self._handle_response_errors(response)
 
@@ -343,18 +318,10 @@ class RunwayService:
 
             if task_status in ["failed", "error"]:
                 error_msg = status.get("error", status.get("message", "Unknown error"))
-                return RunwayVideoResult(
-                    success=False,
-                    task_id=task_id,
-                    error=error_msg
-                )
+                return RunwayVideoResult(success=False, task_id=task_id, error=error_msg)
 
             if task_status == "cancelled":
-                return RunwayVideoResult(
-                    success=False,
-                    task_id=task_id,
-                    error="Task was cancelled"
-                )
+                return RunwayVideoResult(success=False, task_id=task_id, error="Task was cancelled")
 
             # Log progress
             progress = status.get("progress", 0)
@@ -363,22 +330,16 @@ class RunwayService:
 
             await asyncio.sleep(poll_interval)
 
-        return RunwayVideoResult(
-            success=False,
-            task_id=task_id,
-            error=f"Generation timed out after {max_wait} seconds"
-        )
+        return RunwayVideoResult(success=False, task_id=task_id, error=f"Generation timed out after {max_wait} seconds")
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type(httpx.RequestError)
+        retry=retry_if_exception_type(httpx.RequestError),
     )
     async def _get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get task status from API."""
-        response = await self.http_client.get(
-            f"{self.API_BASE}/tasks/{task_id}"
-        )
+        response = await self.http_client.get(f"{self.API_BASE}/tasks/{task_id}")
 
         await self._handle_response_errors(response)
 
@@ -410,7 +371,7 @@ class RunwayService:
             thumbnail_url=thumbnail_url,
             task_id=status.get("id"),
             duration_seconds=duration,
-            cost_estimate=cost
+            cost_estimate=cost,
         )
 
     async def _handle_response_errors(self, response: httpx.Response):
@@ -450,9 +411,7 @@ class RunwayService:
     async def cancel_task(self, task_id: str) -> bool:
         """Cancel a pending or processing task."""
         try:
-            response = await self.http_client.post(
-                f"{self.API_BASE}/tasks/{task_id}/cancel"
-            )
+            response = await self.http_client.post(f"{self.API_BASE}/tasks/{task_id}/cancel")
 
             if response.status_code in [200, 204]:
                 logger.info(f"Task cancelled: {task_id}")
@@ -472,10 +431,7 @@ class RunwayService:
 
 # Convenience functions
 async def generate_runway_video(
-    prompt: str,
-    duration: int = 5,
-    aspect_ratio: str = "16:9",
-    api_key: str = None
+    prompt: str, duration: int = 5, aspect_ratio: str = "16:9", api_key: str = None
 ) -> RunwayVideoResult:
     """Generate video from text prompt using Runway."""
     service = RunwayService(api_key)
@@ -487,10 +443,7 @@ async def generate_runway_video(
 
 
 async def generate_runway_video_from_image(
-    image_url: str,
-    prompt: str = "",
-    duration: int = 5,
-    api_key: str = None
+    image_url: str, prompt: str = "", duration: int = 5, api_key: str = None
 ) -> RunwayVideoResult:
     """Generate video from image using Runway."""
     service = RunwayService(api_key)

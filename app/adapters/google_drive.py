@@ -19,6 +19,7 @@ logger = get_logger("adapters.google_drive")
 
 class MediaType(Enum):
     """Media file types."""
+
     VIDEO = "video"
     IMAGE = "image"
     UNKNOWN = "unknown"
@@ -27,6 +28,7 @@ class MediaType(Enum):
 @dataclass
 class CloudFile:
     """Represents a file in cloud storage."""
+
     id: str
     name: str
     path: str
@@ -41,6 +43,7 @@ class CloudFile:
 @dataclass
 class SyncResult:
     """Result of sync operation."""
+
     success: bool
     files_found: int
     files_downloaded: int
@@ -61,13 +64,14 @@ class GoogleDriveAdapter:
 
     # Supported MIME types
     VIDEO_MIME_TYPES = [
-        'video/mp4', 'video/quicktime', 'video/x-msvideo',
-        'video/x-matroska', 'video/webm', 'video/mpeg'
+        "video/mp4",
+        "video/quicktime",
+        "video/x-msvideo",
+        "video/x-matroska",
+        "video/webm",
+        "video/mpeg",
     ]
-    IMAGE_MIME_TYPES = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        'image/bmp', 'image/tiff'
-    ]
+    IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/bmp", "image/tiff"]
 
     def __init__(self):
         """Initialize Google Drive adapter."""
@@ -85,13 +89,13 @@ class GoogleDriveAdapter:
 
             if credentials:
                 creds = Credentials(
-                    token=credentials.get('access_token'),
-                    refresh_token=credentials.get('refresh_token'),
-                    token_uri='https://oauth2.googleapis.com/token',
+                    token=credentials.get("access_token"),
+                    refresh_token=credentials.get("refresh_token"),
+                    token_uri="https://oauth2.googleapis.com/token",
                     client_id=self.client_id,
-                    client_secret=self.client_secret
+                    client_secret=self.client_secret,
                 )
-                return build('drive', 'v3', credentials=creds)
+                return build("drive", "v3", credentials=creds)
 
             return None
 
@@ -111,10 +115,7 @@ class GoogleDriveAdapter:
         return MediaType.UNKNOWN
 
     async def list_folder_contents(
-        self,
-        folder_id: str,
-        credentials: dict[str, Any],
-        media_types: list[str] = None
+        self, folder_id: str, credentials: dict[str, Any], media_types: list[str] = None
     ) -> list[CloudFile]:
         """
         List all media files in a Google Drive folder.
@@ -138,45 +139,45 @@ class GoogleDriveAdapter:
 
             # Build MIME type query
             mime_queries = []
-            if media_types is None or 'video' in media_types:
+            if media_types is None or "video" in media_types:
                 mime_queries.extend([f"mimeType='{mt}'" for mt in self.VIDEO_MIME_TYPES])
-            if media_types is None or 'image' in media_types:
+            if media_types is None or "image" in media_types:
                 mime_queries.extend([f"mimeType='{mt}'" for mt in self.IMAGE_MIME_TYPES])
 
-            mime_query = ' or '.join(mime_queries)
+            mime_query = " or ".join(mime_queries)
             query = f"'{folder_id}' in parents and ({mime_query}) and trashed=false"
 
             while True:
                 # Fetch files
                 response = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda pt=page_token: service.files().list(
+                    lambda pt=page_token: service.files()
+                    .list(
                         q=query,
-                        spaces='drive',
-                        fields='nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink)',
+                        spaces="drive",
+                        fields="nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink)",
                         pageToken=pt,
-                        pageSize=100
-                    ).execute()
+                        pageSize=100,
+                    )
+                    .execute(),
                 )
 
-                for file in response.get('files', []):
-                    media_type = self._classify_mime_type(file.get('mimeType', ''))
+                for file in response.get("files", []):
+                    media_type = self._classify_mime_type(file.get("mimeType", ""))
 
                     cloud_file = CloudFile(
-                        id=file['id'],
-                        name=file['name'],
+                        id=file["id"],
+                        name=file["name"],
                         path=f"/{file['name']}",
-                        size=int(file.get('size', 0)),
-                        mime_type=file.get('mimeType', ''),
+                        size=int(file.get("size", 0)),
+                        mime_type=file.get("mimeType", ""),
                         media_type=media_type,
-                        modified_at=datetime.fromisoformat(
-                            file.get('modifiedTime', '').replace('Z', '+00:00')
-                        ),
-                        thumbnail_url=file.get('thumbnailLink')
+                        modified_at=datetime.fromisoformat(file.get("modifiedTime", "").replace("Z", "+00:00")),
+                        thumbnail_url=file.get("thumbnailLink"),
                     )
                     files.append(cloud_file)
 
-                page_token = response.get('nextPageToken')
+                page_token = response.get("nextPageToken")
                 if not page_token:
                     break
 
@@ -187,12 +188,7 @@ class GoogleDriveAdapter:
             logger.error(f"Failed to list folder {folder_id}: {e}")
             return []
 
-    async def download_file(
-        self,
-        file_id: str,
-        credentials: dict[str, Any],
-        output_path: str
-    ) -> bool:
+    async def download_file(self, file_id: str, credentials: dict[str, Any], output_path: str) -> bool:
         """
         Download a file from Google Drive.
 
@@ -215,15 +211,13 @@ class GoogleDriveAdapter:
             request = service.files().get_media(fileId=file_id)
 
             # Download file
-            os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+            os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
 
-            with open(output_path, 'wb') as f:
+            with open(output_path, "wb") as f:
                 downloader = MediaIoBaseDownload(f, request)
                 done = False
                 while not done:
-                    status, done = await asyncio.get_event_loop().run_in_executor(
-                        None, downloader.next_chunk
-                    )
+                    status, done = await asyncio.get_event_loop().run_in_executor(None, downloader.next_chunk)
                     if status:
                         logger.debug(f"Download progress: {int(status.progress() * 100)}%")
 
@@ -235,11 +229,7 @@ class GoogleDriveAdapter:
             return False
 
     async def sync_folder(
-        self,
-        folder_id: str,
-        credentials: dict[str, Any],
-        output_dir: str,
-        media_types: list[str] = None
+        self, folder_id: str, credentials: dict[str, Any], output_dir: str, media_types: list[str] = None
     ) -> SyncResult:
         """
         Sync all media from a Google Drive folder.
@@ -261,17 +251,12 @@ class GoogleDriveAdapter:
 
         if not files:
             return SyncResult(
-                success=True,
-                files_found=0,
-                files_downloaded=0,
-                files_failed=0,
-                errors=[],
-                downloaded_files=[]
+                success=True, files_found=0, files_downloaded=0, files_failed=0, errors=[], downloaded_files=[]
             )
 
         # Create output directories
-        videos_dir = os.path.join(output_dir, 'videos')
-        photos_dir = os.path.join(output_dir, 'photos')
+        videos_dir = os.path.join(output_dir, "videos")
+        photos_dir = os.path.join(output_dir, "photos")
         os.makedirs(videos_dir, exist_ok=True)
         os.makedirs(photos_dir, exist_ok=True)
 
@@ -316,14 +301,10 @@ class GoogleDriveAdapter:
             files_downloaded=files_downloaded,
             files_failed=files_failed,
             errors=errors,
-            downloaded_files=downloaded
+            downloaded_files=downloaded,
         )
 
-    async def get_folder_info(
-        self,
-        folder_id: str,
-        credentials: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    async def get_folder_info(self, folder_id: str, credentials: dict[str, Any]) -> dict[str, Any] | None:
         """Get information about a folder."""
         service = await self._get_service(credentials)
         if not service:
@@ -332,18 +313,17 @@ class GoogleDriveAdapter:
         try:
             folder = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: service.files().get(
-                    fileId=folder_id,
-                    fields='id, name, mimeType, owners, permissions'
-                ).execute()
+                lambda: service.files()
+                .get(fileId=folder_id, fields="id, name, mimeType, owners, permissions")
+                .execute(),
             )
 
             return {
-                'id': folder['id'],
-                'name': folder['name'],
-                'is_folder': folder.get('mimeType') == 'application/vnd.google-apps.folder',
-                'owners': folder.get('owners', []),
-                'permissions': folder.get('permissions', [])
+                "id": folder["id"],
+                "name": folder["name"],
+                "is_folder": folder.get("mimeType") == "application/vnd.google-apps.folder",
+                "owners": folder.get("owners", []),
+                "permissions": folder.get("permissions", []),
             }
 
         except Exception as e:
@@ -363,9 +343,9 @@ class GoogleDriveAdapter:
         import re
 
         patterns = [
-            r'drive\.google\.com/drive/(?:u/\d+/)?folders/([a-zA-Z0-9_-]+)',
-            r'drive\.google\.com/open\?id=([a-zA-Z0-9_-]+)',
-            r'drive\.google\.com/folderview\?id=([a-zA-Z0-9_-]+)',
+            r"drive\.google\.com/drive/(?:u/\d+/)?folders/([a-zA-Z0-9_-]+)",
+            r"drive\.google\.com/open\?id=([a-zA-Z0-9_-]+)",
+            r"drive\.google\.com/folderview\?id=([a-zA-Z0-9_-]+)",
         ]
 
         for pattern in patterns:
@@ -384,16 +364,16 @@ def get_google_oauth_url(redirect_uri: str, state: str = None) -> str:
     client_id = os.getenv("GOOGLE_CLIENT_ID")
 
     params = {
-        'client_id': client_id,
-        'redirect_uri': redirect_uri,
-        'response_type': 'code',
-        'scope': 'https://www.googleapis.com/auth/drive.readonly',
-        'access_type': 'offline',
-        'prompt': 'consent',
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "https://www.googleapis.com/auth/drive.readonly",
+        "access_type": "offline",
+        "prompt": "consent",
     }
 
     if state:
-        params['state'] = state
+        params["state"] = state
 
     return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
@@ -408,14 +388,14 @@ async def exchange_google_code(code: str, redirect_uri: str) -> dict[str, Any] |
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                'https://oauth2.googleapis.com/token',
+                "https://oauth2.googleapis.com/token",
                 data={
-                    'code': code,
-                    'client_id': client_id,
-                    'client_secret': client_secret,
-                    'redirect_uri': redirect_uri,
-                    'grant_type': 'authorization_code'
-                }
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code",
+                },
             )
 
             if response.status_code == 200:
@@ -439,13 +419,13 @@ async def refresh_google_token(refresh_token: str) -> dict[str, Any] | None:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                'https://oauth2.googleapis.com/token',
+                "https://oauth2.googleapis.com/token",
                 data={
-                    'refresh_token': refresh_token,
-                    'client_id': client_id,
-                    'client_secret': client_secret,
-                    'grant_type': 'refresh_token'
-                }
+                    "refresh_token": refresh_token,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "grant_type": "refresh_token",
+                },
             )
 
             if response.status_code == 200:

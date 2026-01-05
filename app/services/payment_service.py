@@ -20,11 +20,13 @@ logger = get_logger("services.payment")
 
 class PaymentError(Exception):
     """Payment processing error."""
+
     pass
 
 
 class PaymentResult(BaseModel):
     """Result of payment creation."""
+
     success: bool
     payment_id: str
     payment_url: str | None = None
@@ -77,7 +79,7 @@ class TochkaPaymentService:
         description: str,
         customer_email: str,
         customer_phone: str | None = None,
-        return_url: str | None = None
+        return_url: str | None = None,
     ) -> PaymentResult:
         """
         Create payment link in Tochka Bank.
@@ -99,7 +101,7 @@ class TochkaPaymentService:
                 success=True,
                 payment_id=f"mock_{uuid.uuid4().hex[:16]}",
                 payment_url=f"{self.success_url}?order_id={order_id}&mock=true",
-                status="mock"
+                status="mock",
             )
 
         try:
@@ -124,10 +126,7 @@ class TochkaPaymentService:
 
             # Create payment via API
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.api_url}/payments/create",
-                    json=payment_data
-                )
+                response = await client.post(f"{self.api_url}/payments/create", json=payment_data)
 
                 if response.status_code != 200:
                     logger.error(f"Tochka API error: {response.status_code} - {response.text}")
@@ -135,7 +134,7 @@ class TochkaPaymentService:
                         success=False,
                         payment_id="",
                         status="error",
-                        error=f"Payment provider error: {response.status_code}"
+                        error=f"Payment provider error: {response.status_code}",
                     )
 
                 result = response.json()
@@ -146,33 +145,20 @@ class TochkaPaymentService:
                         success=True,
                         payment_id=result.get("payment_id", ""),
                         payment_url=result.get("payment_url", ""),
-                        status="created"
+                        status="created",
                     )
                 else:
                     logger.error(f"Payment creation failed: {result}")
                     return PaymentResult(
-                        success=False,
-                        payment_id="",
-                        status="error",
-                        error=result.get("error", "Unknown error")
+                        success=False, payment_id="", status="error", error=result.get("error", "Unknown error")
                     )
 
         except httpx.TimeoutException:
             logger.error("Tochka API timeout")
-            return PaymentResult(
-                success=False,
-                payment_id="",
-                status="error",
-                error="Payment provider timeout"
-            )
+            return PaymentResult(success=False, payment_id="", status="error", error="Payment provider timeout")
         except Exception as e:
             logger.error(f"Payment creation error: {e}")
-            return PaymentResult(
-                success=False,
-                payment_id="",
-                status="error",
-                error=str(e)
-            )
+            return PaymentResult(success=False, payment_id="", status="error", error=str(e))
 
     async def check_payment_status(self, payment_id: str) -> dict[str, Any]:
         """
@@ -195,10 +181,7 @@ class TochkaPaymentService:
             check_data["signature"] = self._generate_signature(check_data)
 
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.api_url}/payments/status",
-                    json=check_data
-                )
+                response = await client.post(f"{self.api_url}/payments/status", json=check_data)
 
                 if response.status_code == 200:
                     return response.json()

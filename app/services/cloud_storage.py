@@ -40,12 +40,14 @@ logger = get_logger("services.cloud_storage")
 
 class CloudProvider(str, Enum):
     """Supported cloud storage providers."""
+
     GOOGLE_DRIVE = "google_drive"
     YANDEX_DISK = "yandex_disk"
 
 
 class ConnectionStatus(str, Enum):
     """Cloud connection status."""
+
     PENDING = "pending"  # Waiting for OAuth
     ACTIVE = "active"  # Connected and working
     ERROR = "error"  # Connection error
@@ -56,6 +58,7 @@ class ConnectionStatus(str, Enum):
 @dataclass
 class CloudConnection:
     """Represents a user's cloud storage connection."""
+
     id: str
     user_id: str
     provider: CloudProvider
@@ -75,6 +78,7 @@ class CloudConnection:
 @dataclass
 class CloudFolderInfo:
     """Information about a cloud folder."""
+
     provider: CloudProvider
     folder_id: str
     folder_name: str
@@ -101,20 +105,12 @@ class CloudStorageService:
         """Initialize cloud storage service."""
         self.google_drive = google_drive
         self.yandex_disk = yandex_disk
-        self._local_storage_path = os.getenv(
-            "CLOUD_SYNC_PATH",
-            "/app/data/cloud_media"
-        )
+        self._local_storage_path = os.getenv("CLOUD_SYNC_PATH", "/app/data/cloud_media")
         logger.info("CloudStorageService initialized")
 
     # ==================== OAuth URLs ====================
 
-    def get_oauth_url(
-        self,
-        provider: CloudProvider,
-        redirect_uri: str,
-        state: str | None = None
-    ) -> str:
+    def get_oauth_url(self, provider: CloudProvider, redirect_uri: str, state: str | None = None) -> str:
         """
         Get OAuth authorization URL for provider.
 
@@ -133,12 +129,7 @@ class CloudStorageService:
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
-    async def exchange_oauth_code(
-        self,
-        provider: CloudProvider,
-        code: str,
-        redirect_uri: str
-    ) -> dict[str, Any] | None:
+    async def exchange_oauth_code(self, provider: CloudProvider, code: str, redirect_uri: str) -> dict[str, Any] | None:
         """
         Exchange OAuth code for tokens.
 
@@ -157,11 +148,7 @@ class CloudStorageService:
         else:
             raise ValueError(f"Unsupported provider: {provider}")
 
-    async def refresh_token(
-        self,
-        provider: CloudProvider,
-        refresh_token: str
-    ) -> dict[str, Any] | None:
+    async def refresh_token(self, provider: CloudProvider, refresh_token: str) -> dict[str, Any] | None:
         """
         Refresh expired access token.
 
@@ -181,11 +168,7 @@ class CloudStorageService:
 
     # ==================== Folder Operations ====================
 
-    def extract_folder_id(
-        self,
-        provider: CloudProvider,
-        url_or_id: str
-    ) -> str | None:
+    def extract_folder_id(self, provider: CloudProvider, url_or_id: str) -> str | None:
         """
         Extract folder ID from sharing URL or return ID as-is.
 
@@ -198,12 +181,12 @@ class CloudStorageService:
         """
         if provider == CloudProvider.GOOGLE_DRIVE:
             # Check if it's a URL or direct ID
-            if 'drive.google.com' in url_or_id:
+            if "drive.google.com" in url_or_id:
                 return GoogleDriveAdapter.extract_folder_id_from_url(url_or_id)
             return url_or_id
         elif provider == CloudProvider.YANDEX_DISK:
             # Check if it's a public URL or path
-            if 'disk.yandex' in url_or_id:
+            if "disk.yandex" in url_or_id:
                 return YandexDiskAdapter.extract_public_key_from_url(url_or_id)
             return url_or_id
         else:
@@ -214,7 +197,7 @@ class CloudStorageService:
         provider: CloudProvider,
         folder_id: str,
         credentials: dict[str, Any] | None = None,
-        public_url: str | None = None
+        public_url: str | None = None,
     ) -> CloudFolderInfo | None:
         """
         Get information about a cloud folder.
@@ -235,67 +218,50 @@ class CloudStorageService:
                     return None
 
                 # Get folder info
-                folder_data = await self.google_drive.get_folder_info(
-                    folder_id, credentials
-                )
+                folder_data = await self.google_drive.get_folder_info(folder_id, credentials)
                 if not folder_data:
                     return None
 
                 # List contents
-                all_files = await self.google_drive.list_folder_contents(
-                    folder_id, credentials
-                )
+                all_files = await self.google_drive.list_folder_contents(folder_id, credentials)
 
-                video_count = sum(
-                    1 for f in all_files if f.media_type == MediaType.VIDEO
-                )
-                photo_count = sum(
-                    1 for f in all_files if f.media_type == MediaType.IMAGE
-                )
+                video_count = sum(1 for f in all_files if f.media_type == MediaType.VIDEO)
+                photo_count = sum(1 for f in all_files if f.media_type == MediaType.IMAGE)
                 total_size = sum(f.size for f in all_files)
 
                 return CloudFolderInfo(
                     provider=provider,
                     folder_id=folder_id,
-                    folder_name=folder_data.get('name', 'Unknown'),
+                    folder_name=folder_data.get("name", "Unknown"),
                     has_videos_folder=True,  # Google Drive - flat structure OK
                     has_photos_folder=True,
                     total_files=len(all_files),
                     video_files=video_count,
                     photo_files=photo_count,
-                    total_size_bytes=total_size
+                    total_size_bytes=total_size,
                 )
 
             elif provider == CloudProvider.YANDEX_DISK:
                 if public_url:
                     # Public folder
-                    files = await self.yandex_disk.list_public_folder(
-                        public_url, ""
-                    )
+                    files = await self.yandex_disk.list_public_folder(public_url, "")
                     folder_name = "Public Folder"
                 elif credentials:
                     # Private folder
-                    files = await self.yandex_disk.list_folder_contents(
-                        folder_id, credentials.get('access_token', '')
-                    )
+                    files = await self.yandex_disk.list_folder_contents(folder_id, credentials.get("access_token", ""))
                     folder_name = Path(folder_id).name or folder_id
                 else:
                     logger.error("Yandex Disk requires credentials or public URL")
                     return None
 
-                video_count = sum(
-                    1 for f in files if f.media_type == MediaType.VIDEO
-                )
-                photo_count = sum(
-                    1 for f in files if f.media_type == MediaType.IMAGE
-                )
+                video_count = sum(1 for f in files if f.media_type == MediaType.VIDEO)
+                photo_count = sum(1 for f in files if f.media_type == MediaType.IMAGE)
                 total_size = sum(f.size for f in files)
 
                 # Check for standard folder structure
-                folder_names = {Path(f.path).parts[1] if len(Path(f.path).parts) > 1 else ''
-                               for f in files}
-                has_videos = 'videos' in folder_names or 'video' in folder_names
-                has_photos = 'photos' in folder_names or 'photo' in folder_names
+                folder_names = {Path(f.path).parts[1] if len(Path(f.path).parts) > 1 else "" for f in files}
+                has_videos = "videos" in folder_names or "video" in folder_names
+                has_photos = "photos" in folder_names or "photo" in folder_names
 
                 return CloudFolderInfo(
                     provider=provider,
@@ -306,7 +272,7 @@ class CloudStorageService:
                     total_files=len(files),
                     video_files=video_count,
                     photo_files=photo_count,
-                    total_size_bytes=total_size
+                    total_size_bytes=total_size,
                 )
 
             return None
@@ -321,7 +287,7 @@ class CloudStorageService:
         folder_id: str,
         credentials: dict[str, Any] | None = None,
         public_url: str | None = None,
-        media_types: list[str] | None = None
+        media_types: list[str] | None = None,
     ) -> list[CloudFile]:
         """
         List all media files in a cloud folder.
@@ -340,18 +306,14 @@ class CloudStorageService:
             if provider == CloudProvider.GOOGLE_DRIVE:
                 if not credentials:
                     return []
-                return await self.google_drive.list_folder_contents(
-                    folder_id, credentials, media_types
-                )
+                return await self.google_drive.list_folder_contents(folder_id, credentials, media_types)
 
             elif provider == CloudProvider.YANDEX_DISK:
                 if public_url:
-                    return await self.yandex_disk.list_public_folder(
-                        public_url, "", media_types
-                    )
+                    return await self.yandex_disk.list_public_folder(public_url, "", media_types)
                 elif credentials:
                     return await self.yandex_disk.list_folder_contents(
-                        folder_id, credentials.get('access_token', ''), media_types
+                        folder_id, credentials.get("access_token", ""), media_types
                     )
 
             return []
@@ -369,7 +331,7 @@ class CloudStorageService:
         user_id: str,
         credentials: dict[str, Any] | None = None,
         public_url: str | None = None,
-        media_types: list[str] | None = None
+        media_types: list[str] | None = None,
     ) -> SyncResult:
         """
         Sync all media from a cloud folder to local storage.
@@ -398,23 +360,16 @@ class CloudStorageService:
                         files_downloaded=0,
                         files_failed=0,
                         errors=["Google Drive requires credentials"],
-                        downloaded_files=[]
+                        downloaded_files=[],
                     )
-                return await self.google_drive.sync_folder(
-                    folder_id, credentials, output_dir, media_types
-                )
+                return await self.google_drive.sync_folder(folder_id, credentials, output_dir, media_types)
 
             elif provider == CloudProvider.YANDEX_DISK:
                 if public_url:
-                    return await self.yandex_disk.sync_public_folder(
-                        public_url, output_dir, media_types
-                    )
+                    return await self.yandex_disk.sync_public_folder(public_url, output_dir, media_types)
                 elif credentials:
                     return await self.yandex_disk.sync_folder(
-                        folder_id,
-                        credentials.get('access_token', ''),
-                        output_dir,
-                        media_types
+                        folder_id, credentials.get("access_token", ""), output_dir, media_types
                     )
 
             return SyncResult(
@@ -423,18 +378,13 @@ class CloudStorageService:
                 files_downloaded=0,
                 files_failed=0,
                 errors=[f"Unsupported provider: {provider}"],
-                downloaded_files=[]
+                downloaded_files=[],
             )
 
         except Exception as e:
             logger.error(f"Sync failed: {e}")
             return SyncResult(
-                success=False,
-                files_found=0,
-                files_downloaded=0,
-                files_failed=1,
-                errors=[str(e)],
-                downloaded_files=[]
+                success=False, files_found=0, files_downloaded=0, files_failed=1, errors=[str(e)], downloaded_files=[]
             )
 
     async def download_file(
@@ -443,7 +393,7 @@ class CloudStorageService:
         file_id: str,
         output_path: str,
         credentials: dict[str, Any] | None = None,
-        download_url: str | None = None
+        download_url: str | None = None,
     ) -> bool:
         """
         Download a single file from cloud storage.
@@ -462,18 +412,14 @@ class CloudStorageService:
             if provider == CloudProvider.GOOGLE_DRIVE:
                 if not credentials:
                     return False
-                return await self.google_drive.download_file(
-                    file_id, credentials, output_path
-                )
+                return await self.google_drive.download_file(file_id, credentials, output_path)
 
             elif provider == CloudProvider.YANDEX_DISK:
                 if download_url:
-                    return await self.yandex_disk.download_public_file(
-                        download_url, output_path
-                    )
+                    return await self.yandex_disk.download_public_file(download_url, output_path)
                 elif credentials:
                     return await self.yandex_disk.download_file(
-                        file_id, credentials.get('access_token', ''), output_path
+                        file_id, credentials.get("access_token", ""), output_path
                     )
 
             return False
@@ -489,7 +435,7 @@ class CloudStorageService:
         provider: CloudProvider,
         folder_id: str,
         credentials: dict[str, Any] | None = None,
-        public_url: str | None = None
+        public_url: str | None = None,
     ) -> tuple[bool, str | None]:
         """
         Validate that a cloud connection is working.
@@ -504,9 +450,7 @@ class CloudStorageService:
             Tuple of (is_valid, error_message)
         """
         try:
-            info = await self.get_folder_info(
-                provider, folder_id, credentials, public_url
-            )
+            info = await self.get_folder_info(provider, folder_id, credentials, public_url)
 
             if not info:
                 return False, "Cannot access folder"
@@ -529,21 +473,17 @@ class CloudStorageService:
             "structure": {
                 "your_folder/": {
                     "videos/": "Place your video files here (.mp4, .mov, .avi)",
-                    "photos/": "Place your image files here (.jpg, .png, .webp)"
+                    "photos/": "Place your image files here (.jpg, .png, .webp)",
                 }
             },
-            "supported_video_formats": [
-                ".mp4", ".mov", ".avi", ".mkv", ".webm"
-            ],
-            "supported_image_formats": [
-                ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"
-            ],
+            "supported_video_formats": [".mp4", ".mov", ".avi", ".mkv", ".webm"],
+            "supported_image_formats": [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"],
             "tips": [
                 "Files will be automatically adapted for each social platform",
                 "Original files are never modified",
                 "Sync happens automatically every hour (or on-demand)",
-                "Files are processed with smart cropping to avoid black bars"
-            ]
+                "Files are processed with smart cropping to avoid black bars",
+            ],
         }
 
 

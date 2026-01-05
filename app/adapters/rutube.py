@@ -22,31 +22,37 @@ logger = get_logger("adapters.rutube")
 
 class RuTubeError(Exception):
     """Base exception for RuTube API errors."""
+
     pass
 
 
 class RuTubeRateLimitError(RuTubeError):
     """Raised when RuTube API rate limit is exceeded."""
+
     pass
 
 
 class RuTubeAuthError(RuTubeError):
     """Raised when RuTube API authentication fails."""
+
     pass
 
 
 class RuTubeValidationError(RuTubeError):
     """Raised when RuTube API validation fails."""
+
     pass
 
 
 class RuTubeUploadError(RuTubeError):
     """Raised when RuTube upload fails."""
+
     pass
 
 
 class VideoStatus(Enum):
     """RuTube video status."""
+
     PENDING = "pending"
     UPLOADING = "uploading"
     PROCESSING = "processing"
@@ -57,6 +63,7 @@ class VideoStatus(Enum):
 
 class VideoCategory(Enum):
     """RuTube video categories."""
+
     AUTO = 1
     GAMES = 2
     HUMOR = 3
@@ -77,6 +84,7 @@ class VideoCategory(Enum):
 @dataclass
 class RuTubeVideo:
     """Represents a video for RuTube."""
+
     file_path: str
     title: str
     description: str = ""
@@ -94,6 +102,7 @@ class RuTubeVideo:
 @dataclass
 class RuTubePublishResult:
     """Result of RuTube video publishing."""
+
     video_id: str | None
     status: VideoStatus
     message: str
@@ -116,10 +125,7 @@ class RuTubeAdapter:
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(300.0),  # Video uploads can be very slow
             limits=httpx.Limits(max_connections=5, max_keepalive_connections=3),
-            headers={
-                "User-Agent": "Crosspost/1.0",
-                "Authorization": f"Token {self.api_key}"
-            }
+            headers={"User-Agent": "Crosspost/1.0", "Authorization": f"Token {self.api_key}"},
         )
 
         # Rate limiting
@@ -131,14 +137,15 @@ class RuTubeAdapter:
 
     def _get_api_key(self) -> str:
         """Get RuTube API key from settings."""
-        if hasattr(settings, 'rutube') and hasattr(settings.rutube, 'api_key'):
+        if hasattr(settings, "rutube") and hasattr(settings.rutube, "api_key"):
             token = settings.rutube.api_key
-            if hasattr(token, 'get_secret_value'):
+            if hasattr(token, "get_secret_value"):
                 return token.get_secret_value()
             return str(token)
 
         import os
-        token = os.getenv('RUTUBE_API_KEY')
+
+        token = os.getenv("RUTUBE_API_KEY")
         if token:
             return token
 
@@ -150,10 +157,7 @@ class RuTubeAdapter:
 
         with with_logging_context(correlation_id=correlation_id):
             logger.info(
-                "Uploading video to RuTube",
-                title=video.title,
-                file_path=video.file_path,
-                category=video.category.name
+                "Uploading video to RuTube", title=video.title, file_path=video.file_path, category=video.category.name
             )
 
             try:
@@ -169,17 +173,14 @@ class RuTubeAdapter:
                 processing_time = time.time() - start_time
 
                 metrics.track_external_api_call(
-                    service="rutube",
-                    endpoint="upload_video",
-                    status_code=200,
-                    duration=processing_time
+                    service="rutube", endpoint="upload_video", status_code=200, duration=processing_time
                 )
 
                 logger.info(
                     "RuTube video uploaded successfully",
                     video_id=result.video_id,
                     processing_time=processing_time,
-                    video_url=result.video_url
+                    video_url=result.video_url,
                 )
 
                 return result
@@ -188,32 +189,22 @@ class RuTubeAdapter:
                 processing_time = time.time() - start_time
 
                 metrics.track_external_api_call(
-                    service="rutube",
-                    endpoint="upload_video",
-                    status_code=500,
-                    duration=processing_time,
-                    error=str(e)
+                    service="rutube", endpoint="upload_video", status_code=500, duration=processing_time, error=str(e)
                 )
 
                 logger.error(
-                    "Failed to upload RuTube video",
-                    error=str(e),
-                    processing_time=processing_time,
-                    exc_info=True
+                    "Failed to upload RuTube video", error=str(e), processing_time=processing_time, exc_info=True
                 )
 
                 return RuTubePublishResult(
-                    video_id=None,
-                    status=VideoStatus.ERROR,
-                    message=str(e),
-                    error_code=getattr(e, 'error_code', None)
+                    video_id=None, status=VideoStatus.ERROR, message=str(e), error_code=getattr(e, "error_code", None)
                 )
 
     async def _init_upload(self, video: RuTubeVideo) -> dict[str, Any]:
         """Initialize upload session and get upload URL."""
         file_path = Path(video.file_path)
 
-        if video.file_path.startswith(('http://', 'https://')):
+        if video.file_path.startswith(("http://", "https://")):
             # Download file first to get size and checksum
             async with self.http_client.stream("GET", video.file_path) as response:
                 response.raise_for_status()
@@ -235,13 +226,7 @@ class RuTubeAdapter:
 
         # Initialize upload
         response = await self._make_api_request(
-            "/video/upload/",
-            method="POST",
-            json_data={
-                "filename": file_name,
-                "filesize": file_size,
-                "md5": file_hash
-            }
+            "/video/upload/", method="POST", json_data={"filename": file_name, "filesize": file_size, "md5": file_hash}
         )
 
         return {
@@ -249,7 +234,7 @@ class RuTubeAdapter:
             "video_id": response.get("video_id"),
             "file_size": file_size,
             "file_name": file_name,
-            "file_content": file_content
+            "file_content": file_content,
         }
 
     async def _calculate_file_hash(self, file_path: str) -> str:
@@ -273,14 +258,10 @@ class RuTubeAdapter:
         mime_type = mime_type or "video/mp4"
 
         # Upload using multipart form
-        files = {
-            "file": (file_name, file_content, mime_type)
-        }
+        files = {"file": (file_name, file_content, mime_type)}
 
         response = await self.http_client.post(
-            upload_url,
-            files=files,
-            timeout=httpx.Timeout(600.0)  # 10 minutes for large files
+            upload_url, files=files, timeout=httpx.Timeout(600.0)  # 10 minutes for large files
         )
 
         if response.status_code not in [200, 201, 204]:
@@ -298,7 +279,7 @@ class RuTubeAdapter:
             "description": video.description[:5000],  # Max 5000 chars
             "category": video.category.value,
             "is_hidden": video.is_hidden,
-            "is_adult": video.is_adult
+            "is_adult": video.is_adult,
         }
 
         if video.tags:
@@ -307,11 +288,7 @@ class RuTubeAdapter:
         if video.scheduled_publish_time:
             metadata["publication_ts"] = int(video.scheduled_publish_time.timestamp())
 
-        await self._make_api_request(
-            f"/video/{video_id}/",
-            method="PATCH",
-            json_data=metadata
-        )
+        await self._make_api_request(f"/video/{video_id}/", method="PATCH", json_data=metadata)
 
         video_url = f"https://rutube.ru/video/{video_id}/"
         embed_url = f"https://rutube.ru/play/embed/{video_id}/"
@@ -324,15 +301,12 @@ class RuTubeAdapter:
             message="Video uploaded and processing",
             video_url=video_url,
             embed_url=embed_url,
-            published_at=None  # Will be set when processing completes
+            published_at=None,  # Will be set when processing completes
         )
 
     async def get_video_status(self, video_id: str) -> dict[str, Any]:
         """Get video processing status."""
-        response = await self._make_api_request(
-            f"/video/{video_id}/",
-            method="GET"
-        )
+        response = await self._make_api_request(f"/video/{video_id}/", method="GET")
 
         return {
             "id": response.get("id"),
@@ -345,16 +319,13 @@ class RuTubeAdapter:
             "hits": response.get("hits"),
             "video_url": response.get("video_url"),
             "embed_url": response.get("embed_url"),
-            "thumbnail_url": response.get("thumbnail_url")
+            "thumbnail_url": response.get("thumbnail_url"),
         }
 
     async def delete_video(self, video_id: str) -> bool:
         """Delete a video from RuTube."""
         try:
-            await self._make_api_request(
-                f"/video/{video_id}/",
-                method="DELETE"
-            )
+            await self._make_api_request(f"/video/{video_id}/", method="DELETE")
             logger.info("RuTube video deleted", video_id=video_id)
             return True
         except Exception as e:
@@ -364,12 +335,7 @@ class RuTubeAdapter:
     async def get_channel_videos(self, limit: int = 20, offset: int = 0) -> dict[str, Any]:
         """Get list of channel videos."""
         response = await self._make_api_request(
-            "/video/person/",
-            method="GET",
-            params={
-                "limit": limit,
-                "offset": offset
-            }
+            "/video/person/", method="GET", params={"limit": limit, "offset": offset}
         )
 
         return {
@@ -381,14 +347,20 @@ class RuTubeAdapter:
                     "status": v.get("publication_status"),
                     "created_ts": v.get("created_ts"),
                     "hits": v.get("hits"),
-                    "thumbnail_url": v.get("thumbnail_url")
+                    "thumbnail_url": v.get("thumbnail_url"),
                 }
                 for v in response.get("results", [])
-            ]
+            ],
         }
 
-    async def update_video(self, video_id: str, title: str = None, description: str = None,
-                           category: VideoCategory = None, is_hidden: bool = None) -> bool:
+    async def update_video(
+        self,
+        video_id: str,
+        title: str = None,
+        description: str = None,
+        category: VideoCategory = None,
+        is_hidden: bool = None,
+    ) -> bool:
         """Update video metadata."""
         try:
             metadata = {}
@@ -404,11 +376,7 @@ class RuTubeAdapter:
             if not metadata:
                 return True
 
-            await self._make_api_request(
-                f"/video/{video_id}/",
-                method="PATCH",
-                json_data=metadata
-            )
+            await self._make_api_request(f"/video/{video_id}/", method="PATCH", json_data=metadata)
             logger.info("RuTube video updated", video_id=video_id)
             return True
         except Exception as e:
@@ -429,11 +397,11 @@ class RuTubeAdapter:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, RuTubeRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, RuTubeRateLimitError)),
     )
-    async def _make_api_request(self, endpoint: str, method: str = "GET",
-                                 params: dict[str, Any] = None,
-                                 json_data: dict[str, Any] = None) -> dict[str, Any]:
+    async def _make_api_request(
+        self, endpoint: str, method: str = "GET", params: dict[str, Any] = None, json_data: dict[str, Any] = None
+    ) -> dict[str, Any]:
         """Make API request to RuTube."""
         await self._check_rate_limits()
 
@@ -493,7 +461,7 @@ async def upload_rutube_video(
     is_hidden: bool = False,
     scheduled_time: datetime = None,
     api_key: str = None,
-    correlation_id: str = None
+    correlation_id: str = None,
 ) -> RuTubePublishResult:
     """Upload video to RuTube."""
     adapter = RuTubeAdapter(api_key)
@@ -506,7 +474,7 @@ async def upload_rutube_video(
             category=category,
             tags=tags or [],
             is_hidden=is_hidden,
-            scheduled_publish_time=scheduled_time
+            scheduled_publish_time=scheduled_time,
         )
 
         return await adapter.upload_video(video, correlation_id)

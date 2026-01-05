@@ -19,6 +19,7 @@ logger = get_logger("services.image_gen")
 @dataclass
 class ImageResult:
     """Result of image generation."""
+
     success: bool
     image_url: str | None = None
     image_base64: str | None = None
@@ -44,10 +45,7 @@ class OpenAIProvider(ImageProvider):
 
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.client = httpx.AsyncClient(
-            timeout=60.0,
-            headers={"Authorization": f"Bearer {api_key}"}
-        )
+        self.client = httpx.AsyncClient(timeout=60.0, headers={"Authorization": f"Bearer {api_key}"})
 
     async def generate(self, prompt: str, size: str = "1024x1024") -> ImageResult:
         try:
@@ -59,7 +57,7 @@ class OpenAIProvider(ImageProvider):
                     "n": 1,
                     "size": size,
                     "quality": "standard",
-                }
+                },
             )
             response.raise_for_status()
             data = response.json()
@@ -88,7 +86,7 @@ class StabilityProvider(ImageProvider):
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Accept": "application/json",
-            }
+            },
         )
 
     async def generate(self, prompt: str, size: str = "1024x1024") -> ImageResult:
@@ -104,7 +102,7 @@ class StabilityProvider(ImageProvider):
                     "height": height,
                     "samples": 1,
                     "steps": 30,
-                }
+                },
             )
             response.raise_for_status()
             data = response.json()
@@ -131,10 +129,7 @@ class FluxProvider(ImageProvider):
     def __init__(self, api_key: str, api_url: str = None):
         self.api_key = api_key
         self.api_url = api_url or "https://api.flux.ai/v1/generate"
-        self.client = httpx.AsyncClient(
-            timeout=60.0,
-            headers={"Authorization": f"Bearer {api_key}"}
-        )
+        self.client = httpx.AsyncClient(timeout=60.0, headers={"Authorization": f"Bearer {api_key}"})
 
     async def generate(self, prompt: str, size: str = "1024x1024") -> ImageResult:
         try:
@@ -143,7 +138,7 @@ class FluxProvider(ImageProvider):
                 json={
                     "prompt": prompt,
                     "size": size,
-                }
+                },
             )
             response.raise_for_status()
             data = response.json()
@@ -177,11 +172,7 @@ class NanobanaProvider(ImageProvider):
         self.api_key = api_key
         self.model = model  # "flash" or "pro"
         self.client = httpx.AsyncClient(
-            timeout=180.0,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json"
-            }
+            timeout=180.0, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
         )
 
     def _size_to_aspect(self, size: str) -> str:
@@ -209,12 +200,7 @@ class NanobanaProvider(ImageProvider):
             aspect_ratio = self._size_to_aspect(size)
 
             response = await self.client.post(
-                endpoint,
-                json={
-                    "prompt": prompt,
-                    "resolution": "1K",
-                    "aspectRatio": aspect_ratio
-                }
+                endpoint, json={"prompt": prompt, "resolution": "1K", "aspectRatio": aspect_ratio}
             )
 
             data = response.json()
@@ -246,6 +232,7 @@ class NanobanaProvider(ImageProvider):
     async def _poll_for_result(self, task_id: str, max_wait: int = 180) -> ImageResult:
         """Poll for async task completion."""
         import time
+
         start_time = time.time()
         poll_interval = 3
 
@@ -254,8 +241,7 @@ class NanobanaProvider(ImageProvider):
 
             try:
                 response = await self.client.get(
-                    f"{self.API_BASE}/api/v1/nanobanana/record-info",
-                    params={"taskId": task_id}
+                    f"{self.API_BASE}/api/v1/nanobanana/record-info", params={"taskId": task_id}
                 )
 
                 data = response.json()
@@ -279,9 +265,7 @@ class NanobanaProvider(ImageProvider):
 
                 if success_flag == 0 or task_data.get("errorCode"):
                     return ImageResult(
-                        success=False,
-                        error=task_data.get("errorMessage", "Generation failed"),
-                        provider="nanobana"
+                        success=False, error=task_data.get("errorMessage", "Generation failed"), provider="nanobana"
                     )
 
             except Exception as e:
@@ -302,34 +286,26 @@ class ImageGenerationService:
         self.providers = {}
 
         # Initialize available providers
-        openai_key = getattr(settings, 'OPENAI_API_KEY', None) or os.getenv('OPENAI_API_KEY')
+        openai_key = getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY")
         if openai_key:
             self.providers["openai"] = OpenAIProvider(openai_key)
 
-        stability_key = getattr(settings, 'STABILITY_API_KEY', None) or os.getenv('STABILITY_API_KEY')
+        stability_key = getattr(settings, "STABILITY_API_KEY", None) or os.getenv("STABILITY_API_KEY")
         if stability_key:
             self.providers["stability"] = StabilityProvider(stability_key)
 
-        flux_key = getattr(settings, 'FLUX_API_KEY', None) or os.getenv('FLUX_API_KEY')
+        flux_key = getattr(settings, "FLUX_API_KEY", None) or os.getenv("FLUX_API_KEY")
         if flux_key:
-            self.providers["flux"] = FluxProvider(
-                flux_key,
-                getattr(settings, 'FLUX_API_URL', None)
-            )
+            self.providers["flux"] = FluxProvider(flux_key, getattr(settings, "FLUX_API_URL", None))
 
         # Nanobana (Google Gemini Image via api.nanobananaapi.ai)
-        nanobana_key = getattr(settings, 'NANOBANA_API_KEY', None) or os.getenv('NANOBANA_API_KEY')
+        nanobana_key = getattr(settings, "NANOBANA_API_KEY", None) or os.getenv("NANOBANA_API_KEY")
         if nanobana_key:
             self.providers["nanobana"] = NanobanaProvider(nanobana_key, model="pro")
             self.providers["nanobana-pro"] = NanobanaProvider(nanobana_key, model="pro")
             logger.info("Nanobana provider initialized (Pro model)")
 
-    async def generate(
-        self,
-        prompt: str,
-        provider: str = "openai",
-        size: str = "1024x1024"
-    ) -> ImageResult:
+    async def generate(self, prompt: str, provider: str = "openai", size: str = "1024x1024") -> ImageResult:
         """
         Generate an image using the specified provider.
 
@@ -347,10 +323,7 @@ class ImageGenerationService:
                 provider = next(iter(self.providers))
                 logger.warning(f"Requested provider not available, using {provider}")
             else:
-                return ImageResult(
-                    success=False,
-                    error="No image generation providers configured"
-                )
+                return ImageResult(success=False, error="No image generation providers configured")
 
         logger.info(f"Generating image with {provider}: {prompt[:50]}...")
         return await self.providers[provider].generate(prompt, size)

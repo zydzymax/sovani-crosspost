@@ -8,6 +8,7 @@ from ..celery_app import celery
 
 logger = get_logger("tasks.finalize")
 
+
 @celery.task(bind=True, name="app.workers.tasks.finalize.finalize_post")
 def finalize_post(self, stage_data: dict[str, Any]) -> dict[str, Any]:
     """Finalize post processing and cleanup."""
@@ -34,16 +35,18 @@ def finalize_post(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                 "platforms_successful": len(successful_platforms),
                 "platforms_failed": len(publish_results) - len(successful_platforms),
                 "files_processed": stage_data.get("media_count", 0),
-                "temp_files_cleaned": temp_files_cleaned
+                "temp_files_cleaned": temp_files_cleaned,
             }
 
             processing_time = time.time() - task_start_time
 
-            logger.info("Post finalization completed",
-                       post_id=post_id,
-                       processing_time=processing_time,
-                       final_status=final_status,
-                       successful_platforms=len(successful_platforms))
+            logger.info(
+                "Post finalization completed",
+                post_id=post_id,
+                processing_time=processing_time,
+                final_status=final_status,
+                successful_platforms=len(successful_platforms),
+            )
 
             return {
                 "success": True,
@@ -51,7 +54,7 @@ def finalize_post(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                 "processing_time": processing_time,
                 "final_status": final_status,
                 "analytics_summary": analytics_summary,
-                "stage": "completed"
+                "stage": "completed",
             }
 
         except Exception as e:
@@ -59,6 +62,7 @@ def finalize_post(self, stage_data: dict[str, Any]) -> dict[str, Any]:
             if self.request.retries < self.max_retries:
                 raise self.retry(countdown=60 * (self.request.retries + 1))
             raise
+
 
 @celery.task(bind=True, name="app.workers.tasks.finalize.cleanup_completed_tasks")
 def cleanup_completed_tasks(self) -> dict[str, Any]:
@@ -76,17 +80,19 @@ def cleanup_completed_tasks(self) -> dict[str, Any]:
 
             processing_time = time.time() - task_start_time
 
-            logger.info("Cleanup completed",
-                       cleaned_posts=cleaned_posts,
-                       cleaned_files=cleaned_files,
-                       freed_space_mb=freed_space_mb)
+            logger.info(
+                "Cleanup completed",
+                cleaned_posts=cleaned_posts,
+                cleaned_files=cleaned_files,
+                freed_space_mb=freed_space_mb,
+            )
 
             return {
                 "success": True,
                 "processing_time": processing_time,
                 "cleaned_posts": cleaned_posts,
                 "cleaned_files": cleaned_files,
-                "freed_space_mb": freed_space_mb
+                "freed_space_mb": freed_space_mb,
             }
 
         except Exception as e:

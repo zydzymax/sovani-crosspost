@@ -9,6 +9,7 @@ from ..celery_app import celery
 
 logger = get_logger("tasks.publish")
 
+
 @celery.task(bind=True, name="app.workers.tasks.publish.publish_to_platforms")
 def publish_to_platforms(self, stage_data: dict[str, Any]) -> dict[str, Any]:
     """Publish content to social media platforms."""
@@ -30,7 +31,7 @@ def publish_to_platforms(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                         "success": True,
                         "platform_post_id": f"{platform}_{post_id}_{int(time.time())}",
                         "platform_url": f"https://{platform}.com/post/{post_id}",
-                        "published_at": time.time()
+                        "published_at": time.time(),
                     }
 
                     # Log successful publication
@@ -38,18 +39,14 @@ def publish_to_platforms(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                         post_id=post_id,
                         platform=platform,
                         platform_post_id=publish_results[platform]["platform_post_id"],
-                        platform_url=publish_results[platform]["platform_url"]
+                        platform_url=publish_results[platform]["platform_url"],
                     )
 
                     # Track metrics
                     metrics.track_post_published(platform)
 
                 except Exception as e:
-                    publish_results[platform] = {
-                        "success": False,
-                        "error": str(e),
-                        "failed_at": time.time()
-                    }
+                    publish_results[platform] = {"success": False, "error": str(e), "failed_at": time.time()}
 
                     # Track failure
                     metrics.track_post_failed(platform, "publish_error")
@@ -60,13 +57,16 @@ def publish_to_platforms(self, stage_data: dict[str, Any]) -> dict[str, Any]:
 
             # Trigger next stage
             from .finalize import finalize_post
+
             next_task = finalize_post.delay({**stage_data, "publish_results": publish_results})
 
-            logger.info("Platform publishing completed",
-                       post_id=post_id,
-                       processing_time=processing_time,
-                       successful_platforms=len(successful_platforms),
-                       total_platforms=len(platforms))
+            logger.info(
+                "Platform publishing completed",
+                post_id=post_id,
+                processing_time=processing_time,
+                successful_platforms=len(successful_platforms),
+                total_platforms=len(platforms),
+            )
 
             return {
                 "success": True,
@@ -76,7 +76,7 @@ def publish_to_platforms(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                 "total_platforms": len(platforms),
                 "publish_results": publish_results,
                 "next_stage": "finalize",
-                "next_task_id": next_task.id
+                "next_task_id": next_task.id,
             }
 
         except Exception as e:

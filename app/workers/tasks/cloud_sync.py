@@ -50,9 +50,7 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
             async with db_manager.async_session_maker() as session:
                 # Get connection
                 result = await session.execute(
-                    select(CloudStorageConnection).where(
-                        CloudStorageConnection.id == UUID(connection_id)
-                    )
+                    select(CloudStorageConnection).where(CloudStorageConnection.id == UUID(connection_id))
                 )
                 connection = result.scalar_one_or_none()
 
@@ -61,11 +59,7 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                     return {"success": False, "error": "Connection not found"}
 
                 if connection.status != CloudConnectionStatus.ACTIVE:
-                    logger.warning(
-                        "Connection not active",
-                        connection_id=connection_id,
-                        status=connection.status.value
-                    )
+                    logger.warning("Connection not active", connection_id=connection_id, status=connection.status.value)
                     return {"success": False, "error": f"Connection not active: {connection.status.value}"}
 
                 try:
@@ -74,16 +68,15 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                         if connection.refresh_token:
                             logger.info("Refreshing expired token", connection_id=connection_id)
                             new_tokens = await cloud_storage_service.refresh_token(
-                                connection.provider,
-                                connection.refresh_token
+                                connection.provider, connection.refresh_token
                             )
                             if new_tokens:
-                                connection.access_token = new_tokens.get('access_token')
-                                if new_tokens.get('refresh_token'):
-                                    connection.refresh_token = new_tokens['refresh_token']
-                                if new_tokens.get('expires_in'):
+                                connection.access_token = new_tokens.get("access_token")
+                                if new_tokens.get("refresh_token"):
+                                    connection.refresh_token = new_tokens["refresh_token"]
+                                if new_tokens.get("expires_in"):
                                     connection.token_expires_at = datetime.utcnow() + timedelta(
-                                        seconds=new_tokens['expires_in']
+                                        seconds=new_tokens["expires_in"]
                                     )
                                 await session.commit()
                             else:
@@ -95,16 +88,16 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                     # Build media type filter
                     media_types = []
                     if connection.sync_videos:
-                        media_types.append('video')
+                        media_types.append("video")
                     if connection.sync_photos:
-                        media_types.append('image')
+                        media_types.append("image")
 
                     # Prepare credentials
                     credentials = None
                     if connection.access_token:
                         credentials = {
-                            'access_token': connection.access_token,
-                            'refresh_token': connection.refresh_token
+                            "access_token": connection.access_token,
+                            "refresh_token": connection.refresh_token,
                         }
 
                     # Perform sync
@@ -114,7 +107,7 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                         user_id=str(connection.user_id),
                         credentials=credentials,
                         public_url=connection.public_url if connection.is_public else None,
-                        media_types=media_types if media_types else None
+                        media_types=media_types if media_types else None,
                     )
 
                     # Process synced files
@@ -126,9 +119,9 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
 
                             # Determine media type
                             ext = os.path.splitext(file_name)[1].lower()
-                            if ext in ['.mp4', '.mov', '.avi', '.mkv', '.webm']:
+                            if ext in [".mp4", ".mov", ".avi", ".mkv", ".webm"]:
                                 media_type = DBMediaType.VIDEO
-                            elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']:
+                            elif ext in [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]:
                                 media_type = DBMediaType.IMAGE
                             else:
                                 media_type = DBMediaType.DOCUMENT
@@ -137,7 +130,7 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                             existing = await session.execute(
                                 select(CloudSyncedFile).where(
                                     CloudSyncedFile.connection_id == connection.id,
-                                    CloudSyncedFile.cloud_file_name == file_name
+                                    CloudSyncedFile.cloud_file_name == file_name,
                                 )
                             )
                             synced_file = existing.scalar_one_or_none()
@@ -160,7 +153,7 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                                     local_file_size=os.path.getsize(file_path) if os.path.exists(file_path) else None,
                                     is_synced=True,
                                     first_synced_at=datetime.utcnow(),
-                                    last_synced_at=datetime.utcnow()
+                                    last_synced_at=datetime.utcnow(),
                                 )
                                 session.add(synced_file)
 
@@ -187,7 +180,7 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                         files_found=sync_result.files_found,
                         files_downloaded=sync_result.files_downloaded,
                         files_failed=sync_result.files_failed,
-                        processing_time=processing_time
+                        processing_time=processing_time,
                     )
 
                     return {
@@ -198,16 +191,11 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                         "files_failed": sync_result.files_failed,
                         "files_processed": files_processed,
                         "errors": sync_result.errors,
-                        "processing_time": processing_time
+                        "processing_time": processing_time,
                     }
 
                 except Exception as e:
-                    logger.error(
-                        "Cloud sync failed",
-                        connection_id=connection_id,
-                        error=str(e),
-                        exc_info=True
-                    )
+                    logger.error("Cloud sync failed", connection_id=connection_id, error=str(e), exc_info=True)
 
                     # Update connection with error
                     connection.last_sync_at = datetime.utcnow()
@@ -219,11 +207,7 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                     if self.request.retries < self.max_retries:
                         raise self.retry(countdown=60 * (self.request.retries + 1), exc=e)
 
-                    return {
-                        "success": False,
-                        "connection_id": connection_id,
-                        "error": str(e)
-                    }
+                    return {"success": False, "connection_id": connection_id, "error": str(e)}
 
         # Run async function
         return asyncio.run(_sync())
@@ -254,7 +238,7 @@ def sync_all_connections(self) -> dict[str, Any]:
                 result = await session.execute(
                     select(CloudStorageConnection).where(
                         CloudStorageConnection.status == CloudConnectionStatus.ACTIVE,
-                        CloudStorageConnection.sync_enabled
+                        CloudStorageConnection.sync_enabled,
                     )
                 )
                 connections = result.scalars().all()
@@ -277,25 +261,21 @@ def sync_all_connections(self) -> dict[str, Any]:
                         sync_cloud_connection.delay(str(conn.id))
                         synced_count += 1
 
-                        sync_results.append({
-                            "connection_id": str(conn.id),
-                            "provider": conn.provider.value,
-                            "status": "queued"
-                        })
+                        sync_results.append(
+                            {"connection_id": str(conn.id), "provider": conn.provider.value, "status": "queued"}
+                        )
 
                     except Exception as e:
-                        logger.error(
-                            "Failed to queue sync for connection",
-                            connection_id=str(conn.id),
-                            error=str(e)
-                        )
+                        logger.error("Failed to queue sync for connection", connection_id=str(conn.id), error=str(e))
                         failed_count += 1
-                        sync_results.append({
-                            "connection_id": str(conn.id),
-                            "provider": conn.provider.value,
-                            "status": "failed",
-                            "error": str(e)
-                        })
+                        sync_results.append(
+                            {
+                                "connection_id": str(conn.id),
+                                "provider": conn.provider.value,
+                                "status": "failed",
+                                "error": str(e),
+                            }
+                        )
 
                 processing_time = time.time() - task_start_time
 
@@ -305,7 +285,7 @@ def sync_all_connections(self) -> dict[str, Any]:
                     synced=synced_count,
                     skipped=skipped_count,
                     failed=failed_count,
-                    processing_time=processing_time
+                    processing_time=processing_time,
                 )
 
                 return {
@@ -315,7 +295,7 @@ def sync_all_connections(self) -> dict[str, Any]:
                     "skipped": skipped_count,
                     "failed": failed_count,
                     "results": sync_results,
-                    "processing_time": processing_time
+                    "processing_time": processing_time,
                 }
 
         return asyncio.run(_sync_all())
@@ -345,9 +325,7 @@ def process_synced_file(self, synced_file_id: str) -> dict[str, Any]:
             async with db_manager.async_session_maker() as session:
                 # Get synced file
                 result = await session.execute(
-                    select(CloudSyncedFile).where(
-                        CloudSyncedFile.id == UUID(synced_file_id)
-                    )
+                    select(CloudSyncedFile).where(CloudSyncedFile.id == UUID(synced_file_id))
                 )
                 synced_file = result.scalar_one_or_none()
 
@@ -374,22 +352,20 @@ def process_synced_file(self, synced_file_id: str) -> dict[str, Any]:
                     for platform in platforms:
                         output_path = synced_file.local_path.replace(
                             os.path.splitext(synced_file.local_path)[1],
-                            f"_{platform}{os.path.splitext(synced_file.local_path)[1]}"
+                            f"_{platform}{os.path.splitext(synced_file.local_path)[1]}",
                         )
 
                         result = await adapter.adapt_media(
                             input_path=synced_file.local_path,
                             output_path=output_path,
                             platform=platform,
-                            format_type="video" if synced_file.media_type == DBMediaType.VIDEO else "feed"
+                            format_type="video" if synced_file.media_type == DBMediaType.VIDEO else "feed",
                         )
 
                         if result.get("success"):
                             processed_versions[platform] = output_path
                             logger.info(
-                                f"Processed for {platform}",
-                                synced_file_id=synced_file_id,
-                                output_path=output_path
+                                f"Processed for {platform}", synced_file_id=synced_file_id, output_path=output_path
                             )
 
                     processing_time = time.time() - task_start_time
@@ -398,37 +374,28 @@ def process_synced_file(self, synced_file_id: str) -> dict[str, Any]:
                         "Synced file processing completed",
                         synced_file_id=synced_file_id,
                         platforms_processed=list(processed_versions.keys()),
-                        processing_time=processing_time
+                        processing_time=processing_time,
                     )
 
                     return {
                         "success": True,
                         "synced_file_id": synced_file_id,
                         "processed_versions": processed_versions,
-                        "processing_time": processing_time
+                        "processing_time": processing_time,
                     }
 
                 except Exception as e:
-                    logger.error(
-                        "File processing failed",
-                        synced_file_id=synced_file_id,
-                        error=str(e),
-                        exc_info=True
-                    )
-                    return {
-                        "success": False,
-                        "synced_file_id": synced_file_id,
-                        "error": str(e)
-                    }
+                    logger.error("File processing failed", synced_file_id=synced_file_id, error=str(e), exc_info=True)
+                    return {"success": False, "synced_file_id": synced_file_id, "error": str(e)}
 
         return asyncio.run(_process())
 
 
 # Celery Beat schedule entry (add to beat_schedule in celery_app.py)
 CLOUD_SYNC_BEAT_SCHEDULE = {
-    'sync-all-cloud-connections': {
-        'task': 'app.workers.tasks.cloud_sync.sync_all_connections',
-        'schedule': 3600.0,  # Every hour
-        'options': {'queue': 'cloud_sync'}
+    "sync-all-cloud-connections": {
+        "task": "app.workers.tasks.cloud_sync.sync_all_connections",
+        "schedule": 3600.0,  # Every hour
+        "options": {"queue": "cloud_sync"},
     },
 }

@@ -43,7 +43,7 @@ class TestVKAdapterInitialization:
 
     def test_adapter_initialization_success(self):
         """Test successful adapter initialization."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -58,9 +58,9 @@ class TestVKAdapterInitialization:
 
     def test_adapter_initialization_missing_token(self):
         """Test adapter initialization with missing access token."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             # Remove access_token attribute
-            delattr(mock_settings, 'access_token')
+            delattr(mock_settings, "access_token")
 
             with pytest.raises(VKAuthError) as exc_info:
                 VKAdapter()
@@ -72,7 +72,7 @@ class TestVKAdapterInitialization:
         adapter = VKAdapter.__new__(VKAdapter)  # Create without __init__
 
         # Test with SecretStr-like object
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_token = MagicMock()
             mock_token.get_secret_value.return_value = "secret_token"
             mock_settings.access_token = mock_token
@@ -81,7 +81,7 @@ class TestVKAdapterInitialization:
             assert token == "secret_token"
 
         # Test with string token
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.access_token = "plain_string_token"
 
             token = adapter._get_access_token()
@@ -94,7 +94,7 @@ class TestPhotoUpload:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -105,36 +105,29 @@ class TestPhotoUpload:
     async def test_upload_photo_success(self, mock_adapter):
         """Test successful photo upload workflow."""
         # Mock API responses
-        upload_server_response = {
-            "response": {
-                "upload_url": "https://pu.vk.com/c123456/upload.php"
-            }
-        }
+        upload_server_response = {"response": {"upload_url": "https://pu.vk.com/c123456/upload.php"}}
 
-        upload_response = {
-            "server": 123456,
-            "photo": "[{\"photo\":\"encoded_photo_data\"}]",
-            "hash": "abc123hash"
-        }
+        upload_response = {"server": 123456, "photo": '[{"photo":"encoded_photo_data"}]', "hash": "abc123hash"}
 
         save_response = {
-            "response": [{
-                "id": 456789123,
-                "owner_id": -123456789,
-                "access_key": "def456key",
-                "sizes": [{"width": 1080, "height": 1080}]
-            }]
+            "response": [
+                {
+                    "id": 456789123,
+                    "owner_id": -123456789,
+                    "access_key": "def456key",
+                    "sizes": [{"width": 1080, "height": 1080}],
+                }
+            ]
         }
 
         mock_responses = [upload_server_response, save_response]
 
-        with patch.object(mock_adapter, '_make_api_request', side_effect=mock_responses) as mock_api, \
-             patch.object(mock_adapter, '_upload_file_to_server', return_value=upload_response) as mock_upload:
+        with (
+            patch.object(mock_adapter, "_make_api_request", side_effect=mock_responses) as mock_api,
+            patch.object(mock_adapter, "_upload_file_to_server", return_value=upload_response) as mock_upload,
+        ):
 
-            media_item = VKMediaItem(
-                file_path="/test/photo.jpg",
-                media_type=MediaType.PHOTO
-            )
+            media_item = VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
 
             result = await mock_adapter._upload_photo(media_item, "test_correlation_id")
 
@@ -157,46 +150,37 @@ class TestPhotoUpload:
             save_call = mock_api.call_args_list[1]
             assert save_call[0][0] == "photos.saveWallPhoto"
             assert save_call[1]["params"]["group_id"] == 123456789
-            assert save_call[1]["params"]["photo"] == "[{\"photo\":\"encoded_photo_data\"}]"
+            assert save_call[1]["params"]["photo"] == '[{"photo":"encoded_photo_data"}]'
             assert save_call[1]["params"]["server"] == 123456
             assert save_call[1]["params"]["hash"] == "abc123hash"
 
             # Verify file upload
-            mock_upload.assert_called_once_with(
-                "https://pu.vk.com/c123456/upload.php",
-                "/test/photo.jpg",
-                "photo"
-            )
+            mock_upload.assert_called_once_with("https://pu.vk.com/c123456/upload.php", "/test/photo.jpg", "photo")
 
     @pytest.mark.asyncio
     async def test_upload_photo_without_access_key(self, mock_adapter):
         """Test photo upload without access key."""
-        upload_server_response = {
-            "response": {"upload_url": "https://pu.vk.com/upload.php"}
-        }
+        upload_server_response = {"response": {"upload_url": "https://pu.vk.com/upload.php"}}
 
-        upload_response = {
-            "server": 123456,
-            "photo": "[{\"photo\":\"data\"}]",
-            "hash": "hash123"
-        }
+        upload_response = {"server": 123456, "photo": '[{"photo":"data"}]', "hash": "hash123"}
 
         save_response = {
-            "response": [{
-                "id": 456789123,
-                "owner_id": -123456789,
-                # No access_key
-                "sizes": [{"width": 640, "height": 480}]
-            }]
+            "response": [
+                {
+                    "id": 456789123,
+                    "owner_id": -123456789,
+                    # No access_key
+                    "sizes": [{"width": 640, "height": 480}],
+                }
+            ]
         }
 
-        with patch.object(mock_adapter, '_make_api_request', side_effect=[upload_server_response, save_response]), \
-             patch.object(mock_adapter, '_upload_file_to_server', return_value=upload_response):
+        with (
+            patch.object(mock_adapter, "_make_api_request", side_effect=[upload_server_response, save_response]),
+            patch.object(mock_adapter, "_upload_file_to_server", return_value=upload_response),
+        ):
 
-            media_item = VKMediaItem(
-                file_path="/test/photo.jpg",
-                media_type=MediaType.PHOTO
-            )
+            media_item = VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
 
             result = await mock_adapter._upload_photo(media_item)
 
@@ -206,11 +190,8 @@ class TestPhotoUpload:
     @pytest.mark.asyncio
     async def test_upload_photo_api_error(self, mock_adapter):
         """Test photo upload with API error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=VKError("API Error")):
-            media_item = VKMediaItem(
-                file_path="/test/photo.jpg",
-                media_type=MediaType.PHOTO
-            )
+        with patch.object(mock_adapter, "_make_api_request", side_effect=VKError("API Error")):
+            media_item = VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
 
             result = await mock_adapter._upload_photo(media_item)
 
@@ -222,17 +203,14 @@ class TestPhotoUpload:
     @pytest.mark.asyncio
     async def test_upload_photo_file_upload_error(self, mock_adapter):
         """Test photo upload with file upload error."""
-        upload_server_response = {
-            "response": {"upload_url": "https://pu.vk.com/upload.php"}
-        }
+        upload_server_response = {"response": {"upload_url": "https://pu.vk.com/upload.php"}}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=upload_server_response), \
-             patch.object(mock_adapter, '_upload_file_to_server', side_effect=VKUploadError("Upload failed")):
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=upload_server_response),
+            patch.object(mock_adapter, "_upload_file_to_server", side_effect=VKUploadError("Upload failed")),
+        ):
 
-            media_item = VKMediaItem(
-                file_path="/test/photo.jpg",
-                media_type=MediaType.PHOTO
-            )
+            media_item = VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
 
             result = await mock_adapter._upload_photo(media_item)
 
@@ -246,7 +224,7 @@ class TestVideoUpload:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -262,29 +240,25 @@ class TestVideoUpload:
                 "video_id": 987654321,
                 "owner_id": -123456789,
                 "upload_url": "https://vu.vk.com/upload_video.php",
-                "access_key": "video_access_key"
+                "access_key": "video_access_key",
             }
         }
 
         # Mock upload response
-        upload_response = {
-            "size": 10485760,
-            "video_id": 987654321
-        }
+        upload_response = {"size": 10485760, "video_id": 987654321}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=video_save_response) as mock_api, \
-             patch.object(mock_adapter, '_upload_file_to_server', return_value=upload_response) as mock_upload, \
-             patch('pathlib.Path.exists', return_value=True), \
-             patch('pathlib.Path.stat') as mock_stat:
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=video_save_response) as mock_api,
+            patch.object(mock_adapter, "_upload_file_to_server", return_value=upload_response) as mock_upload,
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat") as mock_stat,
+        ):
 
             # Mock file size
             mock_stat.return_value.st_size = 10485760
 
             media_item = VKMediaItem(
-                file_path="/test/video.mp4",
-                media_type=MediaType.VIDEO,
-                title="Test Video",
-                description="A test video"
+                file_path="/test/video.mp4", media_type=MediaType.VIDEO, title="Test Video", description="A test video"
             )
 
             result = await mock_adapter._upload_video(media_item, "test_correlation_id")
@@ -305,16 +279,12 @@ class TestVideoUpload:
                     "name": "Test Video",
                     "description": "A test video",
                     "is_private": 0,
-                    "wallpost": 1
-                }
+                    "wallpost": 1,
+                },
             )
 
             # Verify file upload
-            mock_upload.assert_called_once_with(
-                "https://vu.vk.com/upload_video.php",
-                "/test/video.mp4",
-                "video_file"
-            )
+            mock_upload.assert_called_once_with("https://vu.vk.com/upload_video.php", "/test/video.mp4", "video_file")
 
     @pytest.mark.asyncio
     async def test_upload_video_without_access_key(self, mock_adapter):
@@ -323,25 +293,23 @@ class TestVideoUpload:
             "response": {
                 "video_id": 987654321,
                 "owner_id": -123456789,
-                "upload_url": "https://vu.vk.com/upload.php"
+                "upload_url": "https://vu.vk.com/upload.php",
                 # No access_key
             }
         }
 
         upload_response = {"video_id": 987654321}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=video_save_response), \
-             patch.object(mock_adapter, '_upload_file_to_server', return_value=upload_response), \
-             patch('pathlib.Path.exists', return_value=True), \
-             patch('pathlib.Path.stat') as mock_stat:
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=video_save_response),
+            patch.object(mock_adapter, "_upload_file_to_server", return_value=upload_response),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat") as mock_stat,
+        ):
 
             mock_stat.return_value.st_size = 5242880
 
-            media_item = VKMediaItem(
-                file_path="/test/video.mp4",
-                media_type=MediaType.VIDEO,
-                title="Test Video"
-            )
+            media_item = VKMediaItem(file_path="/test/video.mp4", media_type=MediaType.VIDEO, title="Test Video")
 
             result = await mock_adapter._upload_video(media_item)
 
@@ -352,29 +320,22 @@ class TestVideoUpload:
     async def test_upload_video_with_upload_error(self, mock_adapter):
         """Test video upload with upload server error."""
         video_save_response = {
-            "response": {
-                "video_id": 987654321,
-                "owner_id": -123456789,
-                "upload_url": "https://vu.vk.com/upload.php"
-            }
+            "response": {"video_id": 987654321, "owner_id": -123456789, "upload_url": "https://vu.vk.com/upload.php"}
         }
 
         # Upload response with error
-        upload_response = {
-            "error": "File too large"
-        }
+        upload_response = {"error": "File too large"}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=video_save_response), \
-             patch.object(mock_adapter, '_upload_file_to_server', return_value=upload_response), \
-             patch('pathlib.Path.exists', return_value=True), \
-             patch('pathlib.Path.stat') as mock_stat:
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=video_save_response),
+            patch.object(mock_adapter, "_upload_file_to_server", return_value=upload_response),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.stat") as mock_stat,
+        ):
 
             mock_stat.return_value.st_size = 104857600
 
-            media_item = VKMediaItem(
-                file_path="/test/large_video.mp4",
-                media_type=MediaType.VIDEO
-            )
+            media_item = VKMediaItem(file_path="/test/large_video.mp4", media_type=MediaType.VIDEO)
 
             result = await mock_adapter._upload_video(media_item)
 
@@ -384,11 +345,8 @@ class TestVideoUpload:
     @pytest.mark.asyncio
     async def test_upload_video_file_not_found(self, mock_adapter):
         """Test video upload with missing file."""
-        with patch('pathlib.Path.exists', return_value=False):
-            media_item = VKMediaItem(
-                file_path="/test/nonexistent.mp4",
-                media_type=MediaType.VIDEO
-            )
+        with patch("pathlib.Path.exists", return_value=False):
+            media_item = VKMediaItem(file_path="/test/nonexistent.mp4", media_type=MediaType.VIDEO)
 
             result = await mock_adapter._upload_video(media_item)
 
@@ -402,7 +360,7 @@ class TestWallPosting:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -412,19 +370,10 @@ class TestWallPosting:
     @pytest.mark.asyncio
     async def test_post_to_wall_success(self, mock_adapter):
         """Test successful wall posting."""
-        wall_response = {
-            "response": {
-                "post_id": 456
-            }
-        }
+        wall_response = {"response": {"post_id": 456}}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=wall_response) as mock_api:
-            post = VKPost(
-                message="Test wall post",
-                media_items=[],
-                from_group=True,
-                signed=False
-            )
+        with patch.object(mock_adapter, "_make_api_request", return_value=wall_response) as mock_api:
+            post = VKPost(message="Test wall post", media_items=[], from_group=True, signed=False)
 
             attachments = ["photo-123456789_456789123", "video-123456789_987654321"]
 
@@ -446,28 +395,20 @@ class TestWallPosting:
                     "message": "Test wall post",
                     "attachments": "photo-123456789_456789123,video-123456789_987654321",
                     "signed": 0,
-                    "mark_as_ads": 0
-                }
+                    "mark_as_ads": 0,
+                },
             )
 
     @pytest.mark.asyncio
     async def test_post_to_wall_scheduled(self, mock_adapter):
         """Test scheduled wall posting."""
-        wall_response = {
-            "response": {
-                "post_id": 789
-            }
-        }
+        wall_response = {"response": {"post_id": 789}}
 
         schedule_time = datetime.now(timezone.utc) + timedelta(hours=2)
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=wall_response) as mock_api:
+        with patch.object(mock_adapter, "_make_api_request", return_value=wall_response) as mock_api:
             post = VKPost(
-                message="Scheduled post",
-                media_items=[],
-                publish_date=schedule_time,
-                signed=True,
-                mark_as_ads=True
+                message="Scheduled post", media_items=[], publish_date=schedule_time, signed=True, mark_as_ads=True
             )
 
             result = await mock_adapter._post_to_wall(post, [])
@@ -484,18 +425,10 @@ class TestWallPosting:
     @pytest.mark.asyncio
     async def test_post_to_wall_with_guid(self, mock_adapter):
         """Test wall posting with GUID for idempotency."""
-        wall_response = {
-            "response": {
-                "post_id": 999
-            }
-        }
+        wall_response = {"response": {"post_id": 999}}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=wall_response) as mock_api:
-            post = VKPost(
-                message="Post with GUID",
-                media_items=[],
-                guid="unique-guid-123"
-            )
+        with patch.object(mock_adapter, "_make_api_request", return_value=wall_response) as mock_api:
+            post = VKPost(message="Post with GUID", media_items=[], guid="unique-guid-123")
 
             await mock_adapter._post_to_wall(post, [])
 
@@ -506,11 +439,8 @@ class TestWallPosting:
     @pytest.mark.asyncio
     async def test_post_to_wall_error(self, mock_adapter):
         """Test wall posting with error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=VKError("Access denied")):
-            post = VKPost(
-                message="Failed post",
-                media_items=[]
-            )
+        with patch.object(mock_adapter, "_make_api_request", side_effect=VKError("Access denied")):
+            post = VKPost(message="Failed post", media_items=[])
 
             with pytest.raises(VKError):
                 await mock_adapter._post_to_wall(post, [])
@@ -522,7 +452,7 @@ class TestFileUpload:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -532,28 +462,24 @@ class TestFileUpload:
     @pytest.mark.asyncio
     async def test_upload_file_local_path(self, mock_adapter):
         """Test uploading local file."""
-        mock_response = {
-            "server": 123,
-            "photo": "encoded_data",
-            "hash": "abc123"
-        }
+        mock_response = {"server": 123, "photo": "encoded_data", "hash": "abc123"}
 
         mock_http_response = MagicMock()
         mock_http_response.raise_for_status.return_value = None
-        mock_http_response.aread.return_value = json.dumps(mock_response).encode('utf-8')
+        mock_http_response.aread.return_value = json.dumps(mock_response).encode("utf-8")
 
         file_content = b"fake_image_data"
 
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch('pathlib.Path.read_bytes', return_value=file_content), \
-             patch.object(mock_adapter.http_client, 'post') as mock_post:
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.read_bytes", return_value=file_content),
+            patch.object(mock_adapter.http_client, "post") as mock_post,
+        ):
 
             mock_post.return_value.__aenter__.return_value = mock_http_response
 
             result = await mock_adapter._upload_file_to_server(
-                "https://upload.vk.com/test",
-                "/local/image.jpg",
-                "photo"
+                "https://upload.vk.com/test", "/local/image.jpg", "photo"
             )
 
             assert result == mock_response
@@ -567,10 +493,7 @@ class TestFileUpload:
     @pytest.mark.asyncio
     async def test_upload_file_url(self, mock_adapter):
         """Test uploading file from URL."""
-        mock_upload_response = {
-            "server": 456,
-            "video": "video_data"
-        }
+        mock_upload_response = {"server": 456, "video": "video_data"}
 
         mock_download_response = MagicMock()
         mock_download_response.raise_for_status.return_value = None
@@ -578,18 +501,18 @@ class TestFileUpload:
 
         mock_upload_http_response = MagicMock()
         mock_upload_http_response.raise_for_status.return_value = None
-        mock_upload_http_response.aread.return_value = json.dumps(mock_upload_response).encode('utf-8')
+        mock_upload_http_response.aread.return_value = json.dumps(mock_upload_response).encode("utf-8")
 
-        with patch.object(mock_adapter.http_client, 'get') as mock_get, \
-             patch.object(mock_adapter.http_client, 'post') as mock_post:
+        with (
+            patch.object(mock_adapter.http_client, "get") as mock_get,
+            patch.object(mock_adapter.http_client, "post") as mock_post,
+        ):
 
             mock_get.return_value.__aenter__.return_value = mock_download_response
             mock_post.return_value.__aenter__.return_value = mock_upload_http_response
 
             result = await mock_adapter._upload_file_to_server(
-                "https://upload.vk.com/test",
-                "https://example.com/video.mp4",
-                "video_file"
+                "https://upload.vk.com/test", "https://example.com/video.mp4", "video_file"
             )
 
             assert result == mock_upload_response
@@ -600,12 +523,10 @@ class TestFileUpload:
     @pytest.mark.asyncio
     async def test_upload_file_not_found(self, mock_adapter):
         """Test uploading non-existent local file."""
-        with patch('pathlib.Path.exists', return_value=False):
+        with patch("pathlib.Path.exists", return_value=False):
             with pytest.raises(VKUploadError) as exc_info:
                 await mock_adapter._upload_file_to_server(
-                    "https://upload.vk.com/test",
-                    "/nonexistent/file.jpg",
-                    "photo"
+                    "https://upload.vk.com/test", "/nonexistent/file.jpg", "photo"
                 )
 
             assert "File not found" in str(exc_info.value)
@@ -619,18 +540,16 @@ class TestFileUpload:
 
         file_content = b"fake_data"
 
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch('pathlib.Path.read_bytes', return_value=file_content), \
-             patch.object(mock_adapter.http_client, 'post') as mock_post:
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.read_bytes", return_value=file_content),
+            patch.object(mock_adapter.http_client, "post") as mock_post,
+        ):
 
             mock_post.return_value.__aenter__.return_value = mock_http_response
 
             with pytest.raises(VKUploadError) as exc_info:
-                await mock_adapter._upload_file_to_server(
-                    "https://upload.vk.com/test",
-                    "/local/file.jpg",
-                    "photo"
-                )
+                await mock_adapter._upload_file_to_server("https://upload.vk.com/test", "/local/file.jpg", "photo")
 
             assert "Invalid upload response" in str(exc_info.value)
 
@@ -641,7 +560,7 @@ class TestRateLimiting:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -664,7 +583,7 @@ class TestRateLimiting:
         current_time = time.time()
         mock_adapter.last_request_times = [current_time, current_time, current_time]
 
-        with patch('asyncio.sleep') as mock_sleep:
+        with patch("asyncio.sleep") as mock_sleep:
             await mock_adapter._check_rate_limits()
 
             # Should wait before making request
@@ -690,7 +609,7 @@ class TestAPIErrorHandling:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -700,10 +619,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_auth_error(self, mock_adapter):
         """Test handling of authentication errors."""
-        error_data = {
-            "error_code": 5,
-            "error_msg": "User authorization failed: access_token has expired."
-        }
+        error_data = {"error_code": 5, "error_msg": "User authorization failed: access_token has expired."}
 
         with pytest.raises(VKAuthError) as exc_info:
             await mock_adapter._handle_api_error(error_data)
@@ -715,7 +631,7 @@ class TestAPIErrorHandling:
         """Test handling of rate limit errors."""
         rate_limit_errors = [
             {"error_code": 6, "error_msg": "Too many requests per second"},
-            {"error_code": 9, "error_msg": "Flood control"}
+            {"error_code": 9, "error_msg": "Flood control"},
         ]
 
         for error_data in rate_limit_errors:
@@ -728,7 +644,7 @@ class TestAPIErrorHandling:
         validation_errors = [
             {"error_code": 100, "error_msg": "One of the parameters specified was missing or invalid"},
             {"error_code": 113, "error_msg": "Invalid user id"},
-            {"error_code": 18, "error_msg": "Page deleted or blocked"}
+            {"error_code": 18, "error_msg": "Page deleted or blocked"},
         ]
 
         for error_data in validation_errors:
@@ -741,7 +657,7 @@ class TestAPIErrorHandling:
         access_errors = [
             {"error_code": 15, "error_msg": "Access denied"},
             {"error_code": 17, "error_msg": "Validation required"},
-            {"error_code": 214, "error_msg": "Access to adding post denied"}
+            {"error_code": 214, "error_msg": "Access to adding post denied"},
         ]
 
         for error_data in access_errors:
@@ -751,10 +667,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_server_error(self, mock_adapter):
         """Test handling of server errors."""
-        error_data = {
-            "error_code": 10,
-            "error_msg": "Internal server error"
-        }
+        error_data = {"error_code": 10, "error_msg": "Internal server error"}
 
         with pytest.raises(VKError) as exc_info:
             await mock_adapter._handle_api_error(error_data)
@@ -764,10 +677,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_captcha_error(self, mock_adapter):
         """Test handling of captcha required error."""
-        error_data = {
-            "error_code": 14,
-            "error_msg": "Captcha needed"
-        }
+        error_data = {"error_code": 14, "error_msg": "Captcha needed"}
 
         with pytest.raises(VKError) as exc_info:
             await mock_adapter._handle_api_error(error_data)
@@ -777,10 +687,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_unknown_error(self, mock_adapter):
         """Test handling of unknown errors."""
-        error_data = {
-            "error_code": 9999,
-            "error_msg": "Unknown error"
-        }
+        error_data = {"error_code": 9999, "error_msg": "Unknown error"}
 
         with pytest.raises(VKError) as exc_info:
             await mock_adapter._handle_api_error(error_data)
@@ -795,7 +702,7 @@ class TestAPIRequests:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -805,43 +712,35 @@ class TestAPIRequests:
     @pytest.mark.asyncio
     async def test_make_api_request_success(self, mock_adapter):
         """Test successful API request."""
-        mock_response_data = {
-            "response": {
-                "items": [{"id": 1, "text": "test"}]
-            }
-        }
+        mock_response_data = {"response": {"items": [{"id": 1, "text": "test"}]}}
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = mock_response_data
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+        ):
 
-            result = await mock_adapter._make_api_request(
-                "wall.get",
-                params={"count": 10}
-            )
+            result = await mock_adapter._make_api_request("wall.get", params={"count": 10})
 
             assert result == mock_response_data
 
     @pytest.mark.asyncio
     async def test_make_api_request_with_error_response(self, mock_adapter):
         """Test API request with error in response."""
-        error_response = {
-            "error": {
-                "error_code": 100,
-                "error_msg": "Invalid parameters"
-            }
-        }
+        error_response = {"error": {"error_code": 100, "error_msg": "Invalid parameters"}}
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = error_response
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None), \
-             patch.object(mock_adapter, '_handle_api_error', side_effect=VKValidationError("Invalid parameters")):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+            patch.object(mock_adapter, "_handle_api_error", side_effect=VKValidationError("Invalid parameters")),
+        ):
 
             with pytest.raises(VKValidationError):
                 await mock_adapter._make_api_request("wall.get")
@@ -849,8 +748,10 @@ class TestAPIRequests:
     @pytest.mark.asyncio
     async def test_make_api_request_network_error(self, mock_adapter):
         """Test API request with network error."""
-        with patch.object(mock_adapter.http_client, 'post', side_effect=httpx.RequestError("Network error")), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", side_effect=httpx.RequestError("Network error")),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+        ):
 
             with pytest.raises(httpx.RequestError):
                 await mock_adapter._make_api_request("wall.get")
@@ -862,7 +763,7 @@ class TestPostManagement:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -874,20 +775,20 @@ class TestPostManagement:
         """Test successful post info retrieval."""
         post_response = {
             "response": {
-                "items": [{
-                    "id": 456,
-                    "owner_id": -123456789,
-                    "date": 1640995200,
-                    "text": "Test post",
-                    "attachments": [
-                        {"type": "photo", "photo": {"id": 789}}
-                    ],
-                    "post_type": "post"
-                }]
+                "items": [
+                    {
+                        "id": 456,
+                        "owner_id": -123456789,
+                        "date": 1640995200,
+                        "text": "Test post",
+                        "attachments": [{"type": "photo", "photo": {"id": 789}}],
+                        "post_type": "post",
+                    }
+                ]
             }
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=post_response):
+        with patch.object(mock_adapter, "_make_api_request", return_value=post_response):
             result = await mock_adapter.get_post_info(-123456789, 456)
 
             assert result["id"] == 456
@@ -899,13 +800,9 @@ class TestPostManagement:
     @pytest.mark.asyncio
     async def test_get_post_info_not_found(self, mock_adapter):
         """Test post info retrieval when post not found."""
-        empty_response = {
-            "response": {
-                "items": []
-            }
-        }
+        empty_response = {"response": {"items": []}}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=empty_response):
+        with patch.object(mock_adapter, "_make_api_request", return_value=empty_response):
             result = await mock_adapter.get_post_info(-123456789, 999)
 
             assert result == {}
@@ -913,7 +810,7 @@ class TestPostManagement:
     @pytest.mark.asyncio
     async def test_get_post_info_error(self, mock_adapter):
         """Test post info retrieval with error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=VKError("Access denied")):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=VKError("Access denied")):
             result = await mock_adapter.get_post_info(-123456789, 456)
 
             assert result == {}
@@ -921,11 +818,9 @@ class TestPostManagement:
     @pytest.mark.asyncio
     async def test_delete_post_success(self, mock_adapter):
         """Test successful post deletion."""
-        delete_response = {
-            "response": 1
-        }
+        delete_response = {"response": 1}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=delete_response):
+        with patch.object(mock_adapter, "_make_api_request", return_value=delete_response):
             result = await mock_adapter.delete_post(-123456789, 456)
 
             assert result is True
@@ -933,7 +828,7 @@ class TestPostManagement:
     @pytest.mark.asyncio
     async def test_delete_post_error(self, mock_adapter):
         """Test post deletion with error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=VKError("Access denied")):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=VKError("Access denied")):
             result = await mock_adapter.delete_post(-123456789, 456)
 
             assert result is False
@@ -945,7 +840,7 @@ class TestFullPublishWorkflow:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.vk.settings.vk') as mock_settings:
+        with patch("app.adapters.vk.settings.vk") as mock_settings:
             mock_settings.group_id = 123456789
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -961,7 +856,7 @@ class TestFullPublishWorkflow:
             attachment_string="photo-123456789_456789123",
             upload_time=1.5,
             file_size=1024000,
-            vk_id="456789123"
+            vk_id="456789123",
         )
 
         # Mock video upload
@@ -970,7 +865,7 @@ class TestFullPublishWorkflow:
             attachment_string="video-123456789_987654321",
             upload_time=5.2,
             file_size=10485760,
-            vk_id="987654321"
+            vk_id="987654321",
         )
 
         # Mock wall post result
@@ -979,22 +874,21 @@ class TestFullPublishWorkflow:
             status=PostStatus.PUBLISHED,
             message="Post published successfully",
             post_url="https://vk.com/wall-123456789_789",
-            published_at=datetime.now(timezone.utc)
+            published_at=datetime.now(timezone.utc),
         )
 
         media_items = [
             VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO),
-            VKMediaItem(file_path="/test/video.mp4", media_type=MediaType.VIDEO)
+            VKMediaItem(file_path="/test/video.mp4", media_type=MediaType.VIDEO),
         ]
 
-        post = VKPost(
-            message="Test post with media",
-            media_items=media_items
-        )
+        post = VKPost(message="Test post with media", media_items=media_items)
 
-        with patch.object(mock_adapter, '_upload_photo', return_value=photo_upload_result) as mock_photo, \
-             patch.object(mock_adapter, '_upload_video', return_value=video_upload_result) as mock_video, \
-             patch.object(mock_adapter, '_post_to_wall', return_value=wall_result) as mock_wall:
+        with (
+            patch.object(mock_adapter, "_upload_photo", return_value=photo_upload_result) as mock_photo,
+            patch.object(mock_adapter, "_upload_video", return_value=video_upload_result) as mock_video,
+            patch.object(mock_adapter, "_post_to_wall", return_value=wall_result) as mock_wall,
+        ):
 
             result = await mock_adapter.publish_post(post, "test_correlation_id")
 
@@ -1021,15 +915,12 @@ class TestFullPublishWorkflow:
             status=PostStatus.PUBLISHED,
             message="Post published successfully",
             post_url="https://vk.com/wall-123456789_123",
-            published_at=datetime.now(timezone.utc)
+            published_at=datetime.now(timezone.utc),
         )
 
-        post = VKPost(
-            message="Text only post",
-            media_items=[]
-        )
+        post = VKPost(message="Text only post", media_items=[])
 
-        with patch.object(mock_adapter, '_post_to_wall', return_value=wall_result) as mock_wall:
+        with patch.object(mock_adapter, "_post_to_wall", return_value=wall_result) as mock_wall:
             result = await mock_adapter.publish_post(post)
 
             assert result.post_id == 123
@@ -1049,28 +940,25 @@ class TestFullPublishWorkflow:
             attachment_string="",  # Empty indicates failure
             upload_time=1.0,
             file_size=0,
-            error_message="Upload failed"
+            error_message="Upload failed",
         )
 
-        media_items = [
-            VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
-        ]
+        media_items = [VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)]
 
-        post = VKPost(
-            message="Post with failed upload",
-            media_items=media_items
-        )
+        post = VKPost(message="Post with failed upload", media_items=media_items)
 
         # Mock wall post result for text-only fallback
         wall_result = VKPublishResult(
             post_id=456,
             status=PostStatus.PUBLISHED,
             message="Post published successfully",
-            post_url="https://vk.com/wall-123456789_456"
+            post_url="https://vk.com/wall-123456789_456",
         )
 
-        with patch.object(mock_adapter, '_upload_photo', return_value=photo_upload_result), \
-             patch.object(mock_adapter, '_post_to_wall', return_value=wall_result) as mock_wall:
+        with (
+            patch.object(mock_adapter, "_upload_photo", return_value=photo_upload_result),
+            patch.object(mock_adapter, "_post_to_wall", return_value=wall_result) as mock_wall,
+        ):
 
             result = await mock_adapter.publish_post(post)
 
@@ -1091,16 +979,16 @@ class TestConvenienceFunctions:
             post_id=123,
             status=PostStatus.PUBLISHED,
             message="Published successfully",
-            post_url="https://vk.com/wall-123456789_123"
+            post_url="https://vk.com/wall-123456789_123",
         )
 
-        with patch('app.adapters.vk.vk_adapter') as mock_adapter:
+        with patch("app.adapters.vk.vk_adapter") as mock_adapter:
             mock_adapter.publish_post.return_value = mock_result
 
             result = await publish_vk_post(
                 message="Test post",
                 media_files=["/path/to/image.jpg", "/path/to/video.mp4"],
-                correlation_id="test_correlation"
+                correlation_id="test_correlation",
             )
 
             assert result.post_id == 123
@@ -1118,19 +1006,13 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_publish_vk_post_text_only(self):
         """Test publish_vk_post without media."""
-        mock_result = VKPublishResult(
-            post_id=456,
-            status=PostStatus.PUBLISHED,
-            message="Published successfully"
-        )
+        mock_result = VKPublishResult(post_id=456, status=PostStatus.PUBLISHED, message="Published successfully")
 
-        with patch('app.adapters.vk.vk_adapter') as mock_adapter:
+        with patch("app.adapters.vk.vk_adapter") as mock_adapter:
             mock_adapter.publish_post.return_value = mock_result
 
             result = await publish_vk_post(
-                message="Text only post",
-                from_group=False,
-                publish_date=datetime.now(timezone.utc) + timedelta(hours=1)
+                message="Text only post", from_group=False, publish_date=datetime.now(timezone.utc) + timedelta(hours=1)
             )
 
             assert result.post_id == 456
@@ -1149,10 +1031,10 @@ class TestConvenienceFunctions:
             "id": 123,
             "owner_id": -123456789,
             "text": "Test post",
-            "url": "https://vk.com/wall-123456789_123"
+            "url": "https://vk.com/wall-123456789_123",
         }
 
-        with patch('app.adapters.vk.vk_adapter') as mock_adapter:
+        with patch("app.adapters.vk.vk_adapter") as mock_adapter:
             mock_adapter.get_post_info.return_value = expected_info
 
             result = await get_vk_post_info(-123456789, 123)
@@ -1163,7 +1045,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_delete_vk_post(self):
         """Test delete_vk_post convenience function."""
-        with patch('app.adapters.vk.vk_adapter') as mock_adapter:
+        with patch("app.adapters.vk.vk_adapter") as mock_adapter:
             mock_adapter.delete_post.return_value = True
 
             result = await delete_vk_post(-123456789, 123)
@@ -1174,7 +1056,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_cleanup_vk_adapter(self):
         """Test cleanup_vk_adapter convenience function."""
-        with patch('app.adapters.vk.vk_adapter') as mock_adapter:
+        with patch("app.adapters.vk.vk_adapter") as mock_adapter:
             mock_adapter.close = AsyncMock()
 
             await cleanup_vk_adapter()
@@ -1187,10 +1069,7 @@ class TestDataclassValidation:
 
     def test_vk_media_item_creation(self):
         """Test VKMediaItem creation and defaults."""
-        media_item = VKMediaItem(
-            file_path="/test/photo.jpg",
-            media_type=MediaType.PHOTO
-        )
+        media_item = VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
 
         assert media_item.file_path == "/test/photo.jpg"
         assert media_item.media_type == MediaType.PHOTO
@@ -1205,7 +1084,7 @@ class TestDataclassValidation:
             media_type=MediaType.VIDEO,
             title="Test Video",
             description="A test video",
-            tags=["test", "video"]
+            tags=["test", "video"],
         )
 
         assert media_item.title == "Test Video"
@@ -1214,14 +1093,9 @@ class TestDataclassValidation:
 
     def test_vk_post_creation(self):
         """Test VKPost creation and defaults."""
-        media_items = [
-            VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
-        ]
+        media_items = [VKMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)]
 
-        post = VKPost(
-            message="Test post",
-            media_items=media_items
-        )
+        post = VKPost(message="Test post", media_items=media_items)
 
         assert post.message == "Test post"
         assert len(post.media_items) == 1
@@ -1244,7 +1118,7 @@ class TestDataclassValidation:
             signed=True,
             mark_as_ads=True,
             publish_date=publish_date,
-            guid="unique-guid-123"
+            guid="unique-guid-123",
         )
 
         assert post.owner_id == -123456789

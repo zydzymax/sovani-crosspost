@@ -20,8 +20,10 @@ router = APIRouter(prefix="/account", tags=["Account"])
 
 # ==================== SCHEMAS ====================
 
+
 class ProfileResponse(BaseModel):
     """User profile response."""
+
     id: str
     email: str | None
     email_verified: bool = False
@@ -39,6 +41,7 @@ class ProfileResponse(BaseModel):
 
 class ProfileUpdate(BaseModel):
     """Profile update request."""
+
     first_name: str | None = Field(None, max_length=255)
     last_name: str | None = Field(None, max_length=255)
     company_name: str | None = Field(None, max_length=255)
@@ -47,6 +50,7 @@ class ProfileUpdate(BaseModel):
 
 class SubscriptionResponse(BaseModel):
     """Subscription info."""
+
     id: str
     product_code: str
     product_name: str
@@ -62,6 +66,7 @@ class SubscriptionResponse(BaseModel):
 
 class UsageStatsResponse(BaseModel):
     """Usage statistics."""
+
     posts_count_this_month: int
     images_generated_this_month: int
     videos_generated_this_month: int = 0
@@ -70,6 +75,7 @@ class UsageStatsResponse(BaseModel):
 
 class AccountSummaryResponse(BaseModel):
     """Full account summary."""
+
     profile: ProfileResponse
     subscriptions: list[SubscriptionResponse]
     usage: UsageStatsResponse
@@ -79,10 +85,9 @@ class AccountSummaryResponse(BaseModel):
 
 # ==================== ROUTES ====================
 
+
 @router.get("/profile", response_model=ProfileResponse)
-async def get_profile(
-    user = Depends(get_current_user)
-):
+async def get_profile(user=Depends(get_current_user)):
     """Get current user's profile."""
     return ProfileResponse(
         id=str(user.id),
@@ -103,9 +108,7 @@ async def get_profile(
 
 @router.patch("/profile", response_model=ProfileResponse)
 async def update_profile(
-    data: ProfileUpdate,
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_async_session)
+    data: ProfileUpdate, user=Depends(get_current_user), db: AsyncSession = Depends(get_db_async_session)
 ):
     """Update user profile."""
     # Update only provided fields
@@ -138,10 +141,7 @@ async def update_profile(
 
 
 @router.get("/subscriptions", response_model=list[SubscriptionResponse])
-async def get_subscriptions(
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_async_session)
-):
+async def get_subscriptions(user=Depends(get_current_user), db: AsyncSession = Depends(get_db_async_session)):
     """Get user's active subscriptions."""
     from ..models.entities import SaaSProduct, SaaSProductPlan, UserSubscription
 
@@ -155,28 +155,29 @@ async def get_subscriptions(
 
     subscriptions = []
     for sub, product, plan in rows:
-        subscriptions.append(SubscriptionResponse(
-            id=str(sub.id),
-            product_code=product.code,
-            product_name=product.name,
-            plan_code=plan.code,
-            plan_name=plan.name,
-            status=sub.status.value if hasattr(sub.status, 'value') else str(sub.status),
-            price_rub=float(plan.price_rub),
-            billing_period=plan.billing_period.value if hasattr(plan.billing_period, 'value') else str(plan.billing_period),
-            current_period_start=sub.current_period_start,
-            current_period_end=sub.current_period_end,
-            expires_at=sub.expires_at,
-        ))
+        subscriptions.append(
+            SubscriptionResponse(
+                id=str(sub.id),
+                product_code=product.code,
+                product_name=product.name,
+                plan_code=plan.code,
+                plan_name=plan.name,
+                status=sub.status.value if hasattr(sub.status, "value") else str(sub.status),
+                price_rub=float(plan.price_rub),
+                billing_period=(
+                    plan.billing_period.value if hasattr(plan.billing_period, "value") else str(plan.billing_period)
+                ),
+                current_period_start=sub.current_period_start,
+                current_period_end=sub.current_period_end,
+                expires_at=sub.expires_at,
+            )
+        )
 
     return subscriptions
 
 
 @router.get("/summary", response_model=AccountSummaryResponse)
-async def get_account_summary(
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_async_session)
-):
+async def get_account_summary(user=Depends(get_current_user), db: AsyncSession = Depends(get_db_async_session)):
     """Get full account summary with profile, subscriptions, and usage."""
     from ..models.entities import SaaSProduct, SaaSProductPlan, SubscriptionPlan, UserSubscription
 
@@ -191,19 +192,23 @@ async def get_account_summary(
 
     subscriptions = []
     for sub, product, plan in rows:
-        subscriptions.append(SubscriptionResponse(
-            id=str(sub.id),
-            product_code=product.code,
-            product_name=product.name,
-            plan_code=plan.code,
-            plan_name=plan.name,
-            status=sub.status.value if hasattr(sub.status, 'value') else str(sub.status),
-            price_rub=float(plan.price_rub),
-            billing_period=plan.billing_period.value if hasattr(plan.billing_period, 'value') else str(plan.billing_period),
-            current_period_start=sub.current_period_start,
-            current_period_end=sub.current_period_end,
-            expires_at=sub.expires_at,
-        ))
+        subscriptions.append(
+            SubscriptionResponse(
+                id=str(sub.id),
+                product_code=product.code,
+                product_name=product.name,
+                plan_code=plan.code,
+                plan_name=plan.name,
+                status=sub.status.value if hasattr(sub.status, "value") else str(sub.status),
+                price_rub=float(plan.price_rub),
+                billing_period=(
+                    plan.billing_period.value if hasattr(plan.billing_period, "value") else str(plan.billing_period)
+                ),
+                current_period_start=sub.current_period_start,
+                current_period_end=sub.current_period_end,
+                expires_at=sub.expires_at,
+            )
+        )
 
     # Calculate demo days left (from legacy system)
     demo_days_left = None
@@ -241,23 +246,18 @@ async def get_account_summary(
 
 @router.post("/link-telegram")
 async def link_telegram_account(
-    telegram_id: int,
-    user = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_async_session)
+    telegram_id: int, user=Depends(get_current_user), db: AsyncSession = Depends(get_db_async_session)
 ):
     """Link Telegram account to current user (for migration)."""
     from ..models.entities import User
 
     # Check if telegram_id is already used
-    result = await db.execute(
-        select(User).where(User.telegram_id == telegram_id)
-    )
+    result = await db.execute(select(User).where(User.telegram_id == telegram_id))
     existing = result.scalar_one_or_none()
 
     if existing and existing.id != user.id:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Telegram account already linked to another user"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Telegram account already linked to another user"
         )
 
     user.telegram_id = telegram_id

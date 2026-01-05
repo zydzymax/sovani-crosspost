@@ -44,43 +44,23 @@ class TestPreflightRulesService:
             "version": "test_1.0",
             "platforms": {
                 "test_platform": {
-                    "caption": {
-                        "max_length": 100,
-                        "min_length": 5,
-                        "required": True
-                    },
-                    "hashtags": {
-                        "max_count": 3,
-                        "max_length_each": 20,
-                        "required": False
-                    },
-                    "mentions": {
-                        "max_count": 2,
-                        "required": False
-                    },
-                    "links": {
-                        "allowed": False,
-                        "max_count": 0
-                    },
+                    "caption": {"max_length": 100, "min_length": 5, "required": True},
+                    "hashtags": {"max_count": 3, "max_length_each": 20, "required": False},
+                    "mentions": {"max_count": 2, "required": False},
+                    "links": {"allowed": False, "max_count": 0},
                     "media": {
                         "required": True,
                         "max_count": 2,
                         "max_file_size": 1048576,  # 1MB
                         "supported_formats": ["jpg", "png"],
-                        "video": {
-                            "max_duration": 30,
-                            "min_duration": 5
-                        }
+                        "video": {"max_duration": 30, "min_duration": 5},
                     },
-                    "content": {
-                        "forbidden_words": ["bad", "evil"],
-                        "forbidden_patterns": ["\\d{4}-\\d{4}"]
-                    }
+                    "content": {"forbidden_words": ["bad", "evil"], "forbidden_patterns": ["\\d{4}-\\d{4}"]},
                 }
-            }
+            },
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(rules_data, f)
             temp_file = f.name
 
@@ -91,7 +71,7 @@ class TestPreflightRulesService:
 
     def test_service_initialization_with_existing_file(self, temp_rules_file):
         """Test service initialization with existing rules file."""
-        with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_rules_file):
+        with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_rules_file):
             service = PreflightRulesService()
 
             assert service.rules_cache is not None
@@ -104,7 +84,7 @@ class TestPreflightRulesService:
         with tempfile.TemporaryDirectory() as temp_dir:
             non_existent_file = os.path.join(temp_dir, "non_existent_rules.yml")
 
-            with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=non_existent_file):
+            with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=non_existent_file):
                 service = PreflightRulesService()
 
                 assert os.path.exists(non_existent_file)
@@ -114,7 +94,7 @@ class TestPreflightRulesService:
 
     def test_get_platform_rules(self, temp_rules_file):
         """Test getting platform-specific rules."""
-        with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_rules_file):
+        with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_rules_file):
             service = PreflightRulesService()
 
             rules = service.get_platform_rules("test_platform")
@@ -135,28 +115,16 @@ class TestCaptionValidation:
         rules_data = {
             "version": "test",
             "platforms": {
-                "strict_platform": {
-                    "caption": {
-                        "max_length": 50,
-                        "min_length": 10,
-                        "required": True
-                    }
-                },
-                "lenient_platform": {
-                    "caption": {
-                        "max_length": 1000,
-                        "min_length": 1,
-                        "required": False
-                    }
-                }
-            }
+                "strict_platform": {"caption": {"max_length": 50, "min_length": 10, "required": True}},
+                "lenient_platform": {"caption": {"max_length": 1000, "min_length": 1, "required": False}},
+            },
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(rules_data, f)
             temp_file = f.name
 
-        with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_file):
+        with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_file):
             service = PreflightRulesService()
 
         os.unlink(temp_file)
@@ -170,7 +138,7 @@ class TestCaptionValidation:
             mentions=[],
             links=[],
             media=[],
-            platform="strict_platform"
+            platform="strict_platform",
         )
 
         result = test_service.validate_post(content)
@@ -187,14 +155,7 @@ class TestCaptionValidation:
 
     def test_caption_empty_required_violation(self, test_service):
         """Test empty caption when required."""
-        content = PostContent(
-            caption="",
-            hashtags=[],
-            mentions=[],
-            links=[],
-            media=[],
-            platform="strict_platform"
-        )
+        content = PostContent(caption="", hashtags=[], mentions=[], links=[], media=[], platform="strict_platform")
 
         result = test_service.validate_post(content)
 
@@ -210,7 +171,7 @@ class TestCaptionValidation:
             mentions=[],
             links=[],
             media=[],
-            platform="strict_platform"
+            platform="strict_platform",
         )
 
         result = test_service.validate_post(content)
@@ -227,14 +188,16 @@ class TestCaptionValidation:
             mentions=[],
             links=[],
             media=[],
-            platform="strict_platform"
+            platform="strict_platform",
         )
 
         result = test_service.validate_post(content)
 
         # Should not have caption-related violations
         violations = result.get_blocking_violations()
-        caption_violations = [v for v in violations if v.type in [ViolationType.CAPTION_TOO_LONG, ViolationType.CAPTION_EMPTY]]
+        caption_violations = [
+            v for v in violations if v.type in [ViolationType.CAPTION_TOO_LONG, ViolationType.CAPTION_EMPTY]
+        ]
         assert len(caption_violations) == 0
 
 
@@ -249,20 +212,16 @@ class TestHashtagValidation:
             "platforms": {
                 "limited_hashtags": {
                     "caption": {"max_length": 1000, "required": False},
-                    "hashtags": {
-                        "max_count": 3,
-                        "max_length_each": 15,
-                        "required": False
-                    }
+                    "hashtags": {"max_count": 3, "max_length_each": 15, "required": False},
                 }
-            }
+            },
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(rules_data, f)
             temp_file = f.name
 
-        with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_file):
+        with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_file):
             service = PreflightRulesService()
 
         os.unlink(temp_file)
@@ -276,7 +235,7 @@ class TestHashtagValidation:
             mentions=[],
             links=[],
             media=[],
-            platform="limited_hashtags"
+            platform="limited_hashtags",
         )
 
         result = hashtag_service.validate_post(content)
@@ -297,7 +256,7 @@ class TestHashtagValidation:
             mentions=[],
             links=[],
             media=[],
-            platform="limited_hashtags"
+            platform="limited_hashtags",
         )
 
         result = hashtag_service.validate_post(content)
@@ -317,12 +276,14 @@ class TestHashtagValidation:
             mentions=[],
             links=[],
             media=[],
-            platform="limited_hashtags"
+            platform="limited_hashtags",
         )
 
         result = hashtag_service.validate_post(content)
 
-        hashtag_violations = [v for v in result.violations if v.type in [ViolationType.HASHTAGS_TOO_MANY, ViolationType.HASHTAGS_TOO_LONG]]
+        hashtag_violations = [
+            v for v in result.violations if v.type in [ViolationType.HASHTAGS_TOO_MANY, ViolationType.HASHTAGS_TOO_LONG]
+        ]
         assert len(hashtag_violations) == 0
 
 
@@ -342,30 +303,21 @@ class TestMediaValidation:
                         "max_count": 2,
                         "max_file_size": 1048576,  # 1MB
                         "supported_formats": ["jpg", "png", "mp4"],
-                        "video": {
-                            "max_duration": 60,
-                            "min_duration": 3,
-                            "max_width": 1920,
-                            "max_height": 1080
-                        }
-                    }
+                        "video": {"max_duration": 60, "min_duration": 3, "max_width": 1920, "max_height": 1080},
+                    },
                 },
                 "media_optional": {
                     "caption": {"max_length": 1000, "required": True},
-                    "media": {
-                        "required": False,
-                        "max_count": 5,
-                        "max_file_size": 5242880  # 5MB
-                    }
-                }
-            }
+                    "media": {"required": False, "max_count": 5, "max_file_size": 5242880},  # 5MB
+                },
+            },
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(rules_data, f)
             temp_file = f.name
 
-        with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_file):
+        with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_file):
             service = PreflightRulesService()
 
         os.unlink(temp_file)
@@ -379,7 +331,7 @@ class TestMediaValidation:
             mentions=[],
             links=[],
             media=[],  # No media provided
-            platform="media_required"
+            platform="media_required",
         )
 
         result = media_service.validate_post(content)
@@ -397,16 +349,11 @@ class TestMediaValidation:
         media_files = [
             MediaMetadata(file_path="/test1.jpg", file_size=500000, format="jpg"),
             MediaMetadata(file_path="/test2.jpg", file_size=500000, format="jpg"),
-            MediaMetadata(file_path="/test3.jpg", file_size=500000, format="jpg")  # Exceeds limit of 2
+            MediaMetadata(file_path="/test3.jpg", file_size=500000, format="jpg"),  # Exceeds limit of 2
         ]
 
         content = PostContent(
-            caption="Test post",
-            hashtags=[],
-            mentions=[],
-            links=[],
-            media=media_files,
-            platform="media_required"
+            caption="Test post", hashtags=[], mentions=[], links=[], media=media_files, platform="media_required"
         )
 
         result = media_service.validate_post(content)
@@ -417,19 +364,10 @@ class TestMediaValidation:
 
     def test_file_too_large_violation(self, media_service):
         """Test file size exceeding limit."""
-        large_file = MediaMetadata(
-            file_path="/large.jpg",
-            file_size=2097152,  # 2MB, exceeds 1MB limit
-            format="jpg"
-        )
+        large_file = MediaMetadata(file_path="/large.jpg", file_size=2097152, format="jpg")  # 2MB, exceeds 1MB limit
 
         content = PostContent(
-            caption="Test post",
-            hashtags=[],
-            mentions=[],
-            links=[],
-            media=[large_file],
-            platform="media_required"
+            caption="Test post", hashtags=[], mentions=[], links=[], media=[large_file], platform="media_required"
         )
 
         result = media_service.validate_post(content)
@@ -445,18 +383,11 @@ class TestMediaValidation:
     def test_unsupported_format_violation(self, media_service):
         """Test unsupported file format."""
         unsupported_file = MediaMetadata(
-            file_path="/test.gif",
-            file_size=500000,
-            format="gif"  # Not in supported formats
+            file_path="/test.gif", file_size=500000, format="gif"  # Not in supported formats
         )
 
         content = PostContent(
-            caption="Test post",
-            hashtags=[],
-            mentions=[],
-            links=[],
-            media=[unsupported_file],
-            platform="media_required"
+            caption="Test post", hashtags=[], mentions=[], links=[], media=[unsupported_file], platform="media_required"
         )
 
         result = media_service.validate_post(content)
@@ -469,10 +400,7 @@ class TestMediaValidation:
         """Test video duration limits."""
         # Too short video
         short_video = MediaMetadata(
-            file_path="/short.mp4",
-            file_size=500000,
-            format="mp4",
-            duration=1.0  # Below 3s minimum
+            file_path="/short.mp4", file_size=500000, format="mp4", duration=1.0  # Below 3s minimum
         )
 
         content_short = PostContent(
@@ -481,7 +409,7 @@ class TestMediaValidation:
             mentions=[],
             links=[],
             media=[short_video],
-            platform="media_required"
+            platform="media_required",
         )
 
         result_short = media_service.validate_post(content_short)
@@ -490,19 +418,11 @@ class TestMediaValidation:
 
         # Too long video
         long_video = MediaMetadata(
-            file_path="/long.mp4",
-            file_size=500000,
-            format="mp4",
-            duration=120.0  # Above 60s maximum
+            file_path="/long.mp4", file_size=500000, format="mp4", duration=120.0  # Above 60s maximum
         )
 
         content_long = PostContent(
-            caption="Long video test",
-            hashtags=[],
-            mentions=[],
-            links=[],
-            media=[long_video],
-            platform="media_required"
+            caption="Long video test", hashtags=[], mentions=[], links=[], media=[long_video], platform="media_required"
         )
 
         result_long = media_service.validate_post(content_long)
@@ -517,7 +437,7 @@ class TestMediaValidation:
             format="mp4",
             duration=30.0,
             width=3840,  # Exceeds 1920 limit
-            height=2160   # Exceeds 1080 limit
+            height=2160,  # Exceeds 1080 limit
         )
 
         content = PostContent(
@@ -526,7 +446,7 @@ class TestMediaValidation:
             mentions=[],
             links=[],
             media=[oversized_video],
-            platform="media_required"
+            platform="media_required",
         )
 
         result = media_service.validate_post(content)
@@ -543,7 +463,7 @@ class TestMediaValidation:
             file_size=500000,  # Within 1MB limit
             format="jpg",  # Supported format
             width=1080,
-            height=720
+            height=720,
         )
 
         content = PostContent(
@@ -552,15 +472,23 @@ class TestMediaValidation:
             mentions=[],
             links=[],
             media=[valid_file],
-            platform="media_required"
+            platform="media_required",
         )
 
         result = media_service.validate_post(content)
 
         # Should not have media-related blocking violations
-        media_violations = [v for v in result.get_blocking_violations()
-                          if v.type in [ViolationType.MEDIA_MISSING, ViolationType.MEDIA_TOO_LARGE,
-                                       ViolationType.MEDIA_WRONG_FORMAT, ViolationType.MEDIA_WRONG_DIMENSIONS]]
+        media_violations = [
+            v
+            for v in result.get_blocking_violations()
+            if v.type
+            in [
+                ViolationType.MEDIA_MISSING,
+                ViolationType.MEDIA_TOO_LARGE,
+                ViolationType.MEDIA_WRONG_FORMAT,
+                ViolationType.MEDIA_WRONG_DIMENSIONS,
+            ]
+        ]
         assert len(media_violations) == 0
 
 
@@ -577,17 +505,17 @@ class TestContentRestrictions:
                     "caption": {"max_length": 1000, "required": True},
                     "content": {
                         "forbidden_words": ["spam", "scam", "fake"],
-                        "forbidden_patterns": ["\\d{4}-\\d{4}-\\d{4}-\\d{4}"]  # Credit card pattern
-                    }
+                        "forbidden_patterns": ["\\d{4}-\\d{4}-\\d{4}-\\d{4}"],  # Credit card pattern
+                    },
                 }
-            }
+            },
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(rules_data, f)
             temp_file = f.name
 
-        with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_file):
+        with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_file):
             service = PreflightRulesService()
 
         os.unlink(temp_file)
@@ -601,7 +529,7 @@ class TestContentRestrictions:
             mentions=[],
             links=[],
             media=[],
-            platform="restricted"
+            platform="restricted",
         )
 
         result = restricted_service.validate_post(content)
@@ -619,7 +547,7 @@ class TestContentRestrictions:
             mentions=[],
             links=[],
             media=[],
-            platform="restricted"
+            platform="restricted",
         )
 
         result = restricted_service.validate_post(content)
@@ -636,14 +564,13 @@ class TestContentRestrictions:
             mentions=[],
             links=[],
             media=[],
-            platform="restricted"
+            platform="restricted",
         )
 
         result = restricted_service.validate_post(content)
 
         # Should not have forbidden content violations
-        content_violations = [v for v in result.get_blocking_violations()
-                            if v.type == ViolationType.FORBIDDEN_WORDS]
+        content_violations = [v for v in result.get_blocking_violations() if v.type == ViolationType.FORBIDDEN_WORDS]
         assert len(content_violations) == 0
 
 
@@ -658,26 +585,20 @@ class TestLinkValidation:
             "platforms": {
                 "no_links": {
                     "caption": {"max_length": 1000, "required": False},
-                    "links": {
-                        "allowed": False,
-                        "max_count": 0
-                    }
+                    "links": {"allowed": False, "max_count": 0},
                 },
                 "limited_links": {
                     "caption": {"max_length": 1000, "required": False},
-                    "links": {
-                        "allowed": True,
-                        "max_count": 2
-                    }
-                }
-            }
+                    "links": {"allowed": True, "max_count": 2},
+                },
+            },
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(rules_data, f)
             temp_file = f.name
 
-        with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_file):
+        with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_file):
             service = PreflightRulesService()
 
         os.unlink(temp_file)
@@ -691,7 +612,7 @@ class TestLinkValidation:
             mentions=[],
             links=["https://example.com"],
             media=[],
-            platform="no_links"
+            platform="no_links",
         )
 
         result = link_service.validate_post(content)
@@ -708,7 +629,7 @@ class TestLinkValidation:
             mentions=[],
             links=["https://site1.com", "https://site2.com", "https://site3.com"],  # Exceeds limit of 2
             media=[],
-            platform="limited_links"
+            platform="limited_links",
         )
 
         result = link_service.validate_post(content)
@@ -741,10 +662,7 @@ class TestPlatformSpecificRules:
 
     def test_platform_not_supported(self):
         """Test unsupported platform validation."""
-        result = validate_post_content(
-            caption="Test",
-            platform="unsupported_platform"
-        )
+        result = validate_post_content(caption="Test", platform="unsupported_platform")
 
         assert not result.is_valid
         violations = result.get_blocking_violations()
@@ -760,7 +678,7 @@ class TestConvenienceFunctions:
             caption="Test post",
             platform="instagram",
             hashtags=["#test"],
-            media_metadata=[{"file_size": 500000, "format": "jpg"}]
+            media_metadata=[{"file_size": 500000, "format": "jpg"}],
         )
 
         assert isinstance(result, ValidationResult)
@@ -792,14 +710,7 @@ class TestEdgeCases:
 
     def test_empty_content_validation(self):
         """Test validation with completely empty content."""
-        content = PostContent(
-            caption="",
-            hashtags=[],
-            mentions=[],
-            links=[],
-            media=[],
-            platform="instagram"
-        )
+        content = PostContent(caption="", hashtags=[], mentions=[], links=[], media=[], platform="instagram")
 
         service = PreflightRulesService()
         result = service.validate_post(content)
@@ -813,12 +724,12 @@ class TestEdgeCases:
         """Test fallback when YAML file is malformed."""
         malformed_yaml = "invalid: yaml: content: [unclosed"
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             f.write(malformed_yaml)
             temp_file = f.name
 
         try:
-            with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_file):
+            with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_file):
                 service = PreflightRulesService()
 
                 # Should fall back to minimal rules
@@ -835,7 +746,7 @@ class TestEdgeCases:
         service.rules_cache.get("version")
 
         # Mock file modification
-        with patch.object(service, '_load_rules') as mock_load:
+        with patch.object(service, "_load_rules") as mock_load:
             service._maybe_reload_rules()
             mock_load.assert_called_once()
 
@@ -849,7 +760,7 @@ class TestEdgeCases:
             field="caption",
             current_value=100,
             limit_value=50,
-            suggestion="Shorten caption"
+            suggestion="Shorten caption",
         )
 
         violation_dict = violation.to_dict()
@@ -876,13 +787,9 @@ class TestAdvancedValidationCases:
             "hashtags": ["#amazing", "#product", "#sale", "#discount", "#limited"] * 3,  # Many hashtags
             "mentions": ["@brand", "@influencer"],
             "links": ["https://example.com/product"],
-            "media_metadata": [{
-                "file_size": 50000000,  # 50MB
-                "format": "mp4",
-                "duration": 45.0,
-                "width": 1080,
-                "height": 1920
-            }]
+            "media_metadata": [
+                {"file_size": 50000000, "format": "mp4", "duration": 45.0, "width": 1080, "height": 1920}  # 50MB
+            ],
         }
 
         # Test Instagram (more permissive)
@@ -895,10 +802,12 @@ class TestAdvancedValidationCases:
         assert len(tiktok_result.get_blocking_violations()) > len(instagram_result.get_blocking_violations())
 
         # Specifically check that TikTok blocks links while Instagram allows them
-        tiktok_link_violations = [v for v in tiktok_result.get_blocking_violations()
-                                 if v.type == ViolationType.LINKS_NOT_ALLOWED]
-        instagram_link_violations = [v for v in instagram_result.get_blocking_violations()
-                                   if v.type == ViolationType.LINKS_NOT_ALLOWED]
+        tiktok_link_violations = [
+            v for v in tiktok_result.get_blocking_violations() if v.type == ViolationType.LINKS_NOT_ALLOWED
+        ]
+        instagram_link_violations = [
+            v for v in instagram_result.get_blocking_violations() if v.type == ViolationType.LINKS_NOT_ALLOWED
+        ]
 
         assert len(tiktok_link_violations) > 0
         assert len(instagram_link_violations) == 0
@@ -913,13 +822,8 @@ class TestAdvancedValidationCases:
             hashtags=[],
             mentions=[],
             links=[],
-            media=[MediaMetadata(
-                file_size=5000000,
-                format="gif",
-                width=400,
-                height=400
-            )],
-            platform="vk"  # Should allow GIF
+            media=[MediaMetadata(file_size=5000000, format="gif", width=400, height=400)],
+            platform="vk",  # Should allow GIF
         )
 
         vk_result = service.validate_post(gif_content)
@@ -929,10 +833,12 @@ class TestAdvancedValidationCases:
         instagram_result = service.validate_post(gif_content)
 
         # Instagram should reject GIF, VK should accept
-        vk_format_violations = [v for v in vk_result.get_blocking_violations()
-                               if v.type == ViolationType.MEDIA_WRONG_FORMAT]
-        instagram_format_violations = [v for v in instagram_result.get_blocking_violations()
-                                     if v.type == ViolationType.MEDIA_WRONG_FORMAT]
+        vk_format_violations = [
+            v for v in vk_result.get_blocking_violations() if v.type == ViolationType.MEDIA_WRONG_FORMAT
+        ]
+        instagram_format_violations = [
+            v for v in instagram_result.get_blocking_violations() if v.type == ViolationType.MEDIA_WRONG_FORMAT
+        ]
 
         assert len(vk_format_violations) == 0  # VK accepts GIF
         assert len(instagram_format_violations) > 0  # Instagram rejects GIF
@@ -944,28 +850,25 @@ class TestAdvancedValidationCases:
             "version": "business_test",
             "platforms": {
                 "business_platform": {
-                    "caption": {
-                        "max_length": 200,
-                        "required": True
-                    },
+                    "caption": {"max_length": 200, "required": True},
                     "content": {
                         "forbidden_words": ["competitor", "cheap", "fake"],
                         "required_words": ["SalesWhisper", "premium", "quality"],  # Brand requirements
                         "forbidden_patterns": [
                             "\\b(?:buy|purchase)\\s+now\\b",  # Aggressive sales language
-                            "\\b\\d+%\\s+off\\b"  # Discount patterns
-                        ]
-                    }
+                            "\\b\\d+%\\s+off\\b",  # Discount patterns
+                        ],
+                    },
                 }
-            }
+            },
         }
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
             yaml.dump(rules_data, f)
             temp_file = f.name
 
         try:
-            with patch.object(PreflightRulesService, '_get_rules_file_path', return_value=temp_file):
+            with patch.object(PreflightRulesService, "_get_rules_file_path", return_value=temp_file):
                 business_service = PreflightRulesService()
 
             # Test content that violates business rules
@@ -975,7 +878,7 @@ class TestAdvancedValidationCases:
                 mentions=[],
                 links=[],
                 media=[],
-                platform="business_platform"
+                platform="business_platform",
             )
 
             result = business_service.validate_post(bad_business_content)
@@ -1001,7 +904,7 @@ class TestAdvancedValidationCases:
             duration=30.0,
             width=1080,
             height=1080,  # 1:1 aspect ratio
-            aspect_ratio="1:1"
+            aspect_ratio="1:1",
         )
 
         # Test vertical video (9:16)
@@ -1011,7 +914,7 @@ class TestAdvancedValidationCases:
             duration=30.0,
             width=1080,
             height=1920,  # 9:16 aspect ratio
-            aspect_ratio="9:16"
+            aspect_ratio="9:16",
         )
 
         # Test horizontal video (16:9)
@@ -1021,23 +924,19 @@ class TestAdvancedValidationCases:
             duration=30.0,
             width=1920,
             height=1080,  # 16:9 aspect ratio
-            aspect_ratio="16:9"
+            aspect_ratio="16:9",
         )
 
         # Instagram should accept square and vertical
         for video in [square_video, vertical_video]:
             content = PostContent(
-                caption="Video test",
-                hashtags=[],
-                mentions=[],
-                links=[],
-                media=[video],
-                platform="instagram"
+                caption="Video test", hashtags=[], mentions=[], links=[], media=[video], platform="instagram"
             )
 
             result = service.validate_post(content)
-            dimension_violations = [v for v in result.get_blocking_violations()
-                                  if v.type == ViolationType.MEDIA_WRONG_DIMENSIONS]
+            dimension_violations = [
+                v for v in result.get_blocking_violations() if v.type == ViolationType.MEDIA_WRONG_DIMENSIONS
+            ]
             assert len(dimension_violations) == 0
 
         # TikTok prefers vertical (9:16)
@@ -1047,13 +946,14 @@ class TestAdvancedValidationCases:
             mentions=[],
             links=[],
             media=[vertical_video],
-            platform="tiktok"
+            platform="tiktok",
         )
 
         tiktok_result = service.validate_post(tiktok_vertical_content)
         # Should pass without dimension violations
-        dimension_violations = [v for v in tiktok_result.get_blocking_violations()
-                              if v.type == ViolationType.MEDIA_WRONG_DIMENSIONS]
+        dimension_violations = [
+            v for v in tiktok_result.get_blocking_violations() if v.type == ViolationType.MEDIA_WRONG_DIMENSIONS
+        ]
         assert len(dimension_violations) == 0
 
     def test_large_scale_validation_performance(self):
@@ -1066,13 +966,10 @@ class TestAdvancedValidationCases:
             hashtags=[f"#tag{i}" for i in range(50)],  # Many hashtags
             mentions=[f"@user{i}" for i in range(30)],  # Many mentions
             links=[f"https://example{i}.com" for i in range(20)],  # Many links
-            media=[MediaMetadata(
-                file_size=1000000,
-                format="jpg",
-                width=1080,
-                height=1080
-            ) for _ in range(10)],  # Many media files
-            platform="instagram"
+            media=[
+                MediaMetadata(file_size=1000000, format="jpg", width=1080, height=1080) for _ in range(10)
+            ],  # Many media files
+            platform="instagram",
         )
 
         start_time = time.time()
@@ -1098,7 +995,7 @@ class TestAdvancedValidationCases:
             mentions=["@тест", "@用户"],
             links=["https://example.com"],
             media=[],
-            platform="instagram"
+            platform="instagram",
         )
 
         result = service.validate_post(unicode_content)
@@ -1107,8 +1004,7 @@ class TestAdvancedValidationCases:
         assert isinstance(result, ValidationResult)
 
         # Check that length calculation works correctly with Unicode
-        caption_violations = [v for v in result.violations
-                            if v.type == ViolationType.CAPTION_TOO_LONG]
+        caption_violations = [v for v in result.violations if v.type == ViolationType.CAPTION_TOO_LONG]
 
         # Should not fail due to encoding issues
         for violation in caption_violations:
@@ -1131,7 +1027,7 @@ class TestAdvancedValidationCases:
             mentions=[],
             links=[],
             media=[minimal_media],
-            platform="instagram"
+            platform="instagram",
         )
 
         result = service.validate_post(content)
@@ -1151,12 +1047,7 @@ class TestRulesCacheAndPerformance:
         service = PreflightRulesService()
 
         content = PostContent(
-            caption="Cache test",
-            hashtags=["#test"],
-            mentions=[],
-            links=[],
-            media=[],
-            platform="instagram"
+            caption="Cache test", hashtags=["#test"], mentions=[], links=[], media=[], platform="instagram"
         )
 
         # First validation - cold cache
@@ -1191,7 +1082,7 @@ class TestRulesCacheAndPerformance:
                 mentions=[],
                 links=[],
                 media=[],
-                platform="instagram"
+                platform="instagram",
             )
             result = service.validate_post(content)
             results.append(result)
@@ -1227,7 +1118,7 @@ class TestEnhancedPreflightValidation:
             width=1080,
             height=1080,  # 1:1 aspect ratio
             format="jpeg",
-            aspect_ratio="1:1"
+            aspect_ratio="1:1",
         )
 
         violations = validate_aspect_ratio_compliance(valid_media, "instagram")
@@ -1240,7 +1131,7 @@ class TestEnhancedPreflightValidation:
             width=1920,
             height=1080,  # 16:9, not ideal for Instagram
             format="jpeg",
-            aspect_ratio="16:9"
+            aspect_ratio="16:9",
         )
 
         violations = validate_aspect_ratio_compliance(invalid_media, "instagram")
@@ -1256,7 +1147,7 @@ class TestEnhancedPreflightValidation:
             caption="Check out our new product! #brand #quality #innovation",
             hashtags=["brand", "quality", "innovation"],
             mentions=["@officialaccount"],
-            platform="instagram"
+            platform="instagram",
         )
 
         violations = validate_business_compliance(compliant_content)
@@ -1266,7 +1157,7 @@ class TestEnhancedPreflightValidation:
         problematic_content = PostContent(
             caption="Buy followers cheap! Guaranteed fake engagement!",
             hashtags=["fake", "cheap", "spam"],
-            platform="instagram"
+            platform="instagram",
         )
 
         violations = validate_business_compliance(problematic_content)
@@ -1280,14 +1171,10 @@ class TestEnhancedPreflightValidation:
         high_quality_content = PostContent(
             caption="Discover the art of minimalist design. Each element serves a purpose, creating harmony between form and function. #design #minimalism #art",
             hashtags=["design", "minimalism", "art"],
-            media=[MediaMetadata(
-                file_path="/path/to/image.jpg",
-                file_size=500000,
-                width=1080,
-                height=1080,
-                format="jpeg"
-            )],
-            platform="instagram"
+            media=[
+                MediaMetadata(file_path="/path/to/image.jpg", file_size=500000, width=1080, height=1080, format="jpeg")
+            ],
+            platform="instagram",
         )
 
         quality_result = validate_content_quality(high_quality_content)
@@ -1347,12 +1234,7 @@ class TestEnhancedPreflightValidation:
 
         # Create comprehensive test content
         media = MediaMetadata(
-            file_path="/path/to/test.jpg",
-            file_size=2000000,
-            width=1080,
-            height=1080,
-            format="jpeg",
-            aspect_ratio="1:1"
+            file_path="/path/to/test.jpg", file_size=2000000, width=1080, height=1080, format="jpeg", aspect_ratio="1:1"
         )
 
         content = PostContent(
@@ -1360,7 +1242,7 @@ class TestEnhancedPreflightValidation:
             hashtags=["test", "validation", "quality"],
             mentions=["@testaccount"],
             media=[media],
-            platform="instagram"
+            platform="instagram",
         )
 
         # Test all validation functions work together
@@ -1369,7 +1251,7 @@ class TestEnhancedPreflightValidation:
             platform=content.platform,
             hashtags=content.hashtags,
             mentions=content.mentions,
-            media_metadata=[media.__dict__]
+            media_metadata=[media.__dict__],
         )
 
         aspect_violations = validate_aspect_ratio_compliance(media, "instagram")
@@ -1379,7 +1261,7 @@ class TestEnhancedPreflightValidation:
         performance_insights = get_platform_performance_insights("instagram")
 
         # Verify all functions return expected types
-        assert hasattr(base_validation, 'is_valid')
+        assert hasattr(base_validation, "is_valid")
         assert isinstance(aspect_violations, list)
         assert isinstance(business_violations, list)
         assert isinstance(quality_insights, dict)
@@ -1391,7 +1273,7 @@ class TestEnhancedPreflightValidation:
             "quality_score": quality_insights.get("overall_score", 0),
             "optimal_posting_times": posting_times,
             "performance_insights": performance_insights,
-            "content_analysis": quality_insights
+            "content_analysis": quality_insights,
         }
 
         assert "quality_score" in enhanced_metadata

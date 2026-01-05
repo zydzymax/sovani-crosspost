@@ -38,11 +38,13 @@ logger = get_logger("adapters.telegram_intake")
 
 class TelegramIntakeError(Exception):
     """Custom exception for Telegram intake processing errors."""
+
     pass
 
 
 class TelegramBotAPIError(Exception):
     """Custom exception for Telegram Bot API errors."""
+
     pass
 
 
@@ -57,8 +59,7 @@ class TelegramIntakeAdapter:
 
         # HTTP client for Telegram API calls
         self.http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0),
-            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+            timeout=httpx.Timeout(30.0), limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
         )
 
         # Target platforms for cross-posting
@@ -80,11 +81,7 @@ class TelegramIntakeAdapter:
         correlation_id = str(uuid.uuid4())
 
         with with_logging_context(correlation_id=correlation_id):
-            logger.info(
-                "Processing Telegram update",
-                update_id=update_id,
-                correlation_id=correlation_id
-            )
+            logger.info("Processing Telegram update", update_id=update_id, correlation_id=correlation_id)
 
             start_time = time.time()
 
@@ -116,13 +113,13 @@ class TelegramIntakeAdapter:
                         "post_id": post_id,
                         "update_data": update_data,
                         "content": content,
-                        "media_assets": [asset.dict() if hasattr(asset, 'dict') else asset for asset in media_assets],
+                        "media_assets": [asset.dict() if hasattr(asset, "dict") else asset for asset in media_assets],
                         "text_content": text_content,
                         "metadata": metadata,
-                        "platforms": self.target_platforms
+                        "platforms": self.target_platforms,
                     },
                     entity_id=post_id,
-                    correlation_id=correlation_id
+                    correlation_id=correlation_id,
                 )
 
                 # Trigger ingest task
@@ -138,7 +135,7 @@ class TelegramIntakeAdapter:
                         platform="telegram",
                         success=True,
                         duration=processing_time,
-                        file_size=sum(asset.get("file_size", 0) for asset in media_assets)
+                        file_size=sum(asset.get("file_size", 0) for asset in media_assets),
                     )
 
                 # Audit log
@@ -149,7 +146,7 @@ class TelegramIntakeAdapter:
                     product_id="telegram_intake",
                     update_id=update_id,
                     processing_time=processing_time,
-                    media_count=len(media_assets)
+                    media_count=len(media_assets),
                 )
 
                 logger.info(
@@ -160,7 +157,7 @@ class TelegramIntakeAdapter:
                     media_assets_count=len(media_assets),
                     platforms_created=len(posts_created),
                     outbox_event_id=outbox_event_id,
-                    ingest_task_id=ingest_task.id
+                    ingest_task_id=ingest_task.id,
                 )
 
                 return {
@@ -173,7 +170,7 @@ class TelegramIntakeAdapter:
                     "posts_created": posts_created,
                     "outbox_event_id": outbox_event_id,
                     "ingest_task_id": ingest_task.id,
-                    "correlation_id": correlation_id
+                    "correlation_id": correlation_id,
                 }
 
             except Exception as e:
@@ -185,7 +182,7 @@ class TelegramIntakeAdapter:
                     correlation_id=correlation_id,
                     error=str(e),
                     processing_time=processing_time,
-                    exc_info=True
+                    exc_info=True,
                 )
 
                 # Track failure metrics
@@ -228,7 +225,7 @@ class TelegramIntakeAdapter:
             ("audio", "audio"),
             ("voice", "voice"),
             ("video_note", "video_note"),
-            ("sticker", "sticker")
+            ("sticker", "sticker"),
         ]
 
         for field_name, media_type in media_fields:
@@ -251,15 +248,16 @@ class TelegramIntakeAdapter:
                         post_id=post_id,
                         field_name=field_name,
                         file_id=media_data.get("file_id") if media_data else None,
-                        error=str(e)
+                        error=str(e),
                     )
                     # Continue processing other media files
 
         logger.info(f"Processed {len(media_assets)} media assets", post_id=post_id)
         return media_assets
 
-    async def _download_and_process_media(self, media_data: dict[str, Any],
-                                        media_type: str, post_id: str) -> dict[str, Any] | None:
+    async def _download_and_process_media(
+        self, media_data: dict[str, Any], media_type: str, post_id: str
+    ) -> dict[str, Any] | None:
         """
         Download media file from Telegram and upload to S3 with metadata.
 
@@ -275,12 +273,7 @@ class TelegramIntakeAdapter:
         if not file_id:
             return None
 
-        logger.info(
-            "Downloading media file",
-            post_id=post_id,
-            file_id=file_id,
-            media_type=media_type
-        )
+        logger.info("Downloading media file", post_id=post_id, file_id=file_id, media_type=media_type)
 
         try:
             # Get file info from Telegram API
@@ -324,10 +317,7 @@ class TelegramIntakeAdapter:
                     "duration": metadata.get("duration"),
                     "aspect_ratio": self._calculate_aspect_ratio(metadata.get("width"), metadata.get("height")),
                     "created_at": datetime.now(timezone.utc).isoformat(),
-                    "metadata": {
-                        "telegram_data": media_data,
-                        "extracted_metadata": metadata
-                    }
+                    "metadata": {"telegram_data": media_data, "extracted_metadata": metadata},
                 }
 
                 # Save media asset to database
@@ -339,7 +329,7 @@ class TelegramIntakeAdapter:
                     file_id=file_id,
                     file_hash=file_hash,
                     file_size=media_asset["file_size"],
-                    s3_key=s3_key
+                    s3_key=s3_key,
                 )
 
                 return media_asset
@@ -353,21 +343,14 @@ class TelegramIntakeAdapter:
 
         except Exception as e:
             logger.error(
-                "Failed to download and process media",
-                post_id=post_id,
-                file_id=file_id,
-                error=str(e),
-                exc_info=True
+                "Failed to download and process media", post_id=post_id, file_id=file_id, error=str(e), exc_info=True
             )
             raise
 
     async def _get_file_info(self, file_id: str) -> dict[str, Any]:
         """Get file information from Telegram Bot API."""
         try:
-            response = await self.http_client.get(
-                f"{self.bot_api_base}/getFile",
-                params={"file_id": file_id}
-            )
+            response = await self.http_client.get(f"{self.bot_api_base}/getFile", params={"file_id": file_id})
             response.raise_for_status()
 
             data = response.json()
@@ -416,36 +399,36 @@ class TelegramIntakeAdapter:
 
     async def _extract_media_metadata(self, file_path: str, media_type: str) -> dict[str, Any]:
         """Extract metadata from media file."""
-        metadata = {
-            "file_size": os.path.getsize(file_path),
-            "mime_type": mimetypes.guess_type(file_path)[0]
-        }
+        metadata = {"file_size": os.path.getsize(file_path), "mime_type": mimetypes.guess_type(file_path)[0]}
 
         try:
-            if media_type in ["photo", "sticker"] or file_path.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif')):
+            if media_type in ["photo", "sticker"] or file_path.lower().endswith(
+                (".jpg", ".jpeg", ".png", ".webp", ".gif")
+            ):
                 # Extract image metadata
                 with Image.open(file_path) as img:
-                    metadata.update({
-                        "width": img.width,
-                        "height": img.height,
-                        "format": img.format,
-                        "mode": img.mode
-                    })
+                    metadata.update({"width": img.width, "height": img.height, "format": img.format, "mode": img.mode})
 
-            elif media_type in ["video", "animation", "video_note"] or file_path.lower().endswith(('.mp4', '.avi', '.mov', '.webm')):
+            elif media_type in ["video", "animation", "video_note"] or file_path.lower().endswith(
+                (".mp4", ".avi", ".mov", ".webm")
+            ):
                 # Extract video metadata using ffmpeg
                 try:
                     probe = ffmpeg.probe(file_path)
-                    video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+                    video_stream = next(
+                        (stream for stream in probe["streams"] if stream["codec_type"] == "video"), None
+                    )
 
                     if video_stream:
-                        metadata.update({
-                            "width": int(video_stream.get('width', 0)),
-                            "height": int(video_stream.get('height', 0)),
-                            "duration": float(video_stream.get('duration', 0)),
-                            "codec": video_stream.get('codec_name'),
-                            "fps": eval(video_stream.get('r_frame_rate', '0/1'))
-                        })
+                        metadata.update(
+                            {
+                                "width": int(video_stream.get("width", 0)),
+                                "height": int(video_stream.get("height", 0)),
+                                "duration": float(video_stream.get("duration", 0)),
+                                "codec": video_stream.get("codec_name"),
+                                "fps": eval(video_stream.get("r_frame_rate", "0/1")),
+                            }
+                        )
 
                 except Exception as e:
                     logger.warning(f"Failed to extract video metadata with ffmpeg: {e}")
@@ -454,15 +437,19 @@ class TelegramIntakeAdapter:
                 # Extract audio metadata
                 try:
                     probe = ffmpeg.probe(file_path)
-                    audio_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'audio'), None)
+                    audio_stream = next(
+                        (stream for stream in probe["streams"] if stream["codec_type"] == "audio"), None
+                    )
 
                     if audio_stream:
-                        metadata.update({
-                            "duration": float(audio_stream.get('duration', 0)),
-                            "codec": audio_stream.get('codec_name'),
-                            "sample_rate": int(audio_stream.get('sample_rate', 0)),
-                            "channels": int(audio_stream.get('channels', 0))
-                        })
+                        metadata.update(
+                            {
+                                "duration": float(audio_stream.get("duration", 0)),
+                                "codec": audio_stream.get("codec_name"),
+                                "sample_rate": int(audio_stream.get("sample_rate", 0)),
+                                "channels": int(audio_stream.get("channels", 0)),
+                            }
+                        )
 
                 except Exception as e:
                     logger.warning(f"Failed to extract audio metadata with ffmpeg: {e}")
@@ -482,7 +469,7 @@ class TelegramIntakeAdapter:
             "audio": ".mp3",
             "voice": ".ogg",
             "video_note": ".mp4",
-            "sticker": ".webp"
+            "sticker": ".webp",
         }
         return extensions.get(media_type, ".bin")
 
@@ -524,7 +511,7 @@ class TelegramIntakeAdapter:
             logger.error(f"Failed to save media asset to database: {e}")
             raise
         finally:
-            if 'db_session' in locals():
+            if "db_session" in locals():
                 db_session.close()
 
     def _extract_text_content(self, content: dict[str, Any]) -> str:
@@ -552,7 +539,7 @@ class TelegramIntakeAdapter:
             "update_id": update_data.get("update_id"),
             "content_type": self._determine_content_type(content),
             "has_media": self._has_media(content),
-            "extracted_at": datetime.now(timezone.utc).isoformat()
+            "extracted_at": datetime.now(timezone.utc).isoformat(),
         }
 
         # Add edit information if present
@@ -590,9 +577,14 @@ class TelegramIntakeAdapter:
         media_fields = ["photo", "video", "animation", "document", "audio", "voice", "video_note", "sticker"]
         return any(field in content for field in media_fields)
 
-    async def _create_posts_for_platforms(self, post_id: str, text_content: str,
-                                        media_assets: list[dict[str, Any]], metadata: dict[str, Any],
-                                        correlation_id: str) -> list[dict[str, Any]]:
+    async def _create_posts_for_platforms(
+        self,
+        post_id: str,
+        text_content: str,
+        media_assets: list[dict[str, Any]],
+        metadata: dict[str, Any],
+        correlation_id: str,
+    ) -> list[dict[str, Any]]:
         """
         Create post records for all target platforms.
 
@@ -626,13 +618,9 @@ class TelegramIntakeAdapter:
                         "idempotency_key": idempotency_key,
                         "text_content": text_content,
                         "media_assets": [asset["id"] for asset in media_assets],
-                        "metadata": {
-                            **metadata,
-                            "platform": platform,
-                            "correlation_id": correlation_id
-                        },
+                        "metadata": {**metadata, "platform": platform, "correlation_id": correlation_id},
                         "created_at": datetime.now(timezone.utc).isoformat(),
-                        "updated_at": datetime.now(timezone.utc).isoformat()
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
                     }
 
                     # Save post record to database
@@ -646,15 +634,12 @@ class TelegramIntakeAdapter:
                         "Created post record for platform",
                         platform_post_id=platform_post_id,
                         platform=platform,
-                        idempotency_key=idempotency_key
+                        idempotency_key=idempotency_key,
                     )
 
                 except Exception as e:
                     logger.error(
-                        "Failed to create post record for platform",
-                        platform=platform,
-                        post_id=post_id,
-                        error=str(e)
+                        "Failed to create post record for platform", platform=platform, post_id=post_id, error=str(e)
                     )
                     # Continue with other platforms
 
@@ -665,14 +650,14 @@ class TelegramIntakeAdapter:
                 "Created post records for platforms",
                 post_id=post_id,
                 platforms_created=len(posts_created),
-                platforms=self.target_platforms
+                platforms=self.target_platforms,
             )
 
         except Exception as e:
             logger.error(f"Failed to create posts for platforms: {e}")
             raise
         finally:
-            if 'db_session' in locals():
+            if "db_session" in locals():
                 db_session.close()
 
         return posts_created
@@ -721,13 +706,13 @@ if __name__ == "__main__":
                 "is_bot": False,
                 "first_name": "Test",
                 "username": "testuser",
-                "language_code": "ru"
+                "language_code": "ru",
             },
             "chat": {
                 "id": -1001234567890,
                 "title": "SalesWhisper Test Channel",
                 "username": "saleswhisper_test",
-                "type": "channel"
+                "type": "channel",
             },
             "date": int(time.time()),
             "photo": [
@@ -736,11 +721,11 @@ if __name__ == "__main__":
                     "file_unique_id": "AQADGAADr7cxG3I",
                     "file_size": 1234567,
                     "width": 1280,
-                    "height": 960
+                    "height": 960,
                 }
             ],
-            "caption": "( >20O :>;;5:F8O SalesWhisper C65 2 ?@>4065! !B8;L=K5 ?;0BLO 4;O A>2@5<5==KE 65=I8=. #SalesWhisper #Fashion #Style"
-        }
+            "caption": "( >20O :>;;5:F8O SalesWhisper C65 2 ?@>4065! !B8;L=K5 ?;0BLO 4;O A>2@5<5==KE 65=I8=. #SalesWhisper #Fashion #Style",
+        },
     }
 
     async def test_telegram_intake():

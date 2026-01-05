@@ -111,6 +111,7 @@ ORDER_CONFIRMATION_TEMPLATE = """
 @dataclass
 class EmailConfig:
     """Email service configuration."""
+
     smtp_host: str = "smtp.yandex.ru"
     smtp_port: int = 465
     smtp_user: str = ""
@@ -131,54 +132,24 @@ class EmailService:
         self._auth_code_template = self.jinja_env.from_string(AUTH_CODE_TEMPLATE)
         self._order_confirmation_template = self.jinja_env.from_string(ORDER_CONFIRMATION_TEMPLATE)
 
-    async def send_auth_code(
-        self,
-        to_email: str,
-        code: str,
-        expires_minutes: int = 5
-    ) -> bool:
+    async def send_auth_code(self, to_email: str, code: str, expires_minutes: int = 5) -> bool:
         """Send authentication code email."""
         subject = f"Код входа в SalesWhisper: {code}"
 
-        html = self._auth_code_template.render(
-            code=code,
-            expires_minutes=expires_minutes
-        )
+        html = self._auth_code_template.render(code=code, expires_minutes=expires_minutes)
 
-        return await self._send_email(
-            to_email=to_email,
-            subject=subject,
-            html=html
-        )
+        return await self._send_email(to_email=to_email, subject=subject, html=html)
 
-    async def send_order_confirmation(
-        self,
-        to_email: str,
-        order_number: str,
-        items: list,
-        total_rub: float
-    ) -> bool:
+    async def send_order_confirmation(self, to_email: str, order_number: str, items: list, total_rub: float) -> bool:
         """Send order confirmation email."""
         subject = f"Заказ #{order_number} оплачен — SalesWhisper"
 
-        html = self._order_confirmation_template.render(
-            order_number=order_number,
-            items=items,
-            total_rub=total_rub
-        )
+        html = self._order_confirmation_template.render(order_number=order_number, items=items, total_rub=total_rub)
 
-        return await self._send_email(
-            to_email=to_email,
-            subject=subject,
-            html=html
-        )
+        return await self._send_email(to_email=to_email, subject=subject, html=html)
 
     async def send_subscription_activated(
-        self,
-        to_email: str,
-        product_name: str,
-        plan_name: str,
-        expires_at: str | None = None
+        self, to_email: str, product_name: str, plan_name: str, expires_at: str | None = None
     ) -> bool:
         """Send subscription activation email."""
         subject = f"Подписка {product_name} активирована — SalesWhisper"
@@ -190,19 +161,9 @@ class EmailService:
         <p><a href="https://saleswhisper.pro/account">Войти в личный кабинет</a></p>
         """
 
-        return await self._send_email(
-            to_email=to_email,
-            subject=subject,
-            html=html
-        )
+        return await self._send_email(to_email=to_email, subject=subject, html=html)
 
-    async def _send_email(
-        self,
-        to_email: str,
-        subject: str,
-        html: str,
-        text: str | None = None
-    ) -> bool:
+    async def _send_email(self, to_email: str, subject: str, html: str, text: str | None = None) -> bool:
         """Send email via SMTP."""
         try:
             msg = MIMEMultipart("alternative")
@@ -226,7 +187,7 @@ class EmailService:
                     username=self.config.smtp_user,
                     password=self.config.smtp_password,
                     use_tls=True,
-                    timeout=self.config.timeout
+                    timeout=self.config.timeout,
                 )
             else:
                 await aiosmtplib.send(
@@ -236,7 +197,7 @@ class EmailService:
                     username=self.config.smtp_user,
                     password=self.config.smtp_password,
                     start_tls=True,
-                    timeout=self.config.timeout
+                    timeout=self.config.timeout,
                 )
 
             logger.info(f"Email sent successfully to {to_email}: {subject}")

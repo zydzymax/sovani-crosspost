@@ -21,6 +21,7 @@ router = APIRouter(prefix="/video-gen", tags=["video-generation"])
 # Request/Response models
 class TextToVideoRequest(BaseModel):
     """Request for text-to-video generation."""
+
     prompt: str = Field(..., min_length=10, max_length=1000, description="Video description")
     duration: int = Field(5, ge=5, le=10, description="Duration in seconds (5 or 10)")
     aspect_ratio: str = Field("16:9", description="Aspect ratio (16:9, 9:16, 1:1)")
@@ -29,6 +30,7 @@ class TextToVideoRequest(BaseModel):
 
 class ImageToVideoRequest(BaseModel):
     """Request for image-to-video generation."""
+
     image_url: str = Field(..., description="Source image URL")
     prompt: str = Field("", max_length=500, description="Optional motion guidance")
     duration: int = Field(5, ge=5, le=10, description="Duration in seconds")
@@ -37,6 +39,7 @@ class ImageToVideoRequest(BaseModel):
 
 class VideoTaskResponse(BaseModel):
     """Video generation task response."""
+
     id: str
     status: str
     prompt: str
@@ -52,30 +55,28 @@ class VideoTaskResponse(BaseModel):
 async def generate_video_from_text(
     request: TextToVideoRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_async_session)
+    db: AsyncSession = Depends(get_db_async_session),
 ):
     """Generate video from text prompt."""
     # Validate provider
     valid_providers = ["kling", "minimax", "runway"]
     if request.provider not in valid_providers:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid provider. Valid options: {valid_providers}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid provider. Valid options: {valid_providers}"
         )
 
     # Validate aspect ratio
     valid_ratios = ["16:9", "9:16", "1:1"]
     if request.aspect_ratio not in valid_ratios:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid aspect ratio. Valid options: {valid_ratios}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid aspect ratio. Valid options: {valid_ratios}"
         )
 
     # Map provider string to enum
     provider_map = {
         "kling": VideoGenProvider.KLING,
         "minimax": VideoGenProvider.MINIMAX,
-        "runway": VideoGenProvider.RUNWAY
+        "runway": VideoGenProvider.RUNWAY,
     }
 
     # Create task record
@@ -84,7 +85,7 @@ async def generate_video_from_text(
         provider=provider_map[request.provider],
         prompt=request.prompt,
         duration_seconds=request.duration,
-        status=VideoGenStatus.PENDING
+        status=VideoGenStatus.PENDING,
     )
     db.add(task)
     await db.commit()
@@ -99,27 +100,19 @@ async def generate_video_from_text(
             service = KlingService()
             duration = VideoDuration.SHORT if request.duration <= 5 else VideoDuration.LONG
             aspect = KlingAspectRatio(request.aspect_ratio)
-            result = await service.generate_from_text(
-                prompt=request.prompt,
-                duration=duration,
-                aspect_ratio=aspect
-            )
+            result = await service.generate_from_text(prompt=request.prompt, duration=duration, aspect_ratio=aspect)
             await service.close()
 
         elif request.provider == "minimax":
             service = MinimaxService()
-            result = await service.generate_from_text(
-                prompt=request.prompt
-            )
+            result = await service.generate_from_text(prompt=request.prompt)
             await service.close()
 
         else:  # runway
             service = RunwayService()
             aspect = RunwayAspectRatio(request.aspect_ratio)
             result = await service.generate_video_from_text(
-                prompt=request.prompt,
-                duration=request.duration,
-                aspect_ratio=aspect
+                prompt=request.prompt, duration=request.duration, aspect_ratio=aspect
             )
             await service.close()
 
@@ -152,7 +145,7 @@ async def generate_video_from_text(
         thumbnail_url=task.result_thumbnail_url,
         cost_estimate=task.cost_estimate,
         error=task.error_message,
-        created_at=task.created_at.isoformat()
+        created_at=task.created_at.isoformat(),
     )
 
 
@@ -160,22 +153,21 @@ async def generate_video_from_text(
 async def generate_video_from_image(
     request: ImageToVideoRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_async_session)
+    db: AsyncSession = Depends(get_db_async_session),
 ):
     """Generate video from image."""
     # Validate provider
     valid_providers = ["kling", "minimax", "runway"]
     if request.provider not in valid_providers:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid provider. Valid options: {valid_providers}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid provider. Valid options: {valid_providers}"
         )
 
     # Map provider string to enum
     provider_map = {
         "kling": VideoGenProvider.KLING,
         "minimax": VideoGenProvider.MINIMAX,
-        "runway": VideoGenProvider.RUNWAY
+        "runway": VideoGenProvider.RUNWAY,
     }
 
     # Create task record
@@ -185,7 +177,7 @@ async def generate_video_from_image(
         prompt=request.prompt or "animate this image",
         source_image_url=request.image_url,
         duration_seconds=request.duration,
-        status=VideoGenStatus.PENDING
+        status=VideoGenStatus.PENDING,
     )
     db.add(task)
     await db.commit()
@@ -200,26 +192,19 @@ async def generate_video_from_image(
             service = KlingService()
             duration = VideoDuration.SHORT if request.duration <= 5 else VideoDuration.LONG
             result = await service.generate_from_image(
-                image_url=request.image_url,
-                prompt=request.prompt,
-                duration=duration
+                image_url=request.image_url, prompt=request.prompt, duration=duration
             )
             await service.close()
 
         elif request.provider == "minimax":
             service = MinimaxService()
-            result = await service.generate_from_image(
-                image_url=request.image_url,
-                prompt=request.prompt
-            )
+            result = await service.generate_from_image(image_url=request.image_url, prompt=request.prompt)
             await service.close()
 
         else:  # runway
             service = RunwayService()
             result = await service.generate_video_from_image(
-                image_url=request.image_url,
-                prompt=request.prompt,
-                duration=request.duration
+                image_url=request.image_url, prompt=request.prompt, duration=request.duration
             )
             await service.close()
 
@@ -251,30 +236,22 @@ async def generate_video_from_image(
         thumbnail_url=task.result_thumbnail_url,
         cost_estimate=task.cost_estimate,
         error=task.error_message,
-        created_at=task.created_at.isoformat()
+        created_at=task.created_at.isoformat(),
     )
 
 
 @router.get("/task/{task_id}", response_model=VideoTaskResponse)
 async def get_task_status(
-    task_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_async_session)
+    task_id: UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db_async_session)
 ):
     """Get video generation task status."""
     task = await db.get(VideoGenTask, task_id)
 
     if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Task not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     if task.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     return VideoTaskResponse(
         id=str(task.id),
@@ -285,7 +262,7 @@ async def get_task_status(
         thumbnail_url=task.result_thumbnail_url,
         cost_estimate=task.cost_estimate,
         error=task.error_message,
-        created_at=task.created_at.isoformat()
+        created_at=task.created_at.isoformat(),
     )
 
 
@@ -294,12 +271,16 @@ async def list_tasks(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_async_session),
     limit: int = 20,
-    offset: int = 0
+    offset: int = 0,
 ):
     """List user's video generation tasks."""
-    query = select(VideoGenTask).where(
-        VideoGenTask.user_id == current_user.id
-    ).order_by(VideoGenTask.created_at.desc()).limit(limit).offset(offset)
+    query = (
+        select(VideoGenTask)
+        .where(VideoGenTask.user_id == current_user.id)
+        .order_by(VideoGenTask.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
 
     result = await db.execute(query)
     tasks = result.scalars().all()
@@ -314,7 +295,7 @@ async def list_tasks(
             thumbnail_url=task.result_thumbnail_url,
             cost_estimate=task.cost_estimate,
             error=task.error_message,
-            created_at=task.created_at.isoformat()
+            created_at=task.created_at.isoformat(),
         )
         for task in tasks
     ]
@@ -334,7 +315,7 @@ async def get_video_providers():
                 "max_duration": 10,
                 "features": ["text-to-video", "image-to-video"],
                 "aspect_ratios": ["16:9", "9:16", "1:1"],
-                "recommended": True
+                "recommended": True,
             },
             {
                 "id": "minimax",
@@ -344,7 +325,7 @@ async def get_video_providers():
                 "max_duration": 6,
                 "features": ["text-to-video", "image-to-video"],
                 "aspect_ratios": ["16:9"],
-                "recommended": True
+                "recommended": True,
             },
             {
                 "id": "runway",
@@ -355,7 +336,7 @@ async def get_video_providers():
                 "features": ["text-to-video", "image-to-video"],
                 "aspect_ratios": ["16:9", "9:16", "1:1"],
                 "recommended": False,
-                "note": "Требуется платная подписка для API"
-            }
+                "note": "Требуется платная подписка для API",
+            },
         ]
     }

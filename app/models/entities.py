@@ -38,6 +38,7 @@ from .db import Base
 
 class PostStatus(str, Enum):
     """Post processing status."""
+
     DRAFT = "draft"
     INGESTED = "ingested"
     ENRICHED = "enriched"
@@ -52,6 +53,7 @@ class PostStatus(str, Enum):
 
 class MediaType(str, Enum):
     """Media file types."""
+
     IMAGE = "image"
     VIDEO = "video"
     ANIMATION = "animation"
@@ -61,6 +63,7 @@ class MediaType(str, Enum):
 
 class Platform(str, Enum):
     """Supported social media platforms."""
+
     TELEGRAM = "telegram"
     VK = "vk"
     INSTAGRAM = "instagram"
@@ -73,6 +76,7 @@ class Platform(str, Enum):
 
 class TaskStage(str, Enum):
     """Celery task stages."""
+
     INGEST = "ingest"
     ENRICH = "enrich"
     CAPTIONIZE = "captionize"
@@ -84,6 +88,7 @@ class TaskStage(str, Enum):
 
 class TaskStatus(str, Enum):
     """Task execution status."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -465,8 +470,10 @@ __all__ = [
 
 # ==================== USER & SUBSCRIPTION MODELS ====================
 
+
 class SubscriptionPlan(str, Enum):
     """Subscription plan types."""
+
     DEMO = "demo"
     PRO = "pro"
     BUSINESS = "business"
@@ -474,19 +481,21 @@ class SubscriptionPlan(str, Enum):
 
 class ImageGenProvider(str, Enum):
     """Image generation providers."""
-    OPENAI = "openai"      # DALL-E 3
+
+    OPENAI = "openai"  # DALL-E 3
     STABILITY = "stability"  # Stability AI
-    FLUX = "flux"          # Flux
+    FLUX = "flux"  # Flux
     MIDJOURNEY = "midjourney"  # Midjourney (via API)
     NANOBANA = "nanobana"  # Nanobana (Russian service)
 
 
 class VideoGenProvider(str, Enum):
     """Video generation providers."""
-    RUNWAY = "runway"        # Runway ML Gen-3
-    KLING = "kling"          # Kling AI
-    MINIMAX = "minimax"      # MiniMax Hailuo
-    LUMA = "luma"            # Luma Dream Machine
+
+    RUNWAY = "runway"  # Runway ML Gen-3
+    KLING = "kling"  # Kling AI
+    MINIMAX = "minimax"  # MiniMax Hailuo
+    LUMA = "luma"  # Luma Dream Machine
     REPLICATE = "replicate"  # Replicate (Stable Video Diffusion)
 
 
@@ -516,13 +525,19 @@ class User(Base):
     phone = Column(String(50), nullable=True)
 
     # Subscription (legacy - use user_subscriptions for new system)
-    subscription_plan = Column(SQLEnum(SubscriptionPlan, name="subscription_plan", create_type=False), default=SubscriptionPlan.DEMO)
+    subscription_plan = Column(
+        SQLEnum(SubscriptionPlan, name="subscription_plan", create_type=False), default=SubscriptionPlan.DEMO
+    )
     subscription_expires_at = Column(DateTime, nullable=True)
     demo_started_at = Column(DateTime, default=datetime.utcnow)
 
     # Settings
-    image_gen_provider = Column(SQLEnum(ImageGenProvider, name="image_gen_provider", create_type=False), default=ImageGenProvider.OPENAI)
-    video_gen_provider = Column(SQLEnum(VideoGenProvider, name="video_gen_provider", create_type=False), default=VideoGenProvider.RUNWAY)
+    image_gen_provider = Column(
+        SQLEnum(ImageGenProvider, name="image_gen_provider", create_type=False), default=ImageGenProvider.OPENAI
+    )
+    video_gen_provider = Column(
+        SQLEnum(VideoGenProvider, name="video_gen_provider", create_type=False), default=VideoGenProvider.RUNWAY
+    )
 
     # Usage tracking
     posts_count_this_month = Column(Integer, default=0)
@@ -549,7 +564,9 @@ class UserSocialAccount(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    account_id = Column(UUID(as_uuid=True), ForeignKey("social_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(
+        UUID(as_uuid=True), ForeignKey("social_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # Permissions
     can_publish = Column(Boolean, default=True)
@@ -562,13 +579,12 @@ class UserSocialAccount(Base):
     user = relationship("User", back_populates="social_accounts")
     account = relationship("SocialAccount")
 
-    __table_args__ = (
-        UniqueConstraint("user_id", "account_id", name="uq_user_social_account"),
-    )
+    __table_args__ = (UniqueConstraint("user_id", "account_id", name="uq_user_social_account"),)
 
 
 class MarketplacePlatform(str, Enum):
     """Supported marketplace platforms."""
+
     WILDBERRIES = "wildberries"
     OZON = "ozon"
     YANDEX_MARKET = "yandex_market"
@@ -641,6 +657,7 @@ class Topic(Base):
 
 class ContentPlanStatus(str, Enum):
     """Content plan status."""
+
     DRAFT = "draft"
     ACTIVE = "active"
     COMPLETED = "completed"
@@ -649,6 +666,7 @@ class ContentPlanStatus(str, Enum):
 
 class VideoGenStatus(str, Enum):
     """Video generation task status."""
+
     PENDING = "pending"
     GENERATING = "generating"
     COMPLETED = "completed"
@@ -706,10 +724,9 @@ class ContentPlan(Base):
         }
 
 
-
-
 class GenerationStepStatus(str, Enum):
     """Generation step status."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -719,6 +736,7 @@ class GenerationStepStatus(str, Enum):
 
 class GenerationStep(str, Enum):
     """Steps in content generation process."""
+
     # Plan creation
     PLAN_CREATED = "plan_created"
     # Per-post steps
@@ -742,7 +760,9 @@ class PostGenerationProgress(Base):
     __tablename__ = "post_generation_progress"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    content_plan_id = Column(UUID(as_uuid=True), ForeignKey("content_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_plan_id = Column(
+        UUID(as_uuid=True), ForeignKey("content_plans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     post_index = Column(Integer, nullable=False)
 
     post_date = Column(Date, nullable=False)
@@ -773,9 +793,8 @@ class PostGenerationProgress(Base):
             "last_error": self.last_error,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
         }
-
 
 
 class VideoGenTask(Base):
@@ -829,18 +848,21 @@ class VideoGenTask(Base):
 
 # ==================== CLOUD STORAGE MODELS ====================
 
+
 class CloudProvider(str, Enum):
     """Supported cloud storage providers."""
+
     GOOGLE_DRIVE = "google_drive"
     YANDEX_DISK = "yandex_disk"
 
 
 class CloudConnectionStatus(str, Enum):
     """Cloud connection status."""
-    PENDING = "pending"      # Waiting for OAuth
-    ACTIVE = "active"        # Connected and working
-    ERROR = "error"          # Connection error
-    EXPIRED = "expired"      # Token expired
+
+    PENDING = "pending"  # Waiting for OAuth
+    ACTIVE = "active"  # Connected and working
+    ERROR = "error"  # Connection error
+    EXPIRED = "expired"  # Token expired
     DISCONNECTED = "disconnected"  # User disconnected
 
 
@@ -936,7 +958,9 @@ class CloudSyncedFile(Base):
     __tablename__ = "cloud_synced_files"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    connection_id = Column(UUID(as_uuid=True), ForeignKey("cloud_storage_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+    connection_id = Column(
+        UUID(as_uuid=True), ForeignKey("cloud_storage_connections.id", ondelete="CASCADE"), nullable=False, index=True
+    )
 
     # Cloud file info
     cloud_file_id = Column(String(500), nullable=False)  # File ID in cloud
@@ -985,8 +1009,10 @@ class CloudSyncedFile(Base):
 
 # ==================== ANTIFRAUD MODELS ====================
 
+
 class FraudEventType(str, Enum):
     """Types of fraud events."""
+
     DEMO_ABUSE = "demo_abuse"
     MULTIPLE_ACCOUNTS = "multiple_accounts"
     RATE_LIMIT_EXCEEDED = "rate_limit_exceeded"
@@ -998,6 +1024,7 @@ class FraudEventType(str, Enum):
 
 class FraudRiskLevel(str, Enum):
     """Risk levels for fraud events."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -1100,9 +1127,7 @@ class BlockedIP(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    __table_args__ = (
-        Index("ix_blocked_ips_expires", "expires_at"),
-    )
+    __table_args__ = (Index("ix_blocked_ips_expires", "expires_at"),)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -1159,8 +1184,10 @@ class RateLimitOverride(Base):
 # UNIFIED AUTH AND CART SYSTEM MODELS
 # ============================================
 
+
 class UserSubscriptionStatus(str, Enum):
     """User subscription status."""
+
     ACTIVE = "active"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
@@ -1170,6 +1197,7 @@ class UserSubscriptionStatus(str, Enum):
 
 class OrderStatus(str, Enum):
     """Order status."""
+
     PENDING = "pending"
     AWAITING_PAYMENT = "awaiting_payment"
     PAID = "paid"
@@ -1180,6 +1208,7 @@ class OrderStatus(str, Enum):
 
 class PaymentStatus(str, Enum):
     """Payment status."""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -1189,6 +1218,7 @@ class PaymentStatus(str, Enum):
 
 class BillingPeriod(str, Enum):
     """Billing period types."""
+
     MONTHLY = "monthly"
     YEARLY = "yearly"
     LIFETIME = "lifetime"
@@ -1218,11 +1248,15 @@ class SaaSProductPlan(Base):
     __tablename__ = "saas_product_plans"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    product_id = Column(UUID(as_uuid=True), ForeignKey("saas_products.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(
+        UUID(as_uuid=True), ForeignKey("saas_products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     code = Column(String(50), nullable=False)
     name = Column(String(255), nullable=False)
     price_rub = Column(Float, nullable=False)
-    billing_period = Column(SQLEnum(BillingPeriod, name="billing_period", create_type=False), default=BillingPeriod.MONTHLY)
+    billing_period = Column(
+        SQLEnum(BillingPeriod, name="billing_period", create_type=False), default=BillingPeriod.MONTHLY
+    )
     limits = Column(JSONB, default=dict)
     features = Column(JSONB, default=list)
     is_active = Column(Boolean, default=True)
@@ -1232,9 +1266,7 @@ class SaaSProductPlan(Base):
     # Relationships
     product = relationship("SaaSProduct", back_populates="plans")
 
-    __table_args__ = (
-        UniqueConstraint("product_id", "code", name="uq_saas_product_plan"),
-    )
+    __table_args__ = (UniqueConstraint("product_id", "code", name="uq_saas_product_plan"),)
 
 
 class UserSubscription(Base):
@@ -1247,7 +1279,10 @@ class UserSubscription(Base):
     product_id = Column(UUID(as_uuid=True), ForeignKey("saas_products.id", ondelete="RESTRICT"), nullable=False)
     plan_id = Column(UUID(as_uuid=True), ForeignKey("saas_product_plans.id", ondelete="RESTRICT"), nullable=False)
 
-    status = Column(SQLEnum(UserSubscriptionStatus, name="subscription_status", create_type=False), default=UserSubscriptionStatus.ACTIVE)
+    status = Column(
+        SQLEnum(UserSubscriptionStatus, name="subscription_status", create_type=False),
+        default=UserSubscriptionStatus.ACTIVE,
+    )
 
     started_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=True)
@@ -1404,8 +1439,10 @@ class PromoCode(Base):
 # ANALYTICS & INSIGHTS MODELS
 # =============================================================================
 
+
 class InsightType(str, Enum):
     """Types of AI-generated insights."""
+
     PERFORMANCE_ANALYSIS = "performance_analysis"
     CONTENT_RECOMMENDATION = "content_recommendation"
     TIMING_SUGGESTION = "timing_suggestion"
@@ -1416,6 +1453,7 @@ class InsightType(str, Enum):
 
 class InsightPriority(str, Enum):
     """Priority levels for insights."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -1424,6 +1462,7 @@ class InsightPriority(str, Enum):
 
 class InsightStatus(str, Enum):
     """Status of an insight."""
+
     PENDING = "pending"
     SHOWN = "shown"
     APPLIED = "applied"
@@ -1433,6 +1472,7 @@ class InsightStatus(str, Enum):
 
 class OptimizationMode(str, Enum):
     """AI optimization modes."""
+
     DISABLED = "disabled"
     HINTS_ONLY = "hints_only"
     CONFIRM = "confirm"
@@ -1498,7 +1538,7 @@ class PostMetrics(Base):
             "followers_gained": self.followers_gained,
             "hours_since_publish": self.hours_since_publish,
             "measured_at": self.measured_at.isoformat() if self.measured_at else None,
-            "platform_metrics": self.platform_metrics
+            "platform_metrics": self.platform_metrics,
         }
 
 
@@ -1573,7 +1613,7 @@ class ContentInsight(Base):
             "recommendations": self.recommendations,
             "confidence_score": self.confidence_score,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "expires_at": self.expires_at.isoformat() if self.expires_at else None
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
         }
 
 
@@ -1619,7 +1659,7 @@ class AnalyticsSettings(Base):
             "auto_optimize_hashtags": self.auto_optimize_hashtags,
             "auto_suggest_topics": self.auto_suggest_topics,
             "notify_on_viral": self.notify_on_viral,
-            "notify_weekly_report": self.notify_weekly_report
+            "notify_weekly_report": self.notify_weekly_report,
         }
 
 
@@ -1677,53 +1717,55 @@ class PerformanceBenchmark(Base):
             "best_posting_times": self.best_posting_times,
             "best_days_of_week": self.best_days_of_week,
             "top_hashtags": self.top_hashtags,
-            "period_summary": self.period_summary
+            "period_summary": self.period_summary,
         }
 
 
-__all__.extend([
-    "User",
-    "UserSocialAccount",
-    "Topic",
-    "SubscriptionPlan",
-    "ImageGenProvider",
-    "VideoGenProvider",
-    "ContentPlan",
-    "ContentPlanStatus",
-    "VideoGenTask",
-    "VideoGenStatus",
-    "CloudProvider",
-    "CloudConnectionStatus",
-    "CloudStorageConnection",
-    "CloudSyncedFile",
-    "FraudEventType",
-    "FraudRiskLevel",
-    "FraudEvent",
-    "BlockedIP",
-    "RateLimitOverride",
-    # Unified Auth & Cart
-    "UserSubscriptionStatus",
-    "OrderStatus",
-    "PaymentStatus",
-    "BillingPeriod",
-    "SaaSProduct",
-    "SaaSProductPlan",
-    "UserSubscription",
-    "Cart",
-    "Order",
-    "Payment",
-    "PromoCode",
-    # Generation progress tracking
-    "GenerationStepStatus",
-    "GenerationStep",
-    "PostGenerationProgress",
-    # Analytics & AI Insights
-    "InsightType",
-    "InsightPriority",
-    "InsightStatus",
-    "OptimizationMode",
-    "PostMetrics",
-    "ContentInsight",
-    "AnalyticsSettings",
-    "PerformanceBenchmark",
-])
+__all__.extend(
+    [
+        "User",
+        "UserSocialAccount",
+        "Topic",
+        "SubscriptionPlan",
+        "ImageGenProvider",
+        "VideoGenProvider",
+        "ContentPlan",
+        "ContentPlanStatus",
+        "VideoGenTask",
+        "VideoGenStatus",
+        "CloudProvider",
+        "CloudConnectionStatus",
+        "CloudStorageConnection",
+        "CloudSyncedFile",
+        "FraudEventType",
+        "FraudRiskLevel",
+        "FraudEvent",
+        "BlockedIP",
+        "RateLimitOverride",
+        # Unified Auth & Cart
+        "UserSubscriptionStatus",
+        "OrderStatus",
+        "PaymentStatus",
+        "BillingPeriod",
+        "SaaSProduct",
+        "SaaSProductPlan",
+        "UserSubscription",
+        "Cart",
+        "Order",
+        "Payment",
+        "PromoCode",
+        # Generation progress tracking
+        "GenerationStepStatus",
+        "GenerationStep",
+        "PostGenerationProgress",
+        # Analytics & AI Insights
+        "InsightType",
+        "InsightPriority",
+        "InsightStatus",
+        "OptimizationMode",
+        "PostMetrics",
+        "ContentInsight",
+        "AnalyticsSettings",
+        "PerformanceBenchmark",
+    ]
+)

@@ -75,11 +75,7 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
 
         try:
             # Check rate limit
-            rate_result = await antifraud_service.check_rate_limit(
-                identifier=identifier,
-                tier=tier,
-                endpoint=path
-            )
+            rate_result = await antifraud_service.check_rate_limit(identifier=identifier, tier=tier, endpoint=path)
 
             if not rate_result.allowed:
                 logger.warning(
@@ -87,7 +83,7 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
                     identifier=identifier[:16] + "..." if len(identifier) > 16 else identifier,
                     path=path,
                     current=rate_result.current_count,
-                    limit=rate_result.limit
+                    limit=rate_result.limit,
                 )
 
                 return JSONResponse(
@@ -95,23 +91,21 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
                     content={
                         "error": "rate_limit_exceeded",
                         "message": "Too many requests. Please try again later.",
-                        "retry_after": rate_result.retry_after
+                        "retry_after": rate_result.retry_after,
                     },
                     headers={
                         "X-RateLimit-Limit": str(rate_result.limit),
                         "X-RateLimit-Remaining": "0",
                         "X-RateLimit-Reset": str(int(rate_result.reset_at.timestamp())),
-                        "Retry-After": str(rate_result.retry_after)
-                    }
+                        "Retry-After": str(rate_result.retry_after),
+                    },
                 )
 
             # Check endpoint-specific limits
             if path in self.strict_endpoints:
                 strict_limit = self.strict_endpoints[path]
                 strict_result = await antifraud_service.check_rate_limit(
-                    identifier=f"{identifier}:{path}",
-                    tier="strict",
-                    endpoint=path
+                    identifier=f"{identifier}:{path}", tier="strict", endpoint=path
                 )
                 # Override limit for strict endpoints
                 if strict_result.current_count > strict_limit:
@@ -120,18 +114,15 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
                         content={
                             "error": "endpoint_rate_limit_exceeded",
                             "message": f"Too many requests to {path}. Please wait.",
-                            "retry_after": 60
+                            "retry_after": 60,
                         },
-                        headers={"Retry-After": "60"}
+                        headers={"Retry-After": "60"},
                     )
 
             # Bot detection for suspicious endpoints
             if path.startswith("/api/v1/auth") or path.startswith("/api/v1/payments"):
                 user_agent = request.headers.get("user-agent", "")
-                bot_signal = await antifraud_service.check_bot_activity(
-                    user_agent=user_agent,
-                    ip_address=client_ip
-                )
+                bot_signal = await antifraud_service.check_bot_activity(user_agent=user_agent, ip_address=client_ip)
 
                 if bot_signal.risk_level in [FraudRiskLevel.HIGH, FraudRiskLevel.CRITICAL]:
                     logger.warning(
@@ -139,17 +130,14 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
                         ip=client_ip[:8] + "...",
                         path=path,
                         risk=bot_signal.risk_level.value,
-                        score=bot_signal.score
+                        score=bot_signal.score,
                     )
 
                     # For critical, block immediately
                     if bot_signal.risk_level == FraudRiskLevel.CRITICAL:
                         return JSONResponse(
                             status_code=status.HTTP_403_FORBIDDEN,
-                            content={
-                                "error": "access_denied",
-                                "message": "Automated access detected and blocked."
-                            }
+                            content={"error": "access_denied", "message": "Automated access detected and blocked."},
                         )
 
             # Process request
@@ -157,30 +145,20 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
 
             # Add rate limit headers to response
             response.headers["X-RateLimit-Limit"] = str(rate_result.limit)
-            response.headers["X-RateLimit-Remaining"] = str(
-                max(0, rate_result.limit - rate_result.current_count)
-            )
+            response.headers["X-RateLimit-Remaining"] = str(max(0, rate_result.limit - rate_result.current_count))
             response.headers["X-RateLimit-Reset"] = str(int(rate_result.reset_at.timestamp()))
 
             # Log slow requests for analysis
             duration = time.time() - start_time
             if duration > 5.0:  # Requests taking > 5 seconds
                 logger.warning(
-                    "Slow request detected",
-                    path=path,
-                    duration=round(duration, 2),
-                    identifier=identifier[:16] + "..."
+                    "Slow request detected", path=path, duration=round(duration, 2), identifier=identifier[:16] + "..."
                 )
 
             return response
 
         except Exception as e:
-            logger.error(
-                "Antifraud middleware error",
-                error=str(e),
-                path=path,
-                exc_info=True
-            )
+            logger.error("Antifraud middleware error", error=str(e), path=path, exc_info=True)
             # Don't block on middleware errors
             return await call_next(request)
 
@@ -228,8 +206,7 @@ class IPBlockMiddleware(BaseHTTPMiddleware):
         if client_ip in self.blocked_ips:
             logger.warning("Blocked IP attempted access", ip=client_ip[:8] + "...")
             return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN,
-                content={"error": "access_denied", "message": "Access denied."}
+                status_code=status.HTTP_403_FORBIDDEN, content={"error": "access_denied", "message": "Access denied."}
             )
 
         # Check Redis blocklist
@@ -239,7 +216,7 @@ class IPBlockMiddleware(BaseHTTPMiddleware):
                 logger.warning("Redis-blocked IP attempted access", ip=client_ip[:8] + "...")
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    content={"error": "access_denied", "message": "Access denied."}
+                    content={"error": "access_denied", "message": "Access denied."},
                 )
 
         return await call_next(request)
