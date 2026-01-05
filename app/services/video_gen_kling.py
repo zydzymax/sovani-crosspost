@@ -4,19 +4,17 @@ Supports Kling 2.0 for text-to-video and image-to-video generation.
 """
 
 import asyncio
+import os
 import time
-import jwt
-from datetime import datetime
-from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
-import os
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import jwt
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.logging import get_logger
-
 
 logger = get_logger("services.video_gen_kling")
 
@@ -73,11 +71,11 @@ class VideoDuration(str, Enum):
 class KlingVideoResult:
     """Result of Kling video generation."""
     success: bool
-    video_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    task_id: Optional[str] = None
+    video_url: str | None = None
+    thumbnail_url: str | None = None
+    task_id: str | None = None
     duration_seconds: int = 0
-    error: Optional[str] = None
+    error: str | None = None
     cost_estimate: float = 0.25  # ~$0.25 per 5 sec video
 
 
@@ -142,7 +140,7 @@ class KlingService:
         cfg_scale: float = 0.5
     ) -> KlingVideoResult:
         """Generate video from text prompt."""
-        logger.info(f"Starting Kling text-to-video generation", prompt=prompt[:50])
+        logger.info("Starting Kling text-to-video generation", prompt=prompt[:50])
 
         async with await self._get_client() as client:
             payload = {
@@ -199,7 +197,7 @@ class KlingService:
         cfg_scale: float = 0.5
     ) -> KlingVideoResult:
         """Generate video from image."""
-        logger.info(f"Starting Kling image-to-video generation")
+        logger.info("Starting Kling image-to-video generation")
 
         async with await self._get_client() as client:
             payload = {
@@ -248,9 +246,9 @@ class KlingService:
         poll_interval: int = 5
     ) -> KlingVideoResult:
         """Poll for video generation result."""
-        logger.info(f"Polling for Kling result", task_id=task_id)
+        logger.info("Polling for Kling result", task_id=task_id)
 
-        for attempt in range(max_attempts):
+        for _attempt in range(max_attempts):
             async with await self._get_client() as client:
                 response = await client.get(
                     f"{self.API_BASE}/videos/text2video/{task_id}"
@@ -295,7 +293,7 @@ class KlingService:
             error="Timeout waiting for video generation"
         )
 
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get status of a video generation task."""
         async with await self._get_client() as client:
             response = await client.get(
@@ -310,7 +308,7 @@ class KlingService:
 
 
 # Singleton instance
-_kling_service: Optional[KlingService] = None
+_kling_service: KlingService | None = None
 
 
 def get_kling_service() -> KlingService:

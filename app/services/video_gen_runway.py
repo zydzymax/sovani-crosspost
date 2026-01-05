@@ -5,17 +5,15 @@ Supports Gen-3 Alpha for text-to-video and image-to-video generation.
 
 import asyncio
 import time
-from datetime import datetime
-from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
 from ..core.logging import get_logger
-
 
 logger = get_logger("services.video_gen_runway")
 
@@ -65,11 +63,11 @@ class AspectRatio(str, Enum):
 class RunwayVideoResult:
     """Result of Runway video generation."""
     success: bool
-    video_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    task_id: Optional[str] = None
+    video_url: str | None = None
+    thumbnail_url: str | None = None
+    task_id: str | None = None
     duration_seconds: int = 0
-    error: Optional[str] = None
+    error: str | None = None
     cost_estimate: float = 0.05  # ~$0.05 per second
 
 
@@ -112,7 +110,7 @@ class RunwayService:
 
         raise RunwayError("Runway API key not configured.")
 
-    def _get_api_secret(self) -> Optional[str]:
+    def _get_api_secret(self) -> str | None:
         """Get API secret from settings or environment."""
         if hasattr(settings, 'runway') and hasattr(settings.runway, 'api_secret'):
             secret = settings.runway.api_secret
@@ -376,7 +374,7 @@ class RunwayService:
         wait=wait_exponential(multiplier=1, min=2, max=8),
         retry=retry_if_exception_type(httpx.RequestError)
     )
-    async def _get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def _get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get task status from API."""
         response = await self.http_client.get(
             f"{self.API_BASE}/tasks/{task_id}"
@@ -386,7 +384,7 @@ class RunwayService:
 
         return response.json()
 
-    def _parse_completed_task(self, status: Dict[str, Any]) -> RunwayVideoResult:
+    def _parse_completed_task(self, status: dict[str, Any]) -> RunwayVideoResult:
         """Parse completed task response."""
         # Get video URL
         video_url = status.get("output", [None])[0]
@@ -435,7 +433,7 @@ class RunwayService:
                 pass
             raise RunwayError(f"API Error {response.status_code}: {error_text}")
 
-    async def get_account_info(self) -> Dict[str, Any]:
+    async def get_account_info(self) -> dict[str, Any]:
         """Get account information including credits."""
         try:
             response = await self.http_client.get(f"{self.API_BASE}/account")

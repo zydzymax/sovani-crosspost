@@ -5,18 +5,14 @@ Provides integration with Google Drive for fetching user media files.
 Users share a folder with the service and media is automatically synced.
 """
 
-import os
-import io
 import asyncio
-import tempfile
-from typing import Optional, List, Dict, Any
-from datetime import datetime
-from pathlib import Path
+import os
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from ..core.logging import get_logger
-from ..core.config import settings
 
 logger = get_logger("adapters.google_drive")
 
@@ -38,8 +34,8 @@ class CloudFile:
     mime_type: str
     media_type: MediaType
     modified_at: datetime
-    download_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
+    download_url: str | None = None
+    thumbnail_url: str | None = None
 
 
 @dataclass
@@ -49,8 +45,8 @@ class SyncResult:
     files_found: int
     files_downloaded: int
     files_failed: int
-    errors: List[str]
-    downloaded_files: List[str]
+    errors: list[str]
+    downloaded_files: list[str]
 
 
 class GoogleDriveAdapter:
@@ -81,7 +77,7 @@ class GoogleDriveAdapter:
         self._service = None
         logger.info("GoogleDriveAdapter initialized")
 
-    async def _get_service(self, credentials: Dict[str, Any] = None):
+    async def _get_service(self, credentials: dict[str, Any] = None):
         """Get or create Google Drive API service."""
         try:
             from google.oauth2.credentials import Credentials
@@ -117,9 +113,9 @@ class GoogleDriveAdapter:
     async def list_folder_contents(
         self,
         folder_id: str,
-        credentials: Dict[str, Any],
-        media_types: List[str] = None
-    ) -> List[CloudFile]:
+        credentials: dict[str, Any],
+        media_types: list[str] = None
+    ) -> list[CloudFile]:
         """
         List all media files in a Google Drive folder.
 
@@ -154,11 +150,11 @@ class GoogleDriveAdapter:
                 # Fetch files
                 response = await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: service.files().list(
+                    lambda pt=page_token: service.files().list(
                         q=query,
                         spaces='drive',
                         fields='nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink)',
-                        pageToken=page_token,
+                        pageToken=pt,
                         pageSize=100
                     ).execute()
                 )
@@ -194,7 +190,7 @@ class GoogleDriveAdapter:
     async def download_file(
         self,
         file_id: str,
-        credentials: Dict[str, Any],
+        credentials: dict[str, Any],
         output_path: str
     ) -> bool:
         """
@@ -241,9 +237,9 @@ class GoogleDriveAdapter:
     async def sync_folder(
         self,
         folder_id: str,
-        credentials: Dict[str, Any],
+        credentials: dict[str, Any],
         output_dir: str,
-        media_types: List[str] = None
+        media_types: list[str] = None
     ) -> SyncResult:
         """
         Sync all media from a Google Drive folder.
@@ -326,8 +322,8 @@ class GoogleDriveAdapter:
     async def get_folder_info(
         self,
         folder_id: str,
-        credentials: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        credentials: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """Get information about a folder."""
         service = await self._get_service(credentials)
         if not service:
@@ -355,7 +351,7 @@ class GoogleDriveAdapter:
             return None
 
     @staticmethod
-    def extract_folder_id_from_url(url: str) -> Optional[str]:
+    def extract_folder_id_from_url(url: str) -> str | None:
         """
         Extract folder ID from Google Drive sharing URL.
 
@@ -402,7 +398,7 @@ def get_google_oauth_url(redirect_uri: str, state: str = None) -> str:
     return f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
 
 
-async def exchange_google_code(code: str, redirect_uri: str) -> Optional[Dict[str, Any]]:
+async def exchange_google_code(code: str, redirect_uri: str) -> dict[str, Any] | None:
     """Exchange authorization code for tokens."""
     import httpx
 
@@ -433,7 +429,7 @@ async def exchange_google_code(code: str, redirect_uri: str) -> Optional[Dict[st
         return None
 
 
-async def refresh_google_token(refresh_token: str) -> Optional[Dict[str, Any]]:
+async def refresh_google_token(refresh_token: str) -> dict[str, Any] | None:
     """Refresh expired access token."""
     import httpx
 

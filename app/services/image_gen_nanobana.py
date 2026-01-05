@@ -7,16 +7,15 @@ Nano Banana Pro = Gemini 3 Pro Image (high quality)
 
 import asyncio
 import time
-from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
 from ..core.logging import get_logger
-
 
 logger = get_logger("services.image_gen_nanobana")
 
@@ -68,10 +67,10 @@ class AspectRatio(str, Enum):
 class NanobanaResult:
     """Result of Nanobana image generation."""
     success: bool
-    image_url: Optional[str] = None
-    image_base64: Optional[str] = None
-    task_id: Optional[str] = None
-    error: Optional[str] = None
+    image_url: str | None = None
+    image_base64: str | None = None
+    task_id: str | None = None
+    error: str | None = None
     cost_estimate: float = 0.02  # default for Flash
 
 
@@ -178,7 +177,7 @@ class NanobanaService:
     ) -> NanobanaResult:
         """Generate using Nano Banana Pro (Gemini 3 Pro Image)."""
         endpoint = f"{self.API_BASE}/api/v1/nanobanana/generate-pro"
-        
+
         # Calculate cost
         cost = self.COST_PRO_4K if resolution == Resolution.RES_4K else self.COST_PRO_1K
 
@@ -200,7 +199,7 @@ class NanobanaService:
     ) -> NanobanaResult:
         """Generate using Nano Banana Flash (Gemini 2.5 Flash Image)."""
         endpoint = f"{self.API_BASE}/api/v1/nanobanana/generate"
-        
+
         # Flash requires type and callBackUrl
         request_data = {
             "prompt": prompt,
@@ -216,7 +215,7 @@ class NanobanaService:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type((httpx.RequestError, NanobanaRateLimitError))
     )
-    async def _make_request(self, endpoint: str, request_data: Dict[str, Any], cost: float) -> NanobanaResult:
+    async def _make_request(self, endpoint: str, request_data: dict[str, Any], cost: float) -> NanobanaResult:
         """Make generation request to Nanobana API."""
         response = await self.http_client.post(endpoint, json=request_data)
 
@@ -230,7 +229,7 @@ class NanobanaService:
             raise NanobanaError("Insufficient credits")
 
         data = response.json()
-        
+
         if data.get("code") != 200:
             error_msg = data.get("msg") or data.get("message") or "Unknown error"
             raise NanobanaError(f"Generation failed: {error_msg}")
@@ -249,20 +248,20 @@ class NanobanaService:
 
         while time.time() - start_time < max_wait:
             await asyncio.sleep(poll_interval)
-            
+
             status = await self._get_task_status(task_id)
-            
+
             if status.get("code") != 200:
                 continue
 
             task_data = status.get("data", {})
             success_flag = task_data.get("successFlag")
-            
+
             if success_flag == 1:
                 # Success - extract image URL
                 response_data = task_data.get("response", {})
                 image_url = response_data.get("resultImageUrl")
-                
+
                 if image_url:
                     return NanobanaResult(
                         success=True,
@@ -293,7 +292,7 @@ class NanobanaService:
         wait=wait_exponential(multiplier=1, min=1, max=5),
         retry=retry_if_exception_type(httpx.RequestError)
     )
-    async def _get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def _get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get task status from API."""
         response = await self.http_client.get(
             f"{self.API_BASE}/api/v1/nanobanana/record-info",
@@ -302,7 +301,7 @@ class NanobanaService:
 
         return response.json()
 
-    async def get_credits(self) -> Dict[str, Any]:
+    async def get_credits(self) -> dict[str, Any]:
         """Get account credits balance."""
         try:
             response = await self.http_client.get(f"{self.API_BASE}/api/v1/common/credit")
@@ -331,7 +330,7 @@ async def generate_nanobana_image(
     api_key: str = None
 ) -> NanobanaResult:
     """Generate image using Nanobana.
-    
+
     Args:
         prompt: Image description
         model: "flash" (fast/cheap) or "pro" (high quality)

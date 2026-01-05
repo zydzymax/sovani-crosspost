@@ -1,22 +1,21 @@
 """Facebook/Meta Graph API adapter for Crosspost."""
 
 import asyncio
+import json
 import mimetypes
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
-import json
+from pathlib import Path
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
 from ..core.logging import get_logger, with_logging_context
 from ..observability.metrics import metrics
-
 
 logger = get_logger("adapters.facebook")
 
@@ -67,18 +66,18 @@ class FacebookMediaItem:
     """Represents a media item for Facebook."""
     file_path: str
     media_type: MediaType
-    caption: Optional[str] = None
+    caption: str | None = None
 
 
 @dataclass
 class FacebookPost:
     """Represents a Facebook post."""
     message: str
-    media_items: List[FacebookMediaItem]
-    page_id: Optional[str] = None
-    scheduled_publish_time: Optional[datetime] = None
+    media_items: list[FacebookMediaItem]
+    page_id: str | None = None
+    scheduled_publish_time: datetime | None = None
     published: bool = True
-    link: Optional[str] = None
+    link: str | None = None
 
     def __post_init__(self):
         if self.media_items is None:
@@ -91,18 +90,18 @@ class FacebookUploadResult:
     media_type: MediaType
     media_id: str
     upload_time: float
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 @dataclass
 class FacebookPublishResult:
     """Result of Facebook post publishing."""
-    post_id: Optional[str]
+    post_id: str | None
     status: PostStatus
     message: str
-    post_url: Optional[str] = None
-    published_at: Optional[datetime] = None
-    error_code: Optional[str] = None
+    post_url: str | None = None
+    published_at: datetime | None = None
+    error_code: str | None = None
 
 
 class FacebookAdapter:
@@ -554,8 +553,8 @@ class FacebookAdapter:
         retry=retry_if_exception_type((httpx.RequestError, FacebookRateLimitError))
     )
     async def _make_api_request(self, endpoint: str, method: str = "GET",
-                                 params: Dict[str, Any] = None,
-                                 files: Dict = None) -> Dict[str, Any]:
+                                 params: dict[str, Any] = None,
+                                 files: dict = None) -> dict[str, Any]:
         """Make API request to Facebook Graph API."""
         await self._check_rate_limits()
 
@@ -584,7 +583,7 @@ class FacebookAdapter:
             logger.error(f"Facebook API request failed: {e}")
             raise
 
-    async def _handle_api_error(self, error_data: Dict[str, Any]):
+    async def _handle_api_error(self, error_data: dict[str, Any]):
         """Handle Facebook API errors."""
         error_code = error_data.get("code")
         error_subcode = error_data.get("error_subcode")
@@ -613,7 +612,7 @@ class FacebookAdapter:
         else:
             raise FacebookError(f"Facebook API Error {error_code}: {error_msg}")
 
-    async def get_page_info(self) -> Dict[str, Any]:
+    async def get_page_info(self) -> dict[str, Any]:
         """Get information about the configured page."""
         response = await self._make_api_request(
             f"/{self.page_id}",
@@ -650,7 +649,7 @@ class FacebookAdapter:
 # Convenience function
 async def publish_facebook_post(
     message: str,
-    media_files: List[str] = None,
+    media_files: list[str] = None,
     page_access_token: str = None,
     page_id: str = None,
     scheduled_time: datetime = None,

@@ -10,20 +10,26 @@ This module provides:
 
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any, Type, TypeVar, Generic
-from contextlib import contextmanager
+from typing import Any, Generic, TypeVar
 
-from sqlalchemy import select, update, delete, func, and_, or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from .db import Base, db_manager
 from .entities import (
-    Post, PostStatus, MediaAsset, MediaType,
-    SocialAccount, Platform, PublishTask, TaskStage, TaskStatus,
-    PublishResult, Schedule, ContentQueue
+    ContentQueue,
+    MediaAsset,
+    MediaType,
+    Platform,
+    Post,
+    PostStatus,
+    PublishResult,
+    PublishTask,
+    Schedule,
+    SocialAccount,
+    TaskStage,
+    TaskStatus,
 )
-
 
 T = TypeVar("T", bound=Base)
 
@@ -31,7 +37,7 @@ T = TypeVar("T", bound=Base)
 class BaseRepository(Generic[T]):
     """Base repository with common CRUD operations."""
 
-    model_class: Type[T]
+    model_class: type[T]
 
     def __init__(self, session: Session):
         self.session = session
@@ -43,17 +49,17 @@ class BaseRepository(Generic[T]):
         self.session.flush()
         return entity
 
-    def get_by_id(self, entity_id: uuid.UUID) -> Optional[T]:
+    def get_by_id(self, entity_id: uuid.UUID) -> T | None:
         """Get entity by ID."""
         return self.session.query(self.model_class).filter(
             self.model_class.id == entity_id
         ).first()
 
-    def get_all(self, limit: int = 100, offset: int = 0) -> List[T]:
+    def get_all(self, limit: int = 100, offset: int = 0) -> list[T]:
         """Get all entities with pagination."""
         return self.session.query(self.model_class).limit(limit).offset(offset).all()
 
-    def update(self, entity_id: uuid.UUID, **kwargs) -> Optional[T]:
+    def update(self, entity_id: uuid.UUID, **kwargs) -> T | None:
         """Update entity by ID."""
         entity = self.get_by_id(entity_id)
         if entity:
@@ -86,11 +92,11 @@ class PostRepository(BaseRepository[Post]):
     def create_post(
         self,
         source_platform: Platform,
-        original_text: Optional[str] = None,
-        source_message_id: Optional[str] = None,
-        source_chat_id: Optional[str] = None,
-        source_user_id: Optional[str] = None,
-        source_data: Optional[Dict] = None,
+        original_text: str | None = None,
+        source_message_id: str | None = None,
+        source_chat_id: str | None = None,
+        source_user_id: str | None = None,
+        source_data: dict | None = None,
     ) -> Post:
         """Create a new post."""
         return self.create(
@@ -103,29 +109,29 @@ class PostRepository(BaseRepository[Post]):
             status=PostStatus.INGESTED,
         )
 
-    def get_by_status(self, status: PostStatus, limit: int = 100) -> List[Post]:
+    def get_by_status(self, status: PostStatus, limit: int = 100) -> list[Post]:
         """Get posts by status."""
         return self.session.query(Post).filter(
             Post.status == status
         ).order_by(Post.created_at.desc()).limit(limit).all()
 
-    def get_pending_for_publish(self, limit: int = 10) -> List[Post]:
+    def get_pending_for_publish(self, limit: int = 10) -> list[Post]:
         """Get posts ready for publishing."""
         return self.session.query(Post).filter(
             Post.status == PostStatus.PREFLIGHT
         ).order_by(Post.created_at.asc()).limit(limit).all()
 
-    def get_scheduled_posts(self, until: datetime = None) -> List[Post]:
+    def get_scheduled_posts(self, until: datetime = None) -> list[Post]:
         """Get scheduled posts up to given time."""
         query = self.session.query(Post).filter(
-            Post.is_scheduled == True,
+            Post.is_scheduled,
             Post.status.in_([PostStatus.PREFLIGHT, PostStatus.CAPTIONIZED])
         )
         if until:
             query = query.filter(Post.scheduled_at <= until)
         return query.order_by(Post.scheduled_at.asc()).all()
 
-    def update_status(self, post_id: uuid.UUID, status: PostStatus, error_message: str = None) -> Optional[Post]:
+    def update_status(self, post_id: uuid.UUID, status: PostStatus, error_message: str = None) -> Post | None:
         """Update post status."""
         return self.update(
             post_id,
@@ -138,9 +144,9 @@ class PostRepository(BaseRepository[Post]):
         self,
         post_id: uuid.UUID,
         generated_caption: str,
-        platform_captions: Dict[str, str] = None,
-        hashtags: List[str] = None
-    ) -> Optional[Post]:
+        platform_captions: dict[str, str] = None,
+        hashtags: list[str] = None
+    ) -> Post | None:
         """Update post caption."""
         kwargs = {"generated_caption": generated_caption}
         if platform_captions:
@@ -149,7 +155,7 @@ class PostRepository(BaseRepository[Post]):
             kwargs["hashtags"] = hashtags
         return self.update(post_id, **kwargs)
 
-    def mark_published(self, post_id: uuid.UUID) -> Optional[Post]:
+    def mark_published(self, post_id: uuid.UUID) -> Post | None:
         """Mark post as published."""
         return self.update(
             post_id,
@@ -157,13 +163,13 @@ class PostRepository(BaseRepository[Post]):
             published_at=datetime.utcnow()
         )
 
-    def get_with_media(self, post_id: uuid.UUID) -> Optional[Post]:
+    def get_with_media(self, post_id: uuid.UUID) -> Post | None:
         """Get post with media assets loaded."""
         return self.session.query(Post).options(
             selectinload(Post.media_assets)
         ).filter(Post.id == post_id).first()
 
-    def get_recent_posts(self, hours: int = 24, limit: int = 50) -> List[Post]:
+    def get_recent_posts(self, hours: int = 24, limit: int = 50) -> list[Post]:
         """Get recent posts."""
         since = datetime.utcnow() - timedelta(hours=hours)
         return self.session.query(Post).filter(
@@ -172,13 +178,13 @@ class PostRepository(BaseRepository[Post]):
 
     def search_posts(
         self,
-        text_query: Optional[str] = None,
-        platform: Optional[Platform] = None,
-        status: Optional[PostStatus] = None,
-        from_date: Optional[datetime] = None,
-        to_date: Optional[datetime] = None,
+        text_query: str | None = None,
+        platform: Platform | None = None,
+        status: PostStatus | None = None,
+        from_date: datetime | None = None,
+        to_date: datetime | None = None,
         limit: int = 50
-    ) -> List[Post]:
+    ) -> list[Post]:
         """Search posts with filters."""
         query = self.session.query(Post)
 
@@ -210,14 +216,14 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         self,
         post_id: uuid.UUID,
         media_type: MediaType,
-        original_file_id: Optional[str] = None,
-        file_name: Optional[str] = None,
-        file_size: Optional[int] = None,
-        mime_type: Optional[str] = None,
-        width: Optional[int] = None,
-        height: Optional[int] = None,
-        duration: Optional[float] = None,
-        original_path: Optional[str] = None,
+        original_file_id: str | None = None,
+        file_name: str | None = None,
+        file_size: int | None = None,
+        mime_type: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        duration: float | None = None,
+        original_path: str | None = None,
     ) -> MediaAsset:
         """Create a new media asset."""
         return self.create(
@@ -233,7 +239,7 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
             original_path=original_path,
         )
 
-    def get_by_post(self, post_id: uuid.UUID) -> List[MediaAsset]:
+    def get_by_post(self, post_id: uuid.UUID) -> list[MediaAsset]:
         """Get all media assets for a post."""
         return self.session.query(MediaAsset).filter(
             MediaAsset.post_id == post_id
@@ -244,7 +250,7 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         media_id: uuid.UUID,
         platform: Platform,
         transcoded_path: str
-    ) -> Optional[MediaAsset]:
+    ) -> MediaAsset | None:
         """Update transcoded path for a platform."""
         media = self.get_by_id(media_id)
         if media:
@@ -259,7 +265,7 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         media_id: uuid.UUID,
         platform: Platform,
         status: str
-    ) -> Optional[MediaAsset]:
+    ) -> MediaAsset | None:
         """Update transcode status for a platform."""
         media = self.get_by_id(media_id)
         if media:
@@ -279,11 +285,11 @@ class SocialAccountRepository(BaseRepository[SocialAccount]):
         self,
         platform: Platform,
         platform_user_id: str,
-        platform_username: Optional[str] = None,
-        access_token: Optional[str] = None,
-        refresh_token: Optional[str] = None,
-        token_expires_at: Optional[datetime] = None,
-        extra_credentials: Optional[Dict] = None,
+        platform_username: str | None = None,
+        access_token: str | None = None,
+        refresh_token: str | None = None,
+        token_expires_at: datetime | None = None,
+        extra_credentials: dict | None = None,
     ) -> SocialAccount:
         """Create a new social account."""
         return self.create(
@@ -296,24 +302,24 @@ class SocialAccountRepository(BaseRepository[SocialAccount]):
             extra_credentials=extra_credentials or {},
         )
 
-    def get_by_platform(self, platform: Platform, active_only: bool = True) -> List[SocialAccount]:
+    def get_by_platform(self, platform: Platform, active_only: bool = True) -> list[SocialAccount]:
         """Get accounts by platform."""
         query = self.session.query(SocialAccount).filter(
             SocialAccount.platform == platform
         )
         if active_only:
-            query = query.filter(SocialAccount.is_active == True)
+            query = query.filter(SocialAccount.is_active)
         return query.all()
 
-    def get_active_for_publishing(self, platform: Platform) -> Optional[SocialAccount]:
+    def get_active_for_publishing(self, platform: Platform) -> SocialAccount | None:
         """Get active account for publishing."""
         return self.session.query(SocialAccount).filter(
             SocialAccount.platform == platform,
-            SocialAccount.is_active == True,
-            SocialAccount.publish_enabled == True
+            SocialAccount.is_active,
+            SocialAccount.publish_enabled
         ).order_by(SocialAccount.publish_priority.desc()).first()
 
-    def get_by_platform_user(self, platform: Platform, platform_user_id: str) -> Optional[SocialAccount]:
+    def get_by_platform_user(self, platform: Platform, platform_user_id: str) -> SocialAccount | None:
         """Get account by platform and user ID."""
         return self.session.query(SocialAccount).filter(
             SocialAccount.platform == platform,
@@ -324,9 +330,9 @@ class SocialAccountRepository(BaseRepository[SocialAccount]):
         self,
         account_id: uuid.UUID,
         access_token: str,
-        refresh_token: Optional[str] = None,
-        token_expires_at: Optional[datetime] = None
-    ) -> Optional[SocialAccount]:
+        refresh_token: str | None = None,
+        token_expires_at: datetime | None = None
+    ) -> SocialAccount | None:
         """Update OAuth tokens."""
         return self.update(
             account_id,
@@ -335,12 +341,12 @@ class SocialAccountRepository(BaseRepository[SocialAccount]):
             token_expires_at=token_expires_at
         )
 
-    def get_expiring_tokens(self, hours: int = 24) -> List[SocialAccount]:
+    def get_expiring_tokens(self, hours: int = 24) -> list[SocialAccount]:
         """Get accounts with tokens expiring soon."""
         expires_before = datetime.utcnow() + timedelta(hours=hours)
         return self.session.query(SocialAccount).filter(
-            SocialAccount.is_active == True,
-            SocialAccount.token_expires_at != None,
+            SocialAccount.is_active,
+            SocialAccount.token_expires_at is not None,
             SocialAccount.token_expires_at <= expires_before
         ).all()
 
@@ -354,8 +360,8 @@ class PublishTaskRepository(BaseRepository[PublishTask]):
         self,
         post_id: uuid.UUID,
         stage: TaskStage,
-        celery_task_id: Optional[str] = None,
-        input_data: Optional[Dict] = None,
+        celery_task_id: str | None = None,
+        input_data: dict | None = None,
     ) -> PublishTask:
         """Create a new publish task."""
         return self.create(
@@ -366,19 +372,19 @@ class PublishTaskRepository(BaseRepository[PublishTask]):
             status=TaskStatus.PENDING,
         )
 
-    def get_by_post(self, post_id: uuid.UUID) -> List[PublishTask]:
+    def get_by_post(self, post_id: uuid.UUID) -> list[PublishTask]:
         """Get all tasks for a post."""
         return self.session.query(PublishTask).filter(
             PublishTask.post_id == post_id
         ).order_by(PublishTask.created_at.asc()).all()
 
-    def get_by_celery_id(self, celery_task_id: str) -> Optional[PublishTask]:
+    def get_by_celery_id(self, celery_task_id: str) -> PublishTask | None:
         """Get task by Celery task ID."""
         return self.session.query(PublishTask).filter(
             PublishTask.celery_task_id == celery_task_id
         ).first()
 
-    def start_task(self, task_id: uuid.UUID, celery_task_id: str = None) -> Optional[PublishTask]:
+    def start_task(self, task_id: uuid.UUID, celery_task_id: str = None) -> PublishTask | None:
         """Mark task as started."""
         kwargs = {
             "status": TaskStatus.RUNNING,
@@ -391,9 +397,9 @@ class PublishTaskRepository(BaseRepository[PublishTask]):
     def complete_task(
         self,
         task_id: uuid.UUID,
-        output_data: Optional[Dict] = None,
-        processing_time: Optional[float] = None
-    ) -> Optional[PublishTask]:
+        output_data: dict | None = None,
+        processing_time: float | None = None
+    ) -> PublishTask | None:
         """Mark task as completed."""
         return self.update(
             task_id,
@@ -407,8 +413,8 @@ class PublishTaskRepository(BaseRepository[PublishTask]):
         self,
         task_id: uuid.UUID,
         error_message: str,
-        error_traceback: Optional[str] = None
-    ) -> Optional[PublishTask]:
+        error_traceback: str | None = None
+    ) -> PublishTask | None:
         """Mark task as failed."""
         task = self.get_by_id(task_id)
         if task:
@@ -420,7 +426,7 @@ class PublishTaskRepository(BaseRepository[PublishTask]):
             self.session.flush()
         return task
 
-    def get_failed_tasks(self, limit: int = 50) -> List[PublishTask]:
+    def get_failed_tasks(self, limit: int = 50) -> list[PublishTask]:
         """Get failed tasks for retry."""
         return self.session.query(PublishTask).filter(
             PublishTask.status == TaskStatus.FAILED,
@@ -438,12 +444,12 @@ class PublishResultRepository(BaseRepository[PublishResult]):
         post_id: uuid.UUID,
         platform: Platform,
         success: bool,
-        account_id: Optional[uuid.UUID] = None,
-        platform_post_id: Optional[str] = None,
-        platform_post_url: Optional[str] = None,
-        error_code: Optional[str] = None,
-        error_message: Optional[str] = None,
-        platform_response: Optional[Dict] = None,
+        account_id: uuid.UUID | None = None,
+        platform_post_id: str | None = None,
+        platform_post_url: str | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        platform_response: dict | None = None,
     ) -> PublishResult:
         """Create a publish result."""
         return self.create(
@@ -459,24 +465,24 @@ class PublishResultRepository(BaseRepository[PublishResult]):
             published_at=datetime.utcnow() if success else None,
         )
 
-    def get_by_post(self, post_id: uuid.UUID) -> List[PublishResult]:
+    def get_by_post(self, post_id: uuid.UUID) -> list[PublishResult]:
         """Get all results for a post."""
         return self.session.query(PublishResult).filter(
             PublishResult.post_id == post_id
         ).all()
 
-    def get_by_post_and_platform(self, post_id: uuid.UUID, platform: Platform) -> Optional[PublishResult]:
+    def get_by_post_and_platform(self, post_id: uuid.UUID, platform: Platform) -> PublishResult | None:
         """Get result for specific post and platform."""
         return self.session.query(PublishResult).filter(
             PublishResult.post_id == post_id,
             PublishResult.platform == platform
         ).first()
 
-    def get_recent_failures(self, platform: Platform = None, hours: int = 24) -> List[PublishResult]:
+    def get_recent_failures(self, platform: Platform = None, hours: int = 24) -> list[PublishResult]:
         """Get recent failures."""
         since = datetime.utcnow() - timedelta(hours=hours)
         query = self.session.query(PublishResult).filter(
-            PublishResult.success == False,
+            not PublishResult.success,
             PublishResult.created_at >= since
         )
         if platform:
@@ -494,7 +500,7 @@ class PublishResultRepository(BaseRepository[PublishResult]):
             return 0.0
         success = self.session.query(func.count(PublishResult.id)).filter(
             PublishResult.platform == platform,
-            PublishResult.success == True,
+            PublishResult.success,
             PublishResult.created_at >= since
         ).scalar()
         return success / total
@@ -508,10 +514,10 @@ class ScheduleRepository(BaseRepository[Schedule]):
     def create_schedule(
         self,
         name: str,
-        platforms: List[str],
-        cron_expression: Optional[str] = None,
-        publish_times: Optional[List[str]] = None,
-        days_of_week: Optional[List[int]] = None,
+        platforms: list[str],
+        cron_expression: str | None = None,
+        publish_times: list[str] | None = None,
+        days_of_week: list[int] | None = None,
         timezone: str = "Europe/Moscow",
         max_posts_per_day: int = 10,
     ) -> Schedule:
@@ -526,25 +532,25 @@ class ScheduleRepository(BaseRepository[Schedule]):
             max_posts_per_day=max_posts_per_day,
         )
 
-    def get_active_schedules(self) -> List[Schedule]:
+    def get_active_schedules(self) -> list[Schedule]:
         """Get all active schedules."""
         return self.session.query(Schedule).filter(
-            Schedule.is_active == True
+            Schedule.is_active
         ).all()
 
-    def get_due_schedules(self, now: datetime = None) -> List[Schedule]:
+    def get_due_schedules(self, now: datetime = None) -> list[Schedule]:
         """Get schedules due to run."""
         if now is None:
             now = datetime.utcnow()
         return self.session.query(Schedule).filter(
-            Schedule.is_active == True,
+            Schedule.is_active,
             or_(
-                Schedule.next_run_at == None,
+                Schedule.next_run_at is None,
                 Schedule.next_run_at <= now
             )
         ).all()
 
-    def update_last_run(self, schedule_id: uuid.UUID, next_run_at: datetime = None) -> Optional[Schedule]:
+    def update_last_run(self, schedule_id: uuid.UUID, next_run_at: datetime = None) -> Schedule | None:
         """Update last run time."""
         return self.update(
             schedule_id,
@@ -563,7 +569,7 @@ class ContentQueueRepository(BaseRepository[ContentQueue]):
         post_id: uuid.UUID,
         platform: Platform,
         scheduled_for: datetime,
-        schedule_id: Optional[uuid.UUID] = None,
+        schedule_id: uuid.UUID | None = None,
         priority: int = 0,
     ) -> ContentQueue:
         """Add content to queue."""
@@ -576,7 +582,7 @@ class ContentQueueRepository(BaseRepository[ContentQueue]):
             status="pending",
         )
 
-    def get_due_items(self, platform: Platform = None, limit: int = 10) -> List[ContentQueue]:
+    def get_due_items(self, platform: Platform = None, limit: int = 10) -> list[ContentQueue]:
         """Get items due for publishing."""
         now = datetime.utcnow()
         query = self.session.query(ContentQueue).filter(
@@ -590,7 +596,7 @@ class ContentQueueRepository(BaseRepository[ContentQueue]):
             ContentQueue.scheduled_for.asc()
         ).limit(limit).all()
 
-    def mark_processing(self, queue_id: uuid.UUID) -> Optional[ContentQueue]:
+    def mark_processing(self, queue_id: uuid.UUID) -> ContentQueue | None:
         """Mark item as processing."""
         item = self.get_by_id(queue_id)
         if item:
@@ -600,7 +606,7 @@ class ContentQueueRepository(BaseRepository[ContentQueue]):
             self.session.flush()
         return item
 
-    def mark_published(self, queue_id: uuid.UUID) -> Optional[ContentQueue]:
+    def mark_published(self, queue_id: uuid.UUID) -> ContentQueue | None:
         """Mark item as published."""
         return self.update(
             queue_id,
@@ -608,7 +614,7 @@ class ContentQueueRepository(BaseRepository[ContentQueue]):
             published_at=datetime.utcnow()
         )
 
-    def mark_failed(self, queue_id: uuid.UUID, error_message: str) -> Optional[ContentQueue]:
+    def mark_failed(self, queue_id: uuid.UUID, error_message: str) -> ContentQueue | None:
         """Mark item as failed."""
         return self.update(
             queue_id,
@@ -616,7 +622,7 @@ class ContentQueueRepository(BaseRepository[ContentQueue]):
             error_message=error_message
         )
 
-    def get_queue_stats(self) -> Dict[str, Any]:
+    def get_queue_stats(self) -> dict[str, Any]:
         """Get queue statistics."""
         pending = self.session.query(func.count(ContentQueue.id)).filter(
             ContentQueue.status == "pending"
@@ -640,7 +646,7 @@ class UnitOfWork:
     """Unit of work for managing transactions."""
 
     def __init__(self):
-        self._session: Optional[Session] = None
+        self._session: Session | None = None
 
     def __enter__(self):
         self._session = db_manager.sync_session_factory()

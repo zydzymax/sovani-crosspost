@@ -4,16 +4,14 @@ Profile management and subscriptions.
 """
 
 from datetime import datetime
-from typing import Optional, List
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
-from .deps import get_db_async_session, get_current_user
+from .deps import get_current_user, get_db_async_session
 
 logger = get_logger("api.account")
 
@@ -25,15 +23,15 @@ router = APIRouter(prefix="/account", tags=["Account"])
 class ProfileResponse(BaseModel):
     """User profile response."""
     id: str
-    email: Optional[str]
+    email: str | None
     email_verified: bool = False
-    telegram_id: Optional[int]
-    telegram_username: Optional[str]
-    first_name: Optional[str]
-    last_name: Optional[str]
-    company_name: Optional[str]
-    phone: Optional[str]
-    photo_url: Optional[str]
+    telegram_id: int | None
+    telegram_username: str | None
+    first_name: str | None
+    last_name: str | None
+    company_name: str | None
+    phone: str | None
+    photo_url: str | None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -41,10 +39,10 @@ class ProfileResponse(BaseModel):
 
 class ProfileUpdate(BaseModel):
     """Profile update request."""
-    first_name: Optional[str] = Field(None, max_length=255)
-    last_name: Optional[str] = Field(None, max_length=255)
-    company_name: Optional[str] = Field(None, max_length=255)
-    phone: Optional[str] = Field(None, max_length=50)
+    first_name: str | None = Field(None, max_length=255)
+    last_name: str | None = Field(None, max_length=255)
+    company_name: str | None = Field(None, max_length=255)
+    phone: str | None = Field(None, max_length=50)
 
 
 class SubscriptionResponse(BaseModel):
@@ -57,9 +55,9 @@ class SubscriptionResponse(BaseModel):
     status: str
     price_rub: float
     billing_period: str
-    current_period_start: Optional[datetime]
-    current_period_end: Optional[datetime]
-    expires_at: Optional[datetime]
+    current_period_start: datetime | None
+    current_period_end: datetime | None
+    expires_at: datetime | None
 
 
 class UsageStatsResponse(BaseModel):
@@ -67,16 +65,16 @@ class UsageStatsResponse(BaseModel):
     posts_count_this_month: int
     images_generated_this_month: int
     videos_generated_this_month: int = 0
-    usage_reset_at: Optional[datetime]
+    usage_reset_at: datetime | None
 
 
 class AccountSummaryResponse(BaseModel):
     """Full account summary."""
     profile: ProfileResponse
-    subscriptions: List[SubscriptionResponse]
+    subscriptions: list[SubscriptionResponse]
     usage: UsageStatsResponse
-    legacy_plan: Optional[str]  # From old subscription system
-    demo_days_left: Optional[int]
+    legacy_plan: str | None  # From old subscription system
+    demo_days_left: int | None
 
 
 # ==================== ROUTES ====================
@@ -139,13 +137,13 @@ async def update_profile(
     )
 
 
-@router.get("/subscriptions", response_model=List[SubscriptionResponse])
+@router.get("/subscriptions", response_model=list[SubscriptionResponse])
 async def get_subscriptions(
     user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_async_session)
 ):
     """Get user's active subscriptions."""
-    from ..models.entities import UserSubscription, SaaSProduct, SaaSProductPlan
+    from ..models.entities import SaaSProduct, SaaSProductPlan, UserSubscription
 
     result = await db.execute(
         select(UserSubscription, SaaSProduct, SaaSProductPlan)
@@ -180,7 +178,7 @@ async def get_account_summary(
     db: AsyncSession = Depends(get_db_async_session)
 ):
     """Get full account summary with profile, subscriptions, and usage."""
-    from ..models.entities import UserSubscription, SaaSProduct, SaaSProductPlan, SubscriptionPlan
+    from ..models.entities import SaaSProduct, SaaSProductPlan, SubscriptionPlan, UserSubscription
 
     # Get subscriptions
     result = await db.execute(

@@ -4,13 +4,10 @@ S3 Storage Adapter for SalesWhisper Crosspost.
 Provides file upload/download functionality to S3-compatible storage (MinIO).
 """
 
-import os
 import asyncio
-from typing import Optional
-from pathlib import Path
+import os
 
 from ..core.logging import get_logger
-from ..core.config import settings
 
 logger = get_logger("adapters.storage_s3")
 
@@ -31,8 +28,9 @@ class S3Storage:
         """Get or create MinIO client."""
         if self._client is None:
             try:
-                from minio import Minio
                 from urllib.parse import urlparse
+
+                from minio import Minio
 
                 parsed = urlparse(self.endpoint)
                 secure = parsed.scheme == "https"
@@ -141,7 +139,7 @@ class S3Storage:
             logger.error(f"Failed to delete {s3_key}: {e}")
             return False
 
-    async def get_presigned_url(self, s3_key: str, expires_hours: int = 1) -> Optional[str]:
+    async def get_presigned_url(self, s3_key: str, expires_hours: int = 1) -> str | None:
         """Get presigned URL for file download."""
         client = self._get_client()
         if not client:

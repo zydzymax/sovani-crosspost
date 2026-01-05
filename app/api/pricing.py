@@ -1,24 +1,18 @@
 """Pricing API routes with credit-based system."""
 
-from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from ..services.pricing import (
-    pricing_service,
-    get_available_platforms,
+    USD_TO_RUB,
     get_available_image_providers,
-    get_available_video_providers,
+    get_available_platforms,
     get_available_tts_providers,
-    get_subscription_plans,
+    get_available_video_providers,
     get_provider_comparison,
-    PLATFORM_COSTS,
-    IMAGE_PROVIDERS,
-    VIDEO_PROVIDERS,
-    TTS_PROVIDERS,
-    SUBSCRIPTION_PLANS,
-    USD_TO_RUB
+    get_subscription_plans,
+    pricing_service,
 )
 
 router = APIRouter(prefix="/pricing", tags=["pricing"])
@@ -41,7 +35,7 @@ async def list_platforms():
 @router.get("/image-providers")
 async def list_image_providers():
     """Get image providers with credit costs and plan limits.
-    
+
     Returns providers with:
     - credits_per_image: how many credits one image costs
     - images_per_plan: how many images you get on each plan
@@ -57,7 +51,7 @@ async def list_image_providers():
 @router.get("/video-providers")
 async def list_video_providers():
     """Get video providers with credit costs and plan limits.
-    
+
     Returns providers with:
     - credits_per_5sec: how many credits one 5-sec clip costs
     - clips_per_plan: how many clips you get on each plan
@@ -73,7 +67,7 @@ async def list_video_providers():
 @router.get("/tts-providers")
 async def list_tts_providers():
     """Get TTS (text-to-speech) providers with credit costs.
-    
+
     Returns providers with:
     - credits_per_1k_chars: how many credits 1000 characters cost
     - chars_per_plan: how many characters you get on each plan
@@ -89,7 +83,7 @@ async def list_tts_providers():
 @router.get("/subscription-plans")
 async def list_subscription_plans():
     """Get subscription plans with included credits.
-    
+
     Returns plans with:
     - image_credits, video_credits, tts_credits: included credits
     - posts_limit, platforms_limit: usage limits
@@ -105,7 +99,7 @@ async def list_subscription_plans():
 @router.get("/compare-providers")
 async def compare_providers(plan_id: str = Query("pro", description="Plan to compare for")):
     """Compare all providers for a specific plan.
-    
+
     Shows how many images/videos/chars you get with each provider
     on the selected plan.
     """
@@ -119,9 +113,9 @@ async def compare_providers(plan_id: str = Query("pro", description="Plan to com
 class UsageRequest(BaseModel):
     image_provider: str = "nanobana"
     images_count: int = 50
-    video_provider: Optional[str] = None
+    video_provider: str | None = None
     video_clips: int = 0
-    tts_provider: Optional[str] = None
+    tts_provider: str | None = None
     tts_chars: int = 0
     plan_id: str = "pro"
 
@@ -129,7 +123,7 @@ class UsageRequest(BaseModel):
 @router.post("/calculate-usage")
 async def calculate_usage(request: UsageRequest):
     """Calculate credits usage for given providers and quantities.
-    
+
     Returns:
     - credits_used vs credits_included
     - overage if exceeding plan limits
@@ -144,7 +138,7 @@ async def calculate_usage(request: UsageRequest):
         tts_chars=request.tts_chars,
         plan_id=request.plan_id
     )
-    
+
     return {
         "image": {
             "credits_used": usage.image_credits_used,
@@ -173,9 +167,9 @@ async def calculate_usage(request: UsageRequest):
 class RecommendRequest(BaseModel):
     image_provider: str = "nanobana"
     images_per_month: int = 50
-    video_provider: Optional[str] = None
+    video_provider: str | None = None
     video_clips_per_month: int = 0
-    tts_provider: Optional[str] = None
+    tts_provider: str | None = None
     tts_chars_per_month: int = 0
     platforms_count: int = 3
 
@@ -183,7 +177,7 @@ class RecommendRequest(BaseModel):
 @router.post("/recommend-plan")
 async def recommend_plan(request: RecommendRequest):
     """Recommend best plan for given usage.
-    
+
     Returns:
     - recommended plan
     - what you get (images/videos/chars per provider)
@@ -198,7 +192,7 @@ async def recommend_plan(request: RecommendRequest):
         tts_chars_per_month=request.tts_chars_per_month,
         platforms_count=request.platforms_count
     )
-    
+
     return {
         "plan": {
             "id": recommendation.plan_id,
@@ -243,7 +237,7 @@ async def quick_estimate(
         tts_chars_per_month=tts_chars_per_month,
         platforms_count=platforms_count
     )
-    
+
     return {
         "recommended_plan": recommendation.plan_id,
         "plan_price_rub": recommendation.monthly_cost_rub,

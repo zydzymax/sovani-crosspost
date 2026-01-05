@@ -1,23 +1,18 @@
 """YouTube API adapter for SalesWhisper Crosspost."""
 
-import asyncio
 import os
 import time
-import json
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from enum import Enum
+from pathlib import Path
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from ..core.config import settings
 from ..core.logging import get_logger, with_logging_context
-from ..core.security import SecurityUtils
 from ..observability.metrics import metrics
-
 
 logger = get_logger("adapters.youtube")
 
@@ -105,10 +100,10 @@ class UploadStatus(Enum):
 class YouTubeCredentials:
     """YouTube OAuth credentials."""
     access_token: str
-    refresh_token: Optional[str] = None
-    token_expires_at: Optional[datetime] = None
-    client_id: Optional[str] = None
-    client_secret: Optional[str] = None
+    refresh_token: str | None = None
+    token_expires_at: datetime | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
 
     def is_expired(self) -> bool:
         """Check if access token is expired."""
@@ -123,13 +118,13 @@ class YouTubeVideo:
     file_path: str
     title: str
     description: str = ""
-    tags: List[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
     category_id: str = VideoCategory.ENTERTAINMENT.value
     privacy_status: PrivacyStatus = PrivacyStatus.PUBLIC
-    thumbnail_path: Optional[str] = None
-    publish_at: Optional[datetime] = None
+    thumbnail_path: str | None = None
+    publish_at: datetime | None = None
     is_shorts: bool = False
-    playlist_id: Optional[str] = None
+    playlist_id: str | None = None
 
     def __post_init__(self):
         # Validate title length
@@ -148,24 +143,24 @@ class YouTubeVideo:
 @dataclass
 class YouTubeUploadResult:
     """Result of YouTube video upload."""
-    video_id: Optional[str]
+    video_id: str | None
     status: UploadStatus
     message: str
-    video_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
+    video_url: str | None = None
+    thumbnail_url: str | None = None
     upload_time: float = 0.0
     processing_progress: int = 0
-    error_code: Optional[str] = None
+    error_code: str | None = None
 
     @property
-    def watch_url(self) -> Optional[str]:
+    def watch_url(self) -> str | None:
         """Get YouTube watch URL."""
         if self.video_id:
             return f"https://www.youtube.com/watch?v={self.video_id}"
         return None
 
     @property
-    def shorts_url(self) -> Optional[str]:
+    def shorts_url(self) -> str | None:
         """Get YouTube Shorts URL."""
         if self.video_id:
             return f"https://www.youtube.com/shorts/{self.video_id}"
@@ -180,7 +175,7 @@ class YouTubeChannel:
     description: str = ""
     subscriber_count: int = 0
     video_count: int = 0
-    thumbnail_url: Optional[str] = None
+    thumbnail_url: str | None = None
 
 
 class YouTubeAdapter:
@@ -271,7 +266,7 @@ class YouTubeAdapter:
         except httpx.RequestError as e:
             raise YouTubeAuthError(f"Token refresh request failed: {e}")
 
-    def _get_auth_headers(self) -> Dict[str, str]:
+    def _get_auth_headers(self) -> dict[str, str]:
         """Get authorization headers."""
         return {
             "Authorization": f"Bearer {self.credentials.access_token}",
@@ -392,7 +387,7 @@ class YouTubeAdapter:
                     upload_time=time.time() - start_time
                 )
 
-    def _build_video_metadata(self, video: YouTubeVideo) -> Dict[str, Any]:
+    def _build_video_metadata(self, video: YouTubeVideo) -> dict[str, Any]:
         """Build video metadata for YouTube API."""
         metadata = {
             "snippet": {
@@ -423,7 +418,7 @@ class YouTubeAdapter:
 
         return metadata
 
-    async def _init_resumable_upload(self, metadata: Dict[str, Any], file_size: int) -> str:
+    async def _init_resumable_upload(self, metadata: dict[str, Any], file_size: int) -> str:
         """Initialize a resumable upload session."""
         headers = self._get_auth_headers()
         headers.update({
@@ -560,7 +555,7 @@ class YouTubeAdapter:
         if response.status_code not in (200, 201):
             logger.warning(f"Failed to add to playlist: {response.text}")
 
-    async def get_channel_info(self) -> Optional[YouTubeChannel]:
+    async def get_channel_info(self) -> YouTubeChannel | None:
         """Get authenticated channel information."""
         await self._ensure_valid_token()
 
@@ -596,7 +591,7 @@ class YouTubeAdapter:
             thumbnail_url=snippet.get("thumbnails", {}).get("default", {}).get("url")
         )
 
-    async def get_video_status(self, video_id: str) -> Dict[str, Any]:
+    async def get_video_status(self, video_id: str) -> dict[str, Any]:
         """Get video processing status."""
         await self._ensure_valid_token()
 

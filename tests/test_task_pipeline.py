@@ -5,35 +5,35 @@ Tests the complete task chain without external API calls:
 ingest -> enrich -> captionize -> transcode -> preflight -> publish -> finalize
 """
 
-import pytest
 import time
-import json
 import uuid
-from unittest.mock import patch, MagicMock
-from typing import Dict, Any
+from typing import Any
+from unittest.mock import MagicMock, patch
 
-from app.workers.tasks import ingest, enrich, captionize, transcode, preflight, publish, finalize
-from app.workers.tasks.outbox import publish_outbox_event
+import pytest
+
 from app.core.config import get_test_settings
 from app.observability.metrics import get_test_metrics
+from app.workers.tasks import captionize, enrich, finalize, ingest, preflight, publish, transcode
+from app.workers.tasks.outbox import publish_outbox_event
 
 
 class TestTaskPipeline:
     """Test complete task pipeline integration."""
-    
+
     @pytest.fixture(autouse=True)
     def setup_test_environment(self):
         """Setup test environment with mocks."""
         self.test_settings = get_test_settings()
         self.test_metrics = get_test_metrics()
-        
+
         # Mock database sessions
         self.db_session_mock = MagicMock()
-        
+
         # Mock external dependencies
         with patch('app.models.db.db_manager.get_session', return_value=self.db_session_mock):
             yield
-    
+
     def test_complete_task_pipeline_success(self):
         """Test successful execution of complete task pipeline."""
         # Test data
@@ -56,7 +56,433 @@ class TestTaskPipeline:
                     }
                 ]
             }
-        }\n        \n        # Mock task execution to avoid actual Celery calls\n        with patch.object(ingest, 'delay', side_effect=self._mock_task_delay), \\\n             patch.object(enrich, 'delay', side_effect=self._mock_task_delay), \\\n             patch.object(captionize, 'delay', side_effect=self._mock_task_delay), \\\n             patch.object(transcode, 'delay', side_effect=self._mock_task_delay), \\\n             patch.object(preflight, 'delay', side_effect=self._mock_task_delay), \\\n             patch.object(publish, 'delay', side_effect=self._mock_task_delay), \\\n             patch.object(finalize, 'delay', side_effect=self._mock_task_delay):\n            \n            # Execute complete pipeline\n            result = self._execute_complete_pipeline(telegram_update, post_id)\n        \n        # Assertions\n        assert result[\"success\"] is True\n        assert result[\"post_id\"] == post_id\n        assert result[\"stages_completed\"] == 7\n        assert result[\"final_status\"] == \"completed\"\n        assert result[\"platforms_published\"] > 0\n        assert \"processing_times\" in result\n        assert all(stage in result[\"processing_times\"] for stage in [\n            \"ingest\", \"enrich\", \"captionize\", \"transcode\", \n            \"preflight\", \"publish\", \"finalize\"\n        ])\n    \n    def test_task_pipeline_with_failure_and_retry(self):\n        \"\"\"Test pipeline behavior when tasks fail and retry.\"\"\"\n        post_id = str(uuid.uuid4())\n        telegram_update = {\n            \"update_id\": 12346,\n            \"message\": {\n                \"message_id\": 679,\n                \"text\": \"Test message for retry scenario\"\n            }\n        }\n        \n        # Mock failure in transcode stage\n        with patch('app.workers.tasks.transcode.process_media') as mock_transcode:\n            mock_transcode.side_effect = [Exception(\"Transcoding failed\"), \n                                        self._mock_successful_task_result()]\n            \n            # Execute pipeline with retry\n            result = self._execute_pipeline_with_retry(telegram_update, post_id)\n        \n        # Assertions\n        assert result[\"success\"] is True\n        assert result[\"retry_attempts\"] > 0\n        assert result[\"failed_stages\"] == [\"transcode\"]\n        assert result[\"recovered_stages\"] == [\"transcode\"]\n    \n    def test_outbox_event_processing(self):\n        \"\"\"Test outbox event publishing and processing.\"\"\"\n        post_id = str(uuid.uuid4())\n        \n        # Test event publishing\n        event_id = publish_outbox_event(\n            event_type=\"post_created\",\n            payload={\n                \"post_id\": post_id,\n                \"source\": \"telegram\",\n                \"update_data\": {\"message\": {\"text\": \"Test\"}}\n            },\n            entity_id=post_id\n        )\n        \n        assert event_id is not None\n        assert isinstance(event_id, str)\n    \n    def test_platform_specific_content_adaptation(self):\n        \"\"\"Test platform-specific content adaptation in enrich stage.\"\"\"\n        post_id = str(uuid.uuid4())\n        stage_data = {\n            \"post_id\": post_id,\n            \"text_content\": \"Новая коллекция SalesWhisper! #Fashion\",\n            \"has_media\": True,\n            \"media_count\": 1\n        }\n        \n        # Mock enrich task\n        with patch('app.workers.tasks.enrich.enrich_post_content') as mock_enrich:\n            mock_enrich.return_value = {\n                \"success\": True,\n                \"platform_adaptations\": {\n                    \"instagram\": {\n                        \"text\": \"Новая коллекция SalesWhisper! #Fashion\\n\\nЗаказать в нашем каталоге ➡️\",\n                        \"hashtags\": [\"#SalesWhisper\", \"#Fashion\", \"#Style\"],\n                        \"character_limit\": 2200\n                    },\n                    \"vk\": {\n                        \"text\": \"Новая коллекция SalesWhisper! #Fashion\\n\\n#SalesWhisper\",\n                        \"hashtags\": [\"#SalesWhisper\", \"#Fashion\"],\n                        \"character_limit\": 15000\n                    },\n                    \"tiktok\": {\n                        \"text\": \"Новая коллекция SalesWhisper! #Fashion #SalesWhisperStyle\",\n                        \"hashtags\": [\"#SalesWhisper\", \"#Fashion\"],\n                        \"character_limit\": 150\n                    }\n                }\n            }\n            \n            result = mock_enrich(stage_data)\n        \n        # Assertions\n        assert result[\"success\"] is True\n        assert \"platform_adaptations\" in result\n        \n        adaptations = result[\"platform_adaptations\"]\n        assert \"instagram\" in adaptations\n        assert \"vk\" in adaptations\n        assert \"tiktok\" in adaptations\n        \n        # Check platform-specific differences\n        assert len(adaptations[\"instagram\"][\"text\"]) > len(adaptations[\"tiktok\"][\"text\"])\n        assert adaptations[\"instagram\"][\"character_limit\"] == 2200\n        assert adaptations[\"tiktok\"][\"character_limit\"] == 150\n    \n    def test_media_transcoding_for_multiple_platforms(self):\n        \"\"\"Test media transcoding for different platform requirements.\"\"\"\n        post_id = str(uuid.uuid4())\n        stage_data = {\n            \"post_id\": post_id,\n            \"has_media\": True,\n            \"media_count\": 1,\n            \"captions\": {\n                \"instagram\": \"IG caption\",\n                \"tiktok\": \"TikTok caption\"\n            }\n        }\n        \n        # Mock transcode task\n        with patch('app.workers.tasks.transcode.process_media') as mock_transcode:\n            mock_transcode.return_value = {\n                \"success\": True,\n                \"processed_media\": {\n                    \"instagram\": {\n                        \"video\": f\"/media/{post_id}/instagram_1080x1080.mp4\",\n                        \"aspect_ratio\": \"1:1\",\n                        \"duration\": 30.0,\n                        \"size_mb\": 15.2\n                    },\n                    \"tiktok\": {\n                        \"video\": f\"/media/{post_id}/tiktok_1080x1920.mp4\",\n                        \"aspect_ratio\": \"9:16\",\n                        \"duration\": 30.0,\n                        \"size_mb\": 18.7\n                    },\n                    \"vk\": {\n                        \"video\": f\"/media/{post_id}/vk_1920x1080.mp4\",\n                        \"aspect_ratio\": \"16:9\",\n                        \"duration\": 30.0,\n                        \"size_mb\": 22.1\n                    }\n                }\n            }\n            \n            result = mock_transcode(stage_data)\n        \n        # Assertions\n        assert result[\"success\"] is True\n        processed_media = result[\"processed_media\"]\n        \n        # Check different aspect ratios for platforms\n        assert processed_media[\"instagram\"][\"aspect_ratio\"] == \"1:1\"\n        assert processed_media[\"tiktok\"][\"aspect_ratio\"] == \"9:16\"\n        assert processed_media[\"vk\"][\"aspect_ratio\"] == \"16:9\"\n        \n        # Check all files were processed\n        for platform in [\"instagram\", \"tiktok\", \"vk\"]:\n            assert platform in processed_media\n            assert \"video\" in processed_media[platform]\n            assert processed_media[platform][\"duration\"] == 30.0\n    \n    def test_publishing_with_platform_failures(self):\n        \"\"\"Test publishing behavior when some platforms fail.\"\"\"\n        post_id = str(uuid.uuid4())\n        stage_data = {\n            \"post_id\": post_id,\n            \"preflight_results\": {\"all_checks_passed\": True},\n            \"processed_media\": {\"instagram\": {}, \"vk\": {}, \"tiktok\": {}}\n        }\n        \n        # Mock publish task with mixed results\n        with patch('app.workers.tasks.publish.publish_to_platforms') as mock_publish:\n            mock_publish.return_value = {\n                \"success\": True,\n                \"publish_results\": {\n                    \"instagram\": {\n                        \"success\": True,\n                        \"platform_post_id\": \"instagram_123456\",\n                        \"platform_url\": \"https://instagram.com/p/ABC123\"\n                    },\n                    \"vk\": {\n                        \"success\": True,\n                        \"platform_post_id\": \"vk_789012\",\n                        \"platform_url\": \"https://vk.com/wall-123_456\"\n                    },\n                    \"tiktok\": {\n                        \"success\": False,\n                        \"error\": \"API rate limit exceeded\",\n                        \"retry_after\": 3600\n                    }\n                },\n                \"platforms_published\": 2,\n                \"total_platforms\": 3\n            }\n            \n            result = mock_publish(stage_data)\n        \n        # Assertions\n        assert result[\"success\"] is True\n        assert result[\"platforms_published\"] == 2\n        assert result[\"total_platforms\"] == 3\n        \n        publish_results = result[\"publish_results\"]\n        assert publish_results[\"instagram\"][\"success\"] is True\n        assert publish_results[\"vk\"][\"success\"] is True\n        assert publish_results[\"tiktok\"][\"success\"] is False\n        assert \"error\" in publish_results[\"tiktok\"]\n    \n    def test_performance_metrics_collection(self):\n        \"\"\"Test that performance metrics are collected throughout pipeline.\"\"\"\n        post_id = str(uuid.uuid4())\n        \n        with patch('app.observability.metrics.metrics') as mock_metrics:\n            # Execute a single stage to test metrics\n            stage_data = {\"post_id\": post_id, \"text_content\": \"Test\"}\n            \n            # Mock successful enrich task\n            with patch('app.workers.tasks.enrich.enrich_post_content') as mock_enrich:\n                mock_enrich.return_value = {\n                    \"success\": True,\n                    \"processing_time\": 1.5,\n                    \"stage\": \"enrich\"\n                }\n                \n                result = mock_enrich(stage_data)\n        \n        # Verify metrics were tracked\n        assert mock_metrics.track_celery_task.called\n        assert result[\"processing_time\"] > 0\n    \n    # Helper methods\n    def _mock_task_delay(self, *args, **kwargs):\n        \"\"\"Mock Celery task delay method.\"\"\"\n        mock_task = MagicMock()\n        mock_task.id = str(uuid.uuid4())\n        return mock_task\n    \n    def _mock_successful_task_result(self):\n        \"\"\"Return mock successful task result.\"\"\"\n        return {\n            \"success\": True,\n            \"post_id\": str(uuid.uuid4()),\n            \"processing_time\": 0.5\n        }\n    \n    def _execute_complete_pipeline(self, telegram_update: Dict[str, Any], post_id: str) -> Dict[str, Any]:\n        \"\"\"Execute complete task pipeline simulation.\"\"\"\n        pipeline_start = time.time()\n        processing_times = {}\n        stages_completed = 0\n        \n        try:\n            # Stage 1: Ingest\n            stage_start = time.time()\n            ingest_result = self._simulate_ingest_stage(telegram_update, post_id)\n            processing_times[\"ingest\"] = time.time() - stage_start\n            stages_completed += 1\n            \n            # Stage 2: Enrich\n            stage_start = time.time()\n            enrich_result = self._simulate_enrich_stage(ingest_result)\n            processing_times[\"enrich\"] = time.time() - stage_start\n            stages_completed += 1\n            \n            # Stage 3: Captionize\n            stage_start = time.time()\n            caption_result = self._simulate_captionize_stage(enrich_result)\n            processing_times[\"captionize\"] = time.time() - stage_start\n            stages_completed += 1\n            \n            # Stage 4: Transcode\n            stage_start = time.time()\n            transcode_result = self._simulate_transcode_stage(caption_result)\n            processing_times[\"transcode\"] = time.time() - stage_start\n            stages_completed += 1\n            \n            # Stage 5: Preflight\n            stage_start = time.time()\n            preflight_result = self._simulate_preflight_stage(transcode_result)\n            processing_times[\"preflight\"] = time.time() - stage_start\n            stages_completed += 1\n            \n            # Stage 6: Publish\n            stage_start = time.time()\n            publish_result = self._simulate_publish_stage(preflight_result)\n            processing_times[\"publish\"] = time.time() - stage_start\n            stages_completed += 1\n            \n            # Stage 7: Finalize\n            stage_start = time.time()\n            finalize_result = self._simulate_finalize_stage(publish_result)\n            processing_times[\"finalize\"] = time.time() - stage_start\n            stages_completed += 1\n            \n            total_processing_time = time.time() - pipeline_start\n            \n            return {\n                \"success\": True,\n                \"post_id\": post_id,\n                \"stages_completed\": stages_completed,\n                \"total_processing_time\": total_processing_time,\n                \"processing_times\": processing_times,\n                \"final_status\": finalize_result.get(\"final_status\", \"completed\"),\n                \"platforms_published\": publish_result.get(\"platforms_published\", 0),\n                \"final_result\": finalize_result\n            }\n            \n        except Exception as e:\n            return {\n                \"success\": False,\n                \"post_id\": post_id,\n                \"stages_completed\": stages_completed,\n                \"error\": str(e),\n                \"processing_times\": processing_times\n            }\n    \n    def _execute_pipeline_with_retry(self, telegram_update: Dict[str, Any], post_id: str) -> Dict[str, Any]:\n        \"\"\"Execute pipeline with retry simulation.\"\"\"\n        retry_attempts = 0\n        failed_stages = []\n        recovered_stages = []\n        \n        # Simulate retry logic\n        try:\n            # Simulate transcode failure and recovery\n            try:\n                raise Exception(\"Transcoding failed\")\n            except Exception:\n                failed_stages.append(\"transcode\")\n                retry_attempts += 1\n                \n                # Simulate successful retry\n                recovered_stages.append(\"transcode\")\n        \n        return {\n            \"success\": True,\n            \"post_id\": post_id,\n            \"retry_attempts\": retry_attempts,\n            \"failed_stages\": failed_stages,\n            \"recovered_stages\": recovered_stages\n        }\n    \n    def _simulate_ingest_stage(self, telegram_update: Dict[str, Any], post_id: str) -> Dict[str, Any]:\n        \"\"\"Simulate ingest stage processing.\"\"\"\n        return {\n            \"post_id\": post_id,\n            \"has_media\": bool(telegram_update.get(\"message\", {}).get(\"photo\")),\n            \"media_count\": 1 if telegram_update.get(\"message\", {}).get(\"photo\") else 0,\n            \"text_content\": telegram_update.get(\"message\", {}).get(\"text\", \"\"),\n            \"source\": \"telegram\"\n        }\n    \n    def _simulate_enrich_stage(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:\n        \"\"\"Simulate enrich stage processing.\"\"\"\n        return {\n            **stage_data,\n            \"enriched_content\": {\"brand_context\": \"SalesWhisper\"},\n            \"platform_adaptations\": {\n                \"instagram\": {\"text\": \"Adapted for IG\"},\n                \"vk\": {\"text\": \"Adapted for VK\"}\n            }\n        }\n    \n    def _simulate_captionize_stage(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:\n        \"\"\"Simulate captionize stage processing.\"\"\"\n        return {\n            **stage_data,\n            \"captions\": {\n                \"instagram\": \"IG caption\",\n                \"vk\": \"VK caption\",\n                \"tiktok\": \"TikTok caption\"\n            }\n        }\n    \n    def _simulate_transcode_stage(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:\n        \"\"\"Simulate transcode stage processing.\"\"\"\n        return {\n            **stage_data,\n            \"processed_media\": {\n                \"instagram\": {\"video\": \"/path/ig.mp4\"},\n                \"vk\": {\"video\": \"/path/vk.mp4\"}\n            }\n        }\n    \n    def _simulate_preflight_stage(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:\n        \"\"\"Simulate preflight stage processing.\"\"\"\n        return {\n            **stage_data,\n            \"preflight_results\": {\"all_checks_passed\": True}\n        }\n    \n    def _simulate_publish_stage(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:\n        \"\"\"Simulate publish stage processing.\"\"\"\n        return {\n            **stage_data,\n            \"publish_results\": {\n                \"instagram\": {\"success\": True},\n                \"vk\": {\"success\": True}\n            },\n            \"platforms_published\": 2\n        }\n    \n    def _simulate_finalize_stage(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:\n        \"\"\"Simulate finalize stage processing.\"\"\"\n        return {\n            **stage_data,\n            \"final_status\": \"completed\",\n            \"analytics_summary\": {\"platforms_successful\": 2}\n        }
+        }
+
+        # Mock task execution to avoid actual Celery calls
+        with patch.object(ingest, 'delay', side_effect=self._mock_task_delay), \
+             patch.object(enrich, 'delay', side_effect=self._mock_task_delay), \
+             patch.object(captionize, 'delay', side_effect=self._mock_task_delay), \
+             patch.object(transcode, 'delay', side_effect=self._mock_task_delay), \
+             patch.object(preflight, 'delay', side_effect=self._mock_task_delay), \
+             patch.object(publish, 'delay', side_effect=self._mock_task_delay), \
+             patch.object(finalize, 'delay', side_effect=self._mock_task_delay):
+
+            # Execute complete pipeline
+            result = self._execute_complete_pipeline(telegram_update, post_id)
+
+        # Assertions
+        assert result["success"] is True
+        assert result["post_id"] == post_id
+        assert result["stages_completed"] == 7
+        assert result["final_status"] == "completed"
+        assert result["platforms_published"] > 0
+        assert "processing_times" in result
+        assert all(stage in result["processing_times"] for stage in [
+            "ingest", "enrich", "captionize", "transcode",
+            "preflight", "publish", "finalize"
+        ])
+
+    def test_task_pipeline_with_failure_and_retry(self):
+        """Test pipeline behavior when tasks fail and retry."""
+        post_id = str(uuid.uuid4())
+        telegram_update = {
+            "update_id": 12346,
+            "message": {
+                "message_id": 679,
+                "text": "Test message for retry scenario"
+            }
+        }
+
+        # Mock failure in transcode stage
+        with patch('app.workers.tasks.transcode.process_media') as mock_transcode:
+            mock_transcode.side_effect = [Exception("Transcoding failed"),
+                                        self._mock_successful_task_result()]
+
+            # Execute pipeline with retry
+            result = self._execute_pipeline_with_retry(telegram_update, post_id)
+
+        # Assertions
+        assert result["success"] is True
+        assert result["retry_attempts"] > 0
+        assert result["failed_stages"] == ["transcode"]
+        assert result["recovered_stages"] == ["transcode"]
+
+    def test_outbox_event_processing(self):
+        """Test outbox event publishing and processing."""
+        post_id = str(uuid.uuid4())
+
+        # Test event publishing
+        event_id = publish_outbox_event(
+            event_type="post_created",
+            payload={
+                "post_id": post_id,
+                "source": "telegram",
+                "update_data": {"message": {"text": "Test"}}
+            },
+            entity_id=post_id
+        )
+
+        assert event_id is not None
+        assert isinstance(event_id, str)
+
+    def test_platform_specific_content_adaptation(self):
+        """Test platform-specific content adaptation in enrich stage."""
+        post_id = str(uuid.uuid4())
+        stage_data = {
+            "post_id": post_id,
+            "text_content": "Новая коллекция SalesWhisper! #Fashion",
+            "has_media": True,
+            "media_count": 1
+        }
+
+        # Mock enrich task
+        with patch('app.workers.tasks.enrich.enrich_post_content') as mock_enrich:
+            mock_enrich.return_value = {
+                "success": True,
+                "platform_adaptations": {
+                    "instagram": {
+                        "text": "Новая коллекция SalesWhisper! #Fashion\
+\
+Заказать в нашем каталоге ➡️",
+                        "hashtags": ["#SalesWhisper", "#Fashion", "#Style"],
+                        "character_limit": 2200
+                    },
+                    "vk": {
+                        "text": "Новая коллекция SalesWhisper! #Fashion\
+\
+#SalesWhisper",
+                        "hashtags": ["#SalesWhisper", "#Fashion"],
+                        "character_limit": 15000
+                    },
+                    "tiktok": {
+                        "text": "Новая коллекция SalesWhisper! #Fashion #SalesWhisperStyle",
+                        "hashtags": ["#SalesWhisper", "#Fashion"],
+                        "character_limit": 150
+                    }
+                }
+            }
+
+            result = mock_enrich(stage_data)
+
+        # Assertions
+        assert result["success"] is True
+        assert "platform_adaptations" in result
+
+        adaptations = result["platform_adaptations"]
+        assert "instagram" in adaptations
+        assert "vk" in adaptations
+        assert "tiktok" in adaptations
+
+        # Check platform-specific differences
+        assert len(adaptations["instagram"]["text"]) > len(adaptations["tiktok"]["text"])
+        assert adaptations["instagram"]["character_limit"] == 2200
+        assert adaptations["tiktok"]["character_limit"] == 150
+
+    def test_media_transcoding_for_multiple_platforms(self):
+        """Test media transcoding for different platform requirements."""
+        post_id = str(uuid.uuid4())
+        stage_data = {
+            "post_id": post_id,
+            "has_media": True,
+            "media_count": 1,
+            "captions": {
+                "instagram": "IG caption",
+                "tiktok": "TikTok caption"
+            }
+        }
+
+        # Mock transcode task
+        with patch('app.workers.tasks.transcode.process_media') as mock_transcode:
+            mock_transcode.return_value = {
+                "success": True,
+                "processed_media": {
+                    "instagram": {
+                        "video": f"/media/{post_id}/instagram_1080x1080.mp4",
+                        "aspect_ratio": "1:1",
+                        "duration": 30.0,
+                        "size_mb": 15.2
+                    },
+                    "tiktok": {
+                        "video": f"/media/{post_id}/tiktok_1080x1920.mp4",
+                        "aspect_ratio": "9:16",
+                        "duration": 30.0,
+                        "size_mb": 18.7
+                    },
+                    "vk": {
+                        "video": f"/media/{post_id}/vk_1920x1080.mp4",
+                        "aspect_ratio": "16:9",
+                        "duration": 30.0,
+                        "size_mb": 22.1
+                    }
+                }
+            }
+
+            result = mock_transcode(stage_data)
+
+        # Assertions
+        assert result["success"] is True
+        processed_media = result["processed_media"]
+
+        # Check different aspect ratios for platforms
+        assert processed_media["instagram"]["aspect_ratio"] == "1:1"
+        assert processed_media["tiktok"]["aspect_ratio"] == "9:16"
+        assert processed_media["vk"]["aspect_ratio"] == "16:9"
+
+        # Check all files were processed
+        for platform in ["instagram", "tiktok", "vk"]:
+            assert platform in processed_media
+            assert "video" in processed_media[platform]
+            assert processed_media[platform]["duration"] == 30.0
+
+    def test_publishing_with_platform_failures(self):
+        """Test publishing behavior when some platforms fail."""
+        post_id = str(uuid.uuid4())
+        stage_data = {
+            "post_id": post_id,
+            "preflight_results": {"all_checks_passed": True},
+            "processed_media": {"instagram": {}, "vk": {}, "tiktok": {}}
+        }
+
+        # Mock publish task with mixed results
+        with patch('app.workers.tasks.publish.publish_to_platforms') as mock_publish:
+            mock_publish.return_value = {
+                "success": True,
+                "publish_results": {
+                    "instagram": {
+                        "success": True,
+                        "platform_post_id": "instagram_123456",
+                        "platform_url": "https://instagram.com/p/ABC123"
+                    },
+                    "vk": {
+                        "success": True,
+                        "platform_post_id": "vk_789012",
+                        "platform_url": "https://vk.com/wall-123_456"
+                    },
+                    "tiktok": {
+                        "success": False,
+                        "error": "API rate limit exceeded",
+                        "retry_after": 3600
+                    }
+                },
+                "platforms_published": 2,
+                "total_platforms": 3
+            }
+
+            result = mock_publish(stage_data)
+
+        # Assertions
+        assert result["success"] is True
+        assert result["platforms_published"] == 2
+        assert result["total_platforms"] == 3
+
+        publish_results = result["publish_results"]
+        assert publish_results["instagram"]["success"] is True
+        assert publish_results["vk"]["success"] is True
+        assert publish_results["tiktok"]["success"] is False
+        assert "error" in publish_results["tiktok"]
+
+    def test_performance_metrics_collection(self):
+        """Test that performance metrics are collected throughout pipeline."""
+        post_id = str(uuid.uuid4())
+
+        with patch('app.observability.metrics.metrics') as mock_metrics:
+            # Execute a single stage to test metrics
+            stage_data = {"post_id": post_id, "text_content": "Test"}
+
+            # Mock successful enrich task
+            with patch('app.workers.tasks.enrich.enrich_post_content') as mock_enrich:
+                mock_enrich.return_value = {
+                    "success": True,
+                    "processing_time": 1.5,
+                    "stage": "enrich"
+                }
+
+                result = mock_enrich(stage_data)
+
+        # Verify metrics were tracked
+        assert mock_metrics.track_celery_task.called
+        assert result["processing_time"] > 0
+
+    # Helper methods
+    def _mock_task_delay(self, *args, **kwargs):
+        """Mock Celery task delay method."""
+        mock_task = MagicMock()
+        mock_task.id = str(uuid.uuid4())
+        return mock_task
+
+    def _mock_successful_task_result(self):
+        """Return mock successful task result."""
+        return {
+            "success": True,
+            "post_id": str(uuid.uuid4()),
+            "processing_time": 0.5
+        }
+
+    def _execute_complete_pipeline(self, telegram_update: dict[str, Any], post_id: str) -> dict[str, Any]:
+        """Execute complete task pipeline simulation."""
+        pipeline_start = time.time()
+        processing_times = {}
+        stages_completed = 0
+
+        try:
+            # Stage 1: Ingest
+            stage_start = time.time()
+            ingest_result = self._simulate_ingest_stage(telegram_update, post_id)
+            processing_times["ingest"] = time.time() - stage_start
+            stages_completed += 1
+
+            # Stage 2: Enrich
+            stage_start = time.time()
+            enrich_result = self._simulate_enrich_stage(ingest_result)
+            processing_times["enrich"] = time.time() - stage_start
+            stages_completed += 1
+
+            # Stage 3: Captionize
+            stage_start = time.time()
+            caption_result = self._simulate_captionize_stage(enrich_result)
+            processing_times["captionize"] = time.time() - stage_start
+            stages_completed += 1
+
+            # Stage 4: Transcode
+            stage_start = time.time()
+            transcode_result = self._simulate_transcode_stage(caption_result)
+            processing_times["transcode"] = time.time() - stage_start
+            stages_completed += 1
+
+            # Stage 5: Preflight
+            stage_start = time.time()
+            preflight_result = self._simulate_preflight_stage(transcode_result)
+            processing_times["preflight"] = time.time() - stage_start
+            stages_completed += 1
+
+            # Stage 6: Publish
+            stage_start = time.time()
+            publish_result = self._simulate_publish_stage(preflight_result)
+            processing_times["publish"] = time.time() - stage_start
+            stages_completed += 1
+
+            # Stage 7: Finalize
+            stage_start = time.time()
+            finalize_result = self._simulate_finalize_stage(publish_result)
+            processing_times["finalize"] = time.time() - stage_start
+            stages_completed += 1
+
+            total_processing_time = time.time() - pipeline_start
+
+            return {
+                "success": True,
+                "post_id": post_id,
+                "stages_completed": stages_completed,
+                "total_processing_time": total_processing_time,
+                "processing_times": processing_times,
+                "final_status": finalize_result.get("final_status", "completed"),
+                "platforms_published": publish_result.get("platforms_published", 0),
+                "final_result": finalize_result
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "post_id": post_id,
+                "stages_completed": stages_completed,
+                "error": str(e),
+                "processing_times": processing_times
+            }
+
+    def _execute_pipeline_with_retry(self, telegram_update: dict[str, Any], post_id: str) -> dict[str, Any]:
+        """Execute pipeline with retry simulation."""
+        retry_attempts = 0
+        failed_stages = []
+        recovered_stages = []
+
+        # Simulate retry logic
+        # Simulate transcode failure and recovery
+        try:
+            raise Exception("Transcoding failed")
+        except Exception:
+            failed_stages.append("transcode")
+            retry_attempts += 1
+
+            # Simulate successful retry
+            recovered_stages.append("transcode")
+
+        return {
+            "success": True,
+            "post_id": post_id,
+            "retry_attempts": retry_attempts,
+            "failed_stages": failed_stages,
+            "recovered_stages": recovered_stages
+        }
+
+    def _simulate_ingest_stage(self, telegram_update: dict[str, Any], post_id: str) -> dict[str, Any]:
+        """Simulate ingest stage processing."""
+        return {
+            "post_id": post_id,
+            "has_media": bool(telegram_update.get("message", {}).get("photo")),
+            "media_count": 1 if telegram_update.get("message", {}).get("photo") else 0,
+            "text_content": telegram_update.get("message", {}).get("text", ""),
+            "source": "telegram"
+        }
+
+    def _simulate_enrich_stage(self, stage_data: dict[str, Any]) -> dict[str, Any]:
+        """Simulate enrich stage processing."""
+        return {
+            **stage_data,
+            "enriched_content": {"brand_context": "SalesWhisper"},
+            "platform_adaptations": {
+                "instagram": {"text": "Adapted for IG"},
+                "vk": {"text": "Adapted for VK"}
+            }
+        }
+
+    def _simulate_captionize_stage(self, stage_data: dict[str, Any]) -> dict[str, Any]:
+        """Simulate captionize stage processing."""
+        return {
+            **stage_data,
+            "captions": {
+                "instagram": "IG caption",
+                "vk": "VK caption",
+                "tiktok": "TikTok caption"
+            }
+        }
+
+    def _simulate_transcode_stage(self, stage_data: dict[str, Any]) -> dict[str, Any]:
+        """Simulate transcode stage processing."""
+        return {
+            **stage_data,
+            "processed_media": {
+                "instagram": {"video": "/path/ig.mp4"},
+                "vk": {"video": "/path/vk.mp4"}
+            }
+        }
+
+    def _simulate_preflight_stage(self, stage_data: dict[str, Any]) -> dict[str, Any]:
+        """Simulate preflight stage processing."""
+        return {
+            **stage_data,
+            "preflight_results": {"all_checks_passed": True}
+        }
+
+    def _simulate_publish_stage(self, stage_data: dict[str, Any]) -> dict[str, Any]:
+        """Simulate publish stage processing."""
+        return {
+            **stage_data,
+            "publish_results": {
+                "instagram": {"success": True},
+                "vk": {"success": True}
+            },
+            "platforms_published": 2
+        }
+
+    def _simulate_finalize_stage(self, stage_data: dict[str, Any]) -> dict[str, Any]:
+        """Simulate finalize stage processing."""
+        return {
+            **stage_data,
+            "final_status": "completed",
+            "analytics_summary": {"platforms_successful": 2}
+        }
 
 
-if __name__ == \"__main__\":\n    # Run tests\n    pytest.main([__file__, \"-v\"])
+if __name__ == "__main__":
+    # Run tests
+    pytest.main([__file__, "-v"])

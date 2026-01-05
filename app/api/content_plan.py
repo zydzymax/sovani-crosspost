@@ -1,14 +1,13 @@
 """Content Plan API routes."""
 
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.entities import User, ContentPlan, ContentPlanStatus
-from ..services.content_planner import ContentPlannerService, Tone, generate_content_plan
+from ..models.entities import ContentPlan, ContentPlanStatus, User
+from ..services.content_planner import Tone, generate_content_plan
 from .deps import get_current_user, get_db_async_session
 
 router = APIRouter(prefix="/content-plan", tags=["content-plan"])
@@ -20,10 +19,10 @@ class GeneratePlanRequest(BaseModel):
     niche: str = Field(..., min_length=2, max_length=100, description="Business niche")
     duration_days: int = Field(7, ge=1, le=90, description="Plan duration in days")
     posts_per_day: int = Field(1, ge=1, le=5, description="Posts per day")
-    platforms: List[str] = Field(default=["telegram", "instagram"], description="Target platforms")
+    platforms: list[str] = Field(default=["telegram", "instagram"], description="Target platforms")
     tone: str = Field("professional", description="Content tone")
-    target_audience: Optional[str] = Field(None, description="Target audience description")
-    brand_guidelines: Optional[str] = Field(None, description="Brand guidelines")
+    target_audience: str | None = Field(None, description="Target audience description")
+    brand_guidelines: str | None = Field(None, description="Brand guidelines")
 
 
 class PlannedPostResponse(BaseModel):
@@ -33,11 +32,11 @@ class PlannedPostResponse(BaseModel):
     time: str
     topic: str
     caption_draft: str
-    hashtags: List[str]
-    platforms: List[str]
+    hashtags: list[str]
+    platforms: list[str]
     media_type: str
-    image_prompt: Optional[str] = None
-    call_to_action: Optional[str] = None
+    image_prompt: str | None = None
+    call_to_action: str | None = None
 
 
 class ContentPlanResponse(BaseModel):
@@ -47,9 +46,9 @@ class ContentPlanResponse(BaseModel):
     duration_days: int
     posts_per_day: int
     tone: str
-    platforms: List[str]
+    platforms: list[str]
     status: str
-    posts: List[PlannedPostResponse]
+    posts: list[PlannedPostResponse]
     total_posts: int
     posts_created: int = 0
     posts_published: int = 0
@@ -58,7 +57,7 @@ class ContentPlanResponse(BaseModel):
 class RegeneratPostRequest(BaseModel):
     """Request to regenerate a single post."""
     post_index: int = Field(..., ge=0, description="Index of post to regenerate")
-    feedback: Optional[str] = Field(None, description="Feedback for regeneration")
+    feedback: str | None = Field(None, description="Feedback for regeneration")
 
 
 @router.post("/generate", response_model=ContentPlanResponse)
@@ -178,7 +177,7 @@ async def get_plan(
     )
 
 
-@router.get("/", response_model=List[ContentPlanResponse])
+@router.get("/", response_model=list[ContentPlanResponse])
 async def list_plans(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_async_session),
@@ -216,7 +215,7 @@ async def list_plans(
 @router.put("/{plan_id}", response_model=ContentPlanResponse)
 async def update_plan(
     plan_id: UUID,
-    posts: List[PlannedPostResponse],
+    posts: list[PlannedPostResponse],
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_async_session)
 ):
@@ -263,7 +262,8 @@ async def activate_plan(
 ):
     """Activate content plan and create scheduled posts."""
     from datetime import datetime
-    from ..models.entities import Post, PostStatus, Platform, ContentQueue
+
+    from ..models.entities import ContentQueue, Platform, Post, PostStatus
 
     plan = await db.get(ContentPlan, plan_id)
 
@@ -385,7 +385,7 @@ async def regenerate_post(
         )
 
     # Get current post
-    from ..services.content_planner import PlannedPost, MediaType, content_planner
+    from ..services.content_planner import MediaType, PlannedPost, content_planner
 
     current_post_data = plan.plan_data[request.post_index]
     current_post = PlannedPost(
@@ -432,11 +432,11 @@ class ManualPostUpload(BaseModel):
     time: str = Field("12:00", description="Post time HH:MM")
     topic: str = Field(..., min_length=2, description="Post topic")
     caption: str = Field(..., min_length=10, description="Post caption/text")
-    hashtags: Optional[List[str]] = Field(default=[], description="Hashtags")
-    platforms: List[str] = Field(default=["telegram"], description="Target platforms")
+    hashtags: list[str] | None = Field(default=[], description="Hashtags")
+    platforms: list[str] = Field(default=["telegram"], description="Target platforms")
     media_type: str = Field("IMAGE", description="IMAGE, VIDEO, CAROUSEL, TEXT_ONLY")
-    image_prompt: Optional[str] = Field(None, description="Prompt for AI image generation")
-    media_url: Optional[str] = Field(None, description="URL to existing media")
+    image_prompt: str | None = Field(None, description="Prompt for AI image generation")
+    media_url: str | None = Field(None, description="URL to existing media")
 
 
 class ManualPlanUpload(BaseModel):
@@ -444,7 +444,7 @@ class ManualPlanUpload(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="Plan name")
     niche: str = Field("custom", description="Business niche")
     tone: str = Field("professional", description="Content tone")
-    posts: List[ManualPostUpload] = Field(..., min_length=1, description="Posts list")
+    posts: list[ManualPostUpload] = Field(..., min_length=1, description="Posts list")
 
 
 class UploadFromCSVRequest(BaseModel):
@@ -462,11 +462,11 @@ async def upload_plan(
 ):
     """Upload content plan manually (JSON)."""
     from datetime import datetime
-    
+
     # Validate platforms
     valid_platforms = ["telegram", "vk", "instagram", "facebook", "tiktok", "youtube", "rutube"]
     valid_media_types = ["IMAGE", "VIDEO", "CAROUSEL", "TEXT_ONLY"]
-    
+
     posts_data = []
     for post in request.posts:
         # Validate platforms
@@ -476,14 +476,14 @@ async def upload_plan(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid platform: {platform}"
                 )
-        
+
         # Validate media type
         if post.media_type.upper() not in valid_media_types:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid media_type: {post.media_type}. Valid: {valid_media_types}"
             )
-        
+
         # Parse date to get day of week
         try:
             date_obj = datetime.strptime(post.date, "%Y-%m-%d")
@@ -493,7 +493,7 @@ async def upload_plan(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid date format: {post.date}. Use YYYY-MM-DD"
             )
-        
+
         posts_data.append({
             "date": post.date,
             "day_of_week": day_of_week,
@@ -507,11 +507,11 @@ async def upload_plan(
             "media_url": post.media_url,
             "call_to_action": None
         })
-    
+
     # Calculate duration
     dates = [datetime.strptime(p["date"], "%Y-%m-%d") for p in posts_data]
     duration_days = (max(dates) - min(dates)).days + 1 if dates else 1
-    
+
     # Create plan
     plan = ContentPlan(
         user_id=current_user.id,
@@ -519,15 +519,15 @@ async def upload_plan(
         duration_days=duration_days,
         posts_per_day=len(posts_data) // duration_days if duration_days > 0 else len(posts_data),
         tone=request.tone,
-        platforms=list(set(p for post in posts_data for p in post["platforms"])),
+        platforms=list({p for post in posts_data for p in post["platforms"]}),
         plan_data=posts_data,
         status=ContentPlanStatus.DRAFT
     )
-    
+
     db.add(plan)
     await db.commit()
     await db.refresh(plan)
-    
+
     return ContentPlanResponse(
         id=str(plan.id),
         niche=plan.niche,
@@ -561,21 +561,21 @@ async def upload_plan_from_csv(
     db: AsyncSession = Depends(get_db_async_session)
 ):
     """Upload content plan from CSV format.
-    
+
     CSV columns: date,time,topic,caption,hashtags,platforms,media_type
     Example:
     2025-01-01,10:00,New Year Sale,Happy New Year! 🎉,#newyear #sale,telegram|instagram,IMAGE
     """
     import csv
-    from io import StringIO
     from datetime import datetime
-    
+    from io import StringIO
+
     try:
         reader = csv.DictReader(StringIO(request.csv_content))
         posts_data = []
-        
+
         required_columns = ["date", "topic", "caption"]
-        
+
         for row in reader:
             # Check required columns
             for col in required_columns:
@@ -584,7 +584,7 @@ async def upload_plan_from_csv(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Missing required column: {col}"
                     )
-            
+
             # Parse date
             try:
                 date_obj = datetime.strptime(row["date"].strip(), "%Y-%m-%d")
@@ -594,15 +594,15 @@ async def upload_plan_from_csv(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Invalid date format: {row['date']}. Use YYYY-MM-DD"
                 )
-            
+
             # Parse hashtags (comma or space separated)
             hashtags_raw = row.get("hashtags", "")
             hashtags = [h.strip() for h in hashtags_raw.replace(",", " ").split() if h.strip()]
-            
+
             # Parse platforms (pipe or comma separated)
             platforms_raw = row.get("platforms", "telegram")
             platforms = [p.strip().lower() for p in platforms_raw.replace("|", ",").split(",") if p.strip()]
-            
+
             posts_data.append({
                 "date": row["date"].strip(),
                 "day_of_week": day_of_week,
@@ -615,23 +615,23 @@ async def upload_plan_from_csv(
                 "image_prompt": row.get("image_prompt", "").strip() or None,
                 "call_to_action": row.get("call_to_action", "").strip() or None
             })
-        
+
         if not posts_data:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No valid posts found in CSV"
             )
-        
+
     except csv.Error as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"CSV parsing error: {str(e)}"
         )
-    
+
     # Calculate duration
     dates = [datetime.strptime(p["date"], "%Y-%m-%d") for p in posts_data]
     duration_days = (max(dates) - min(dates)).days + 1 if dates else 1
-    
+
     # Create plan
     plan = ContentPlan(
         user_id=current_user.id,
@@ -639,15 +639,15 @@ async def upload_plan_from_csv(
         duration_days=duration_days,
         posts_per_day=len(posts_data) // duration_days if duration_days > 0 else len(posts_data),
         tone="custom",
-        platforms=list(set(p for post in posts_data for p in post["platforms"])),
+        platforms=list({p for post in posts_data for p in post["platforms"]}),
         plan_data=posts_data,
         status=ContentPlanStatus.DRAFT
     )
-    
+
     db.add(plan)
     await db.commit()
     await db.refresh(plan)
-    
+
     return ContentPlanResponse(
         id=str(plan.id),
         niche=plan.niche,

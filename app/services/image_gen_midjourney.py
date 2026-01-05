@@ -5,17 +5,15 @@ Uses unofficial API via goapi.ai or similar providers.
 
 import asyncio
 import time
-from datetime import datetime
-from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
 from ..core.logging import get_logger
-
 
 logger = get_logger("services.image_gen_midjourney")
 
@@ -47,10 +45,10 @@ class TaskStatus(str, Enum):
 class MidjourneyResult:
     """Result of Midjourney image generation."""
     success: bool
-    image_url: Optional[str] = None
+    image_url: str | None = None
     image_urls: list = None  # For grid of 4 images
-    task_id: Optional[str] = None
-    error: Optional[str] = None
+    task_id: str | None = None
+    error: str | None = None
     cost_estimate: float = 0.08  # ~$0.08 per generation
 
     def __post_init__(self):
@@ -267,7 +265,7 @@ class MidjourneyService:
         wait=wait_exponential(multiplier=1, min=1, max=5),
         retry=retry_if_exception_type(httpx.RequestError)
     )
-    async def _get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def _get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get task status from API."""
         response = await self.http_client.get(
             f"{self.api_base}/task/{task_id}"
@@ -278,7 +276,7 @@ class MidjourneyService:
 
         return response.json()
 
-    def _parse_completed_task(self, status: Dict[str, Any]) -> MidjourneyResult:
+    def _parse_completed_task(self, status: dict[str, Any]) -> MidjourneyResult:
         """Parse completed task response."""
         # Get image URLs from response
         # Structure may vary by API provider

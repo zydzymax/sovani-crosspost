@@ -6,23 +6,20 @@ Users share a folder with the service and media is automatically synced.
 """
 
 import os
-import asyncio
-from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass
-from urllib.parse import urlencode, quote
+from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
 from ..core.logging import get_logger
-from ..core.config import settings
 
 logger = get_logger("adapters.yandex_disk")
 
 
 # Import shared types from google_drive
-from .google_drive import MediaType, CloudFile, SyncResult
+from .google_drive import CloudFile, MediaType, SyncResult
 
 
 class YandexDiskAdapter:
@@ -71,8 +68,8 @@ class YandexDiskAdapter:
         self,
         folder_path: str,
         access_token: str,
-        media_types: List[str] = None
-    ) -> List[CloudFile]:
+        media_types: list[str] = None
+    ) -> list[CloudFile]:
         """
         List all media files in a Yandex Disk folder.
 
@@ -174,8 +171,8 @@ class YandexDiskAdapter:
         self,
         public_key: str,
         path: str = "/",
-        media_types: List[str] = None
-    ) -> List[CloudFile]:
+        media_types: list[str] = None
+    ) -> list[CloudFile]:
         """
         List contents of a public shared folder.
 
@@ -390,7 +387,7 @@ class YandexDiskAdapter:
         folder_path: str,
         access_token: str,
         output_dir: str,
-        media_types: List[str] = None
+        media_types: list[str] = None
     ) -> SyncResult:
         """
         Sync all media from a Yandex Disk folder.
@@ -474,7 +471,7 @@ class YandexDiskAdapter:
         self,
         public_url: str,
         output_dir: str,
-        media_types: List[str] = None
+        media_types: list[str] = None
     ) -> SyncResult:
         """
         Sync all media from a public shared folder.
@@ -561,7 +558,7 @@ class YandexDiskAdapter:
         )
 
     @staticmethod
-    def extract_public_key(url: str) -> Optional[str]:
+    def extract_public_key(url: str) -> str | None:
         """
         Extract public key from Yandex Disk sharing URL.
 
@@ -603,7 +600,7 @@ def get_yandex_oauth_url(redirect_uri: str, state: str = None) -> str:
     return f"https://oauth.yandex.ru/authorize?{urlencode(params)}"
 
 
-async def exchange_yandex_code(code: str) -> Optional[Dict[str, Any]]:
+async def exchange_yandex_code(code: str) -> dict[str, Any] | None:
     """Exchange authorization code for tokens."""
     client_id = os.getenv("YANDEX_CLIENT_ID")
     client_secret = os.getenv("YANDEX_CLIENT_SECRET")
@@ -632,7 +629,7 @@ async def exchange_yandex_code(code: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-async def refresh_yandex_token(refresh_token: str) -> Optional[Dict[str, Any]]:
+async def refresh_yandex_token(refresh_token: str) -> dict[str, Any] | None:
     """Refresh expired access token."""
     client_id = os.getenv("YANDEX_CLIENT_ID")
     client_secret = os.getenv("YANDEX_CLIENT_SECRET")

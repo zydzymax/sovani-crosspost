@@ -6,22 +6,29 @@ Handles order creation and payment processing via Tochka Bank.
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from .deps import get_db_async_session, get_current_user, get_redis_client
 from ..models.entities import (
-    User, Cart, Order, Payment, OrderStatus, PaymentStatus,
-    SaaSProduct, SaaSProductPlan, UserSubscription, PromoCode
+    Cart,
+    Order,
+    OrderStatus,
+    Payment,
+    PaymentStatus,
+    PromoCode,
+    SaaSProduct,
+    SaaSProductPlan,
+    User,
+    UserSubscription,
 )
-from ..services.payment_service import get_payment_service
 from ..services.email_service import get_email_service
+from ..services.payment_service import get_payment_service
+from .deps import get_current_user, get_db_async_session
 
 logger = get_logger("api.checkout")
 
@@ -33,7 +40,7 @@ router = APIRouter(prefix="/checkout", tags=["Checkout"])
 class CreateOrderRequest(BaseModel):
     """Request to create order from cart."""
     payment_method: str = Field(default="card", description="Payment method: card or sbp")
-    return_url: Optional[str] = Field(None, description="Custom return URL after payment")
+    return_url: str | None = Field(None, description="Custom return URL after payment")
 
 
 class OrderItemResponse(BaseModel):
@@ -51,12 +58,12 @@ class OrderResponse(BaseModel):
     id: str
     order_number: str
     status: str
-    items: List[OrderItemResponse]
+    items: list[OrderItemResponse]
     subtotal_rub: float
     discount_rub: float
-    promo_code: Optional[str]
+    promo_code: str | None
     total_rub: float
-    payment_url: Optional[str]
+    payment_url: str | None
     created_at: datetime
 
 
@@ -64,7 +71,7 @@ class CreateOrderResponse(BaseModel):
     """Response after creating order."""
     success: bool
     order: OrderResponse
-    payment_url: Optional[str] = None
+    payment_url: str | None = None
     message: str
 
 
@@ -229,7 +236,7 @@ async def create_order(
         result = await db.execute(
             select(PromoCode).where(
                 PromoCode.code == promo_code,
-                PromoCode.is_active == True
+                PromoCode.is_active
             )
         )
         promo = result.scalar_one_or_none()

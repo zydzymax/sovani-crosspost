@@ -9,15 +9,14 @@ Provides:
 """
 
 import time
-from typing import Optional, Callable
-from datetime import datetime
+from collections.abc import Callable
 
-from fastapi import Request, Response, HTTPException, status
+from fastapi import Request, Response, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..core.logging import get_logger
-from ..services.antifraud import antifraud_service, FraudRiskLevel
+from ..services.antifraud import FraudRiskLevel, antifraud_service
 
 logger = get_logger("middleware.antifraud")
 
@@ -268,7 +267,7 @@ class IPBlockMiddleware(BaseHTTPMiddleware):
         logger.info("IP removed from blocklist", ip=ip[:8] + "...")
 
 
-def get_device_fingerprint(request: Request) -> Optional[str]:
+def get_device_fingerprint(request: Request) -> str | None:
     """
     Generate device fingerprint from request headers.
 

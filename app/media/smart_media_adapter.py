@@ -11,19 +11,17 @@ Supports: Images (JPEG, PNG) and Videos (MP4, MOV)
 """
 
 import asyncio
-import os
-import subprocess
-import tempfile
 import json
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple, List
+import os
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
-from PIL import Image, ImageFilter, ImageDraw
+from typing import Any
+
 import numpy as np
+from PIL import Image, ImageFilter
 
 from ..core.logging import get_logger
-from ..observability.metrics import metrics
 
 logger = get_logger("media.smart_adapter")
 
@@ -90,12 +88,12 @@ class AdaptationResult:
     output_path: str
     platform: str
     format_type: str  # "feed", "stories", etc.
-    original_size: Tuple[int, int]
-    output_size: Tuple[int, int]
+    original_size: tuple[int, int]
+    output_size: tuple[int, int]
     crop_mode: CropMode
-    regions_detected: List[RegionOfInterest]
+    regions_detected: list[RegionOfInterest]
     processing_time: float
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class FaceDetector:
@@ -130,7 +128,7 @@ class FaceDetector:
                 if os.path.exists(cascade_file):
                     self.cascade_path = cascade_file
                     self.cascade = cv2.CascadeClassifier(cascade_file)
-                    logger.info(f"Face cascade loaded from cv2.data")
+                    logger.info("Face cascade loaded from cv2.data")
                     return
 
             logger.warning("Face cascade not found, face detection disabled")
@@ -138,7 +136,7 @@ class FaceDetector:
         except ImportError:
             logger.warning("OpenCV not installed, face detection disabled")
 
-    def detect(self, image: Image.Image) -> List[RegionOfInterest]:
+    def detect(self, image: Image.Image) -> list[RegionOfInterest]:
         """Detect faces in image."""
         if self.cascade is None:
             return []
@@ -181,7 +179,7 @@ class FaceDetector:
 class SaliencyDetector:
     """Detect salient (visually important) regions in image."""
 
-    def detect(self, image: Image.Image) -> List[RegionOfInterest]:
+    def detect(self, image: Image.Image) -> list[RegionOfInterest]:
         """Detect salient regions using edge detection and contrast."""
         try:
             # Convert to grayscale
@@ -203,7 +201,7 @@ class SaliencyDetector:
             return []
 
     def _find_salient_regions(self, edge_array: np.ndarray,
-                             image_size: Tuple[int, int]) -> List[RegionOfInterest]:
+                             image_size: tuple[int, int]) -> list[RegionOfInterest]:
         """Find regions with high visual importance."""
         regions = []
         width, height = image_size
@@ -333,7 +331,7 @@ class SmartMediaAdapter:
 
             processing_time = time.time() - start_time
 
-            logger.info(f"Image adapted successfully",
+            logger.info("Image adapted successfully",
                        platform=platform,
                        original_size=original_size,
                        output_size=img.size,
@@ -459,7 +457,7 @@ class SmartMediaAdapter:
 
             processing_time = time.time() - start_time
 
-            logger.info(f"Video adapted successfully",
+            logger.info("Video adapted successfully",
                        platform=platform,
                        original_size=original_size,
                        output_size=output_size,
@@ -498,9 +496,9 @@ class SmartMediaAdapter:
         self,
         input_path: str,
         output_dir: str,
-        platforms: List[str],
+        platforms: list[str],
         media_type: str = "image"
-    ) -> Dict[str, AdaptationResult]:
+    ) -> dict[str, AdaptationResult]:
         """
         Adapt media for multiple platforms simultaneously.
 
@@ -551,14 +549,14 @@ class SmartMediaAdapter:
 
         return results
 
-    def _get_platform_specs(self, platform: str, format_type: str) -> Optional[Dict]:
+    def _get_platform_specs(self, platform: str, format_type: str) -> dict | None:
         """Get specifications for platform/format combination."""
         platform_specs = PLATFORM_SPECS.get(platform.lower())
         if not platform_specs:
             return None
         return platform_specs.get(format_type.lower())
 
-    async def _detect_regions(self, img: Image.Image) -> List[RegionOfInterest]:
+    async def _detect_regions(self, img: Image.Image) -> list[RegionOfInterest]:
         """Detect all regions of interest in image."""
         regions = []
 
@@ -573,7 +571,7 @@ class SmartMediaAdapter:
 
         return regions
 
-    async def _detect_video_regions(self, video_path: str) -> List[RegionOfInterest]:
+    async def _detect_video_regions(self, video_path: str) -> list[RegionOfInterest]:
         """Detect regions of interest from video's first frame."""
         try:
             # Extract first frame
@@ -606,11 +604,11 @@ class SmartMediaAdapter:
 
     def _calculate_smart_crop(
         self,
-        image_size: Tuple[int, int],
-        target_ratio: Tuple[int, int],
-        regions: List[RegionOfInterest],
+        image_size: tuple[int, int],
+        target_ratio: tuple[int, int],
+        regions: list[RegionOfInterest],
         crop_mode: CropMode
-    ) -> Tuple[int, int, int, int]:
+    ) -> tuple[int, int, int, int]:
         """
         Calculate optimal crop box that preserves regions of interest.
 
@@ -673,7 +671,7 @@ class SmartMediaAdapter:
     def _smart_resize(
         self,
         img: Image.Image,
-        max_size: Tuple[int, int]
+        max_size: tuple[int, int]
     ) -> Image.Image:
         """Resize image to fit within max_size while maintaining quality."""
         max_w, max_h = max_size
@@ -690,10 +688,10 @@ class SmartMediaAdapter:
 
     def _build_video_filter(
         self,
-        original_size: Tuple[int, int],
-        target_ratio: Optional[Tuple[int, int]],
-        max_size: Tuple[int, int],
-        regions: List[RegionOfInterest],
+        original_size: tuple[int, int],
+        target_ratio: tuple[int, int] | None,
+        max_size: tuple[int, int],
+        regions: list[RegionOfInterest],
         crop_mode: CropMode
     ) -> str:
         """Build ffmpeg filter chain for video adaptation."""
@@ -755,7 +753,7 @@ class SmartMediaAdapter:
 
         return ','.join(filters) if filters else 'null'
 
-    async def _get_video_info(self, video_path: str) -> Dict[str, Any]:
+    async def _get_video_info(self, video_path: str) -> dict[str, Any]:
         """Get video dimensions and info using ffprobe."""
         cmd = [
             'ffprobe', '-v', 'quiet',
@@ -818,9 +816,9 @@ async def adapt_video_for_platform(
 async def adapt_for_platforms(
     input_path: str,
     output_dir: str,
-    platforms: List[str],
+    platforms: list[str],
     media_type: str = "image"
-) -> Dict[str, AdaptationResult]:
+) -> dict[str, AdaptationResult]:
     """Adapt media for multiple platforms."""
     return await smart_adapter.adapt_for_all_platforms(
         input_path, output_dir, platforms, media_type

@@ -2,14 +2,12 @@
 
 import asyncio
 import time
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
-from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
+from typing import Any
 
-from ..core.config import settings
 from ..core.logging import get_logger, with_logging_context
-from ..models.db import db_manager
 from ..observability.metrics import metrics
 
 logger = get_logger("services.enrichment")
@@ -17,30 +15,30 @@ logger = get_logger("services.enrichment")
 @dataclass
 class ProductAttributes:
     """Normalized product attributes structure for LLM/Publishers."""
-    
+
     external_id: str
     source: str
     title: str
-    description: Optional[str] = None
-    category: Optional[str] = None
-    brand: Optional[str] = None
-    price: Optional[float] = None
-    original_price: Optional[float] = None
+    description: str | None = None
+    category: str | None = None
+    brand: str | None = None
+    price: float | None = None
+    original_price: float | None = None
     currency: str = "RUB"
-    colors: List[str] = None
-    sizes: List[str] = None
-    materials: List[str] = None
-    image_urls: List[str] = None
+    colors: list[str] = None
+    sizes: list[str] = None
+    materials: list[str] = None
+    image_urls: list[str] = None
     in_stock: bool = True
-    tags: List[str] = None
-    keywords: List[str] = None
-    collection: Optional[str] = None
-    sku: Optional[str] = None
-    product_url: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    tags: list[str] = None
+    keywords: list[str] = None
+    collection: str | None = None
+    sku: str | None = None
+    product_url: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
     confidence_score: float = 1.0
-    
+
     def __post_init__(self):
         if self.colors is None:
             self.colors = []
@@ -58,10 +56,10 @@ class ProductAttributes:
             self.created_at = datetime.utcnow().isoformat()
         if self.updated_at is None:
             self.updated_at = datetime.utcnow().isoformat()
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-    
+
     def to_llm_context(self) -> str:
         """Convert to LLM-friendly text context."""
         context_parts = [
@@ -69,28 +67,28 @@ class ProductAttributes:
             f"@5=4: {self.brand or 'SalesWhisper'}",
             f"0B53>@8O: {self.category or '45640'}"
         ]
-        
+
         if self.description:
             context_parts.append(f"?8A0=85: {self.description}")
-        
+
         if self.price:
             price_text = f"Price: {self.price} {self.currency}"
             if self.original_price and self.original_price > self.price:
                 price_text += f" (was {self.original_price} {self.currency})"
             context_parts.append(price_text)
-        
+
         if self.colors:
             context_parts.append(f"Colors: {', '.join(self.colors)}")
-        
+
         if self.sizes:
             context_parts.append(f"Sizes: {', '.join(self.sizes)}")
-        
+
         return "\n".join(context_parts)
-    
+
     def is_fresh(self, max_age_hours: int = 24) -> bool:
         if not self.updated_at:
             return False
-        
+
         try:
             updated_time = datetime.fromisoformat(self.updated_at.replace('Z', '+00:00'))
             age = datetime.utcnow() - updated_time.replace(tzinfo=None)
@@ -106,9 +104,9 @@ class ProductNotFoundError(Exception):
 
 class ProductSource(ABC):
     @abstractmethod
-    async def get_product_data(self, external_id: str) -> Optional[ProductAttributes]:
+    async def get_product_data(self, external_id: str) -> ProductAttributes | None:
         pass
-    
+
     @abstractmethod
     def get_source_name(self) -> str:
         pass
@@ -116,23 +114,23 @@ class ProductSource(ABC):
 class LocalProductSource(ProductSource):
     def __init__(self):
         self.source_name = "local"
-    
-    async def get_product_data(self, external_id: str) -> Optional[ProductAttributes]:
+
+    async def get_product_data(self, external_id: str) -> ProductAttributes | None:
         try:
             mock_products = self._get_mock_local_products()
             product_data = mock_products.get(external_id)
-            
+
             if product_data:
                 return ProductAttributes(**product_data)
             return None
         except Exception as e:
             logger.error(f"Error getting local product data: {e}")
             raise ProductSourceError(f"Local source error: {e}")
-    
+
     def get_source_name(self) -> str:
         return self.source_name
-    
-    def _get_mock_local_products(self) -> Dict[str, Dict[str, Any]]:
+
+    def _get_mock_local_products(self) -> dict[str, dict[str, Any]]:
         return {
             "dress_001": {
                 "external_id": "dress_001",
@@ -161,11 +159,11 @@ class LocalProductSource(ProductSource):
 class WildberriesSource(ProductSource):
     def __init__(self):
         self.source_name = "wildberries"
-    
-    async def get_product_data(self, external_id: str) -> Optional[ProductAttributes]:
+
+    async def get_product_data(self, external_id: str) -> ProductAttributes | None:
         # Stub implementation
         await asyncio.sleep(0.1)
-        
+
         if external_id == "wb_12345":
             return ProductAttributes(
                 external_id=external_id,
@@ -181,58 +179,58 @@ class WildberriesSource(ProductSource):
                 confidence_score=0.8
             )
         return None
-    
+
     def get_source_name(self) -> str:
         return self.source_name
 
 class ProductEnrichmentService:
     def __init__(self):
-        self.sources: Dict[str, ProductSource] = {
+        self.sources: dict[str, ProductSource] = {
             "local": LocalProductSource(),
             "wildberries": WildberriesSource()
         }
         self.cache_ttl_hours = 24
-    
-    async def get_product_attrs(self, source: str, external_id: str) -> Optional[ProductAttributes]:
+
+    async def get_product_attrs(self, source: str, external_id: str) -> ProductAttributes | None:
         start_time = time.time()
-        
+
         with with_logging_context(source=source, external_id=external_id):
             logger.info("Getting product attributes", source=source, external_id=external_id)
-            
+
             try:
                 if source not in self.sources:
                     raise ProductSourceError(f"Unknown source '{source}'")
-                
+
                 source_instance = self.sources[source]
                 product = await source_instance.get_product_data(external_id)
-                
+
                 if product:
                     processing_time = time.time() - start_time
-                    
+
                     logger.info(
                         "Product attributes retrieved successfully",
                         source=source,
                         external_id=external_id,
                         processing_time=processing_time
                     )
-                    
+
                     metrics.track_external_api_call(
                         service=f"product_{source}",
                         endpoint="get_product",
                         status_code=200,
                         duration=processing_time
                     )
-                    
+
                     return product
                 else:
                     logger.info("Product not found", source=source, external_id=external_id)
                     raise ProductNotFoundError(f"Product {external_id} not found in {source}")
-                
+
             except ProductNotFoundError:
                 raise
             except Exception as e:
                 processing_time = time.time() - start_time
-                
+
                 logger.error(
                     "Error getting product attributes",
                     source=source,
@@ -240,16 +238,16 @@ class ProductEnrichmentService:
                     error=str(e),
                     processing_time=processing_time
                 )
-                
+
                 metrics.track_external_api_call(
                     service=f"product_{source}",
                     endpoint="get_product",
                     status_code=500,
                     duration=processing_time
                 )
-                
+
                 raise ProductSourceError(f"Error fetching product from {source}: {str(e)}")
-    
+
     async def get_enriched_context_for_llm(self, source: str, external_id: str) -> str:
         try:
             product = await self.get_product_attrs(source, external_id)
@@ -262,15 +260,15 @@ class ProductEnrichmentService:
         except Exception as e:
             logger.error(f"Error getting LLM context: {e}")
             return f"Error getting product data: {str(e)}"
-    
-    def get_available_sources(self) -> List[str]:
+
+    def get_available_sources(self) -> list[str]:
         return list(self.sources.keys())
 
 # Global service instance
 enrichment_service = ProductEnrichmentService()
 
 # Convenience functions
-async def get_product_attrs(source: str, external_id: str) -> Optional[ProductAttributes]:
+async def get_product_attrs(source: str, external_id: str) -> ProductAttributes | None:
     return await enrichment_service.get_product_attrs(source, external_id)
 
 async def get_llm_context(source: str, external_id: str) -> str:

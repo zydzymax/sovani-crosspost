@@ -6,9 +6,8 @@ Handles payment creation, verification, and webhook processing.
 import hashlib
 import hmac
 import uuid
-from datetime import datetime
 from decimal import Decimal
-from typing import Optional, Dict, Any
+from typing import Any
 
 import httpx
 from pydantic import BaseModel
@@ -28,9 +27,9 @@ class PaymentResult(BaseModel):
     """Result of payment creation."""
     success: bool
     payment_id: str
-    payment_url: Optional[str] = None
+    payment_url: str | None = None
     status: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class TochkaPaymentService:
@@ -51,7 +50,7 @@ class TochkaPaymentService:
         self.success_url = settings.payment.success_url
         self.fail_url = settings.payment.fail_url
 
-    def _generate_signature(self, data: Dict[str, Any]) -> str:
+    def _generate_signature(self, data: dict[str, Any]) -> str:
         """Generate HMAC signature for request."""
         # Sort keys and create string
         sorted_items = sorted(data.items())
@@ -64,7 +63,7 @@ class TochkaPaymentService:
         signature = hashlib.sha256(sign_string.encode()).hexdigest()
         return signature
 
-    def _verify_webhook_signature(self, data: Dict[str, Any], signature: str) -> bool:
+    def _verify_webhook_signature(self, data: dict[str, Any], signature: str) -> bool:
         """Verify webhook signature from Tochka."""
         # Remove signature from data for verification
         data_copy = {k: v for k, v in data.items() if k != "signature"}
@@ -77,8 +76,8 @@ class TochkaPaymentService:
         amount_rub: Decimal,
         description: str,
         customer_email: str,
-        customer_phone: Optional[str] = None,
-        return_url: Optional[str] = None
+        customer_phone: str | None = None,
+        return_url: str | None = None
     ) -> PaymentResult:
         """
         Create payment link in Tochka Bank.
@@ -175,7 +174,7 @@ class TochkaPaymentService:
                 error=str(e)
             )
 
-    async def check_payment_status(self, payment_id: str) -> Dict[str, Any]:
+    async def check_payment_status(self, payment_id: str) -> dict[str, Any]:
         """
         Check payment status in Tochka Bank.
 
@@ -211,7 +210,7 @@ class TochkaPaymentService:
             logger.error(f"Payment status check error: {e}")
             return {"status": "error", "error": str(e)}
 
-    def process_webhook(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def process_webhook(self, data: dict[str, Any]) -> dict[str, Any]:
         """
         Process webhook from Tochka Bank.
 
@@ -244,7 +243,7 @@ class TochkaPaymentService:
 
 
 # Singleton instance
-_payment_service: Optional[TochkaPaymentService] = None
+_payment_service: TochkaPaymentService | None = None
 
 
 def get_payment_service() -> TochkaPaymentService:

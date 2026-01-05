@@ -3,15 +3,19 @@ Analytics API - Content performance tracking and AI recommendations.
 """
 import uuid
 from datetime import datetime, timedelta
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, func
 
 from ..models.entities import (
-    User, PostMetrics, ContentInsight, AnalyticsSettings, PerformanceBenchmark,
-    InsightType, InsightPriority, InsightStatus, OptimizationMode
+    AnalyticsSettings,
+    ContentInsight,
+    InsightStatus,
+    OptimizationMode,
+    PostMetrics,
+    User,
 )
 from ..services.content_analytics import get_analytics_service
 from .deps import get_current_user, get_db_async_session
@@ -31,8 +35,8 @@ class MetricsInput(BaseModel):
     ctr: float = 0
     platform_specific: dict = Field(default_factory=dict)
     audience: dict = Field(default_factory=dict)
-    followers_before: Optional[int] = None
-    followers_after: Optional[int] = None
+    followers_before: int | None = None
+    followers_after: int | None = None
     followers_gained: int = 0
 
 
@@ -51,18 +55,18 @@ class MetricsResponse(BaseModel):
 
 class InsightResponse(BaseModel):
     id: str
-    post_id: Optional[str]
-    platform: Optional[str]
+    post_id: str | None
+    platform: str | None
     insight_type: str
     priority: str
     status: str
     title: str
     summary: str
-    detailed_analysis: Optional[str]
+    detailed_analysis: str | None
     recommendations: list
     confidence_score: float
     created_at: str
-    expires_at: Optional[str]
+    expires_at: str | None
 
 
 class SettingsInput(BaseModel):
@@ -90,8 +94,8 @@ class DashboardStats(BaseModel):
     total_views: int
     total_likes: int
     avg_engagement_rate: float
-    best_platform: Optional[str]
-    best_posting_time: Optional[str]
+    best_platform: str | None
+    best_posting_time: str | None
     pending_insights: int
     weekly_growth: float
 
@@ -128,7 +132,7 @@ async def submit_metrics(
         raise HTTPException(status_code=404, detail=str(e))
 
 
-@router.get("/metrics/{post_id}", response_model=List[MetricsResponse])
+@router.get("/metrics/{post_id}", response_model=list[MetricsResponse])
 async def get_post_metrics(
     post_id: str,
     db: AsyncSession = Depends(get_db_async_session),
@@ -141,7 +145,7 @@ async def get_post_metrics(
         .order_by(desc(PostMetrics.measured_at))
     )
     metrics_list = result.scalars().all()
-    
+
     return [
         MetricsResponse(
             id=str(m.id),
@@ -172,10 +176,10 @@ async def analyze_post(
         uuid.UUID(post_id),
         current_user.id
     )
-    
+
     if not insight:
         raise HTTPException(status_code=404, detail="No metrics found for post")
-    
+
     return InsightResponse(
         id=str(insight.id),
         post_id=str(insight.post_id) if insight.post_id else None,
@@ -193,30 +197,30 @@ async def analyze_post(
     )
 
 
-@router.get("/insights", response_model=List[InsightResponse])
+@router.get("/insights", response_model=list[InsightResponse])
 async def get_insights(
-    status: Optional[str] = Query(None, description="Filter by status"),
-    platform: Optional[str] = Query(None, description="Filter by platform"),
+    status: str | None = Query(None, description="Filter by status"),
+    platform: str | None = Query(None, description="Filter by platform"),
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db_async_session),
     current_user: User = Depends(get_current_user)
 ):
     """Get all insights for current user."""
     query = select(ContentInsight).where(ContentInsight.user_id == current_user.id)
-    
+
     if status:
         query = query.where(ContentInsight.status == InsightStatus(status))
     if platform:
         query = query.where(ContentInsight.platform == platform)
-    
+
     query = query.order_by(
         desc(ContentInsight.priority),
         desc(ContentInsight.created_at)
     ).limit(limit)
-    
+
     result = await db.execute(query)
     insights = result.scalars().all()
-    
+
     return [
         InsightResponse(
             id=str(i.id),
@@ -264,10 +268,10 @@ async def dismiss_insight(
     insight = await db.get(ContentInsight, uuid.UUID(insight_id))
     if not insight or insight.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Insight not found")
-    
+
     insight.status = InsightStatus.DISMISSED
     await db.commit()
-    
+
     return {"status": "dismissed"}
 
 
@@ -282,10 +286,10 @@ async def submit_feedback(
     insight = await db.get(ContentInsight, uuid.UUID(insight_id))
     if not insight or insight.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Insight not found")
-    
+
     insight.user_feedback = feedback
     await db.commit()
-    
+
     return {"status": "feedback_recorded", "feedback": feedback}
 
 
@@ -299,7 +303,7 @@ async def get_settings(
         select(AnalyticsSettings).where(AnalyticsSettings.user_id == current_user.id)
     )
     settings = result.scalars().first()
-    
+
     if not settings:
         # Return defaults
         return SettingsResponse(
@@ -311,7 +315,7 @@ async def get_settings(
             notify_on_viral=True,
             notify_weekly_report=True
         )
-    
+
     return SettingsResponse(
         optimization_mode=settings.optimization_mode.value,
         collect_metrics=settings.collect_metrics,
@@ -334,11 +338,11 @@ async def update_settings(
         select(AnalyticsSettings).where(AnalyticsSettings.user_id == current_user.id)
     )
     settings = result.scalars().first()
-    
+
     if not settings:
         settings = AnalyticsSettings(user_id=current_user.id)
         db.add(settings)
-    
+
     settings.optimization_mode = OptimizationMode(data.optimization_mode)
     settings.collect_metrics = data.collect_metrics
     settings.auto_adjust_timing = data.auto_adjust_timing
@@ -346,10 +350,10 @@ async def update_settings(
     settings.auto_suggest_topics = data.auto_suggest_topics
     settings.notify_on_viral = data.notify_on_viral
     settings.notify_weekly_report = data.notify_weekly_report
-    
+
     await db.commit()
     await db.refresh(settings)
-    
+
     return SettingsResponse(
         optimization_mode=settings.optimization_mode.value,
         collect_metrics=settings.collect_metrics,
@@ -369,7 +373,7 @@ async def get_dashboard_stats(
 ):
     """Get dashboard statistics for the analytics page."""
     since = datetime.utcnow() - timedelta(days=days)
-    
+
     # Get metrics aggregates
     metrics_result = await db.execute(
         select(
@@ -381,7 +385,7 @@ async def get_dashboard_stats(
         .where(PostMetrics.created_at >= since)
     )
     row = metrics_result.fetchone()
-    
+
     # Get best platform
     platform_result = await db.execute(
         select(
@@ -394,7 +398,7 @@ async def get_dashboard_stats(
         .limit(1)
     )
     best_platform_row = platform_result.fetchone()
-    
+
     # Get pending insights count
     insights_result = await db.execute(
         select(func.count(ContentInsight.id))
@@ -402,11 +406,11 @@ async def get_dashboard_stats(
         .where(ContentInsight.status == InsightStatus.PENDING)
     )
     pending_count = insights_result.scalar() or 0
-    
+
     # Calculate weekly growth (simplified)
     week_ago = datetime.utcnow() - timedelta(days=7)
     two_weeks_ago = datetime.utcnow() - timedelta(days=14)
-    
+
     this_week_result = await db.execute(
         select(func.sum(PostMetrics.views))
         .where(PostMetrics.created_at >= week_ago)
@@ -416,11 +420,11 @@ async def get_dashboard_stats(
         .where(PostMetrics.created_at >= two_weeks_ago)
         .where(PostMetrics.created_at < week_ago)
     )
-    
+
     this_week = this_week_result.scalar() or 0
     last_week = last_week_result.scalar() or 1
     weekly_growth = ((this_week - last_week) / last_week) * 100 if last_week > 0 else 0
-    
+
     return DashboardStats(
         total_posts=row.total_posts or 0 if row else 0,
         total_views=int(row.total_views or 0) if row else 0,
@@ -441,7 +445,7 @@ async def generate_weekly_report(
     """Generate weekly insights report."""
     service = get_analytics_service()
     insights = await service.generate_weekly_insights(db, current_user.id)
-    
+
     return {
         "status": "generated",
         "insights_count": len(insights),
@@ -451,7 +455,7 @@ async def generate_weekly_report(
 
 @router.get("/suggestions")
 async def get_optimization_suggestions(
-    platform: Optional[str] = None,
+    platform: str | None = None,
     db: AsyncSession = Depends(get_db_async_session),
     current_user: User = Depends(get_current_user)
 ):

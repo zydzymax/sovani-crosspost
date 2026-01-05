@@ -7,31 +7,28 @@ This module handles:
 - Beat scheduler tasks for monitoring
 """
 
-import time
 import json
+import time
 import uuid
-from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
+from typing import Any
 
-from celery import current_task
 from sqlalchemy.orm import Session
 
-from ..celery_app import celery
 from ...core.logging import get_logger, with_logging_context
-from ...core.config import settings
 from ...models.db import db_manager
 from ...observability.metrics import metrics
-
+from ..celery_app import celery
 
 logger = get_logger("tasks.outbox")
 
 
-def publish_outbox_event(event_type: str, payload: Dict[str, Any], 
-                        entity_id: str, correlation_id: Optional[str] = None) -> str:
+def publish_outbox_event(event_type: str, payload: dict[str, Any],
+                        entity_id: str, correlation_id: str | None = None) -> str:
     """Publish an event to the outbox for reliable processing."""
     event_id = str(uuid.uuid4())
     correlation_id = correlation_id or str(uuid.uuid4())
-    
+
     logger.info(
         "Publishing outbox event",
         event_id=event_id,
@@ -39,10 +36,10 @@ def publish_outbox_event(event_type: str, payload: Dict[str, Any],
         entity_id=entity_id,
         correlation_id=correlation_id
     )
-    
+
     try:
         db_session = db_manager.get_session()
-        
+
         # Check for deduplication
         existing_event = _check_duplicate_event(db_session, event_type, entity_id, payload)
         if existing_event:
@@ -53,9 +50,9 @@ def publish_outbox_event(event_type: str, payload: Dict[str, Any],
             )
             db_session.close()
             return existing_event
-        
+
         # Create outbox event record
-        outbox_event = {
+        {
             "id": event_id,
             "event_type": event_type,
             "entity_id": entity_id,
@@ -66,19 +63,19 @@ def publish_outbox_event(event_type: str, payload: Dict[str, Any],
             "retry_count": 0,
             "next_retry_at": datetime.utcnow()
         }
-        
+
         # In real implementation: insert into outbox_events table
         logger.debug(
             "Outbox event created",
             event_id=event_id,
             event_type=event_type
         )
-        
+
         db_session.commit()
         db_session.close()
-        
+
         return event_id
-        
+
     except Exception as e:
         logger.error(
             "Failed to publish outbox event",
@@ -91,25 +88,25 @@ def publish_outbox_event(event_type: str, payload: Dict[str, Any],
 
 
 @celery.task(bind=True, name="app.workers.tasks.outbox.process_outbox_events")
-def process_outbox_events(self) -> Dict[str, Any]:
+def process_outbox_events(self) -> dict[str, Any]:
     """Process pending outbox events and dispatch to appropriate queues."""
     task_start_time = time.time()
-    
+
     with with_logging_context(task_id=self.request.id):
         logger.info("Starting outbox event processing")
-        
+
         try:
             db_session = db_manager.get_session()
-            
+
             try:
                 # Get pending outbox events
                 pending_events = _get_pending_outbox_events(db_session)
-                
+
                 logger.info(f"Found {len(pending_events)} pending outbox events")
-                
+
                 processed_events = 0
                 failed_events = 0
-                
+
                 for event in pending_events:
                     try:
                         success = _process_single_outbox_event(event)
@@ -119,7 +116,7 @@ def process_outbox_events(self) -> Dict[str, Any]:
                         else:
                             _handle_event_retry(db_session, event)
                             failed_events += 1
-                            
+
                     except Exception as e:
                         logger.error(
                             "Failed to process outbox event",
@@ -128,19 +125,19 @@ def process_outbox_events(self) -> Dict[str, Any]:
                         )
                         _handle_event_retry(db_session, event, str(e))
                         failed_events += 1
-                
+
                 db_session.commit()
-                
+
                 processing_time = time.time() - task_start_time
-                
+
                 # Track metrics
                 metrics.track_celery_task(
-                    "process_outbox_events", 
-                    "outbox", 
-                    "success", 
+                    "process_outbox_events",
+                    "outbox",
+                    "success",
                     processing_time
                 )
-                
+
                 logger.info(
                     "Outbox event processing completed",
                     total_events=len(pending_events),
@@ -148,7 +145,7 @@ def process_outbox_events(self) -> Dict[str, Any]:
                     failed_events=failed_events,
                     processing_time=processing_time
                 )
-                
+
                 return {
                     "success": True,
                     "total_events": len(pending_events),
@@ -156,38 +153,38 @@ def process_outbox_events(self) -> Dict[str, Any]:
                     "failed_events": failed_events,
                     "processing_time": processing_time
                 }
-                
+
             finally:
                 db_session.close()
-                
+
         except Exception as e:
             processing_time = time.time() - task_start_time
-            
+
             logger.error(
                 "Outbox event processing failed",
                 error=str(e),
                 processing_time=processing_time,
                 exc_info=True
             )
-            
+
             metrics.track_celery_task(
-                "process_outbox_events", 
-                "outbox", 
-                "failure", 
+                "process_outbox_events",
+                "outbox",
+                "failure",
                 processing_time
             )
-            
+
             raise
 
 
 @celery.task(bind=True, name="app.workers.tasks.outbox.update_queue_metrics")
-def update_queue_metrics(self) -> Dict[str, Any]:
+def update_queue_metrics(self) -> dict[str, Any]:
     """Update queue size metrics for monitoring."""
     task_start_time = time.time()
-    
+
     with with_logging_context(task_id=self.request.id):
         logger.debug("Updating queue metrics")
-        
+
         try:
             # This is a placeholder - would query actual queue sizes
             queue_metrics = {
@@ -200,37 +197,37 @@ def update_queue_metrics(self) -> Dict[str, Any]:
                 "finalize": 1,
                 "outbox": 0
             }
-            
+
             for queue_name, size in queue_metrics.items():
                 metrics.update_celery_queue_size(queue_name, size)
-            
+
             processing_time = time.time() - task_start_time
-            
+
             logger.debug(
                 "Queue metrics updated",
                 total_queues=len(queue_metrics),
                 processing_time=processing_time
             )
-            
+
             return {
                 "success": True,
                 "queue_metrics": queue_metrics,
                 "processing_time": processing_time
             }
-            
+
         except Exception as e:
             logger.error("Queue metrics update failed", error=str(e))
             raise
 
 
 @celery.task(bind=True, name="app.workers.tasks.outbox.health_check_task")
-def health_check_task(self) -> Dict[str, Any]:
+def health_check_task(self) -> dict[str, Any]:
     """Perform health checks on system components."""
     task_start_time = time.time()
-    
+
     with with_logging_context(task_id=self.request.id):
         logger.debug("Performing system health checks")
-        
+
         try:
             health_status = {
                 "database": _check_database_health(),
@@ -238,10 +235,10 @@ def health_check_task(self) -> Dict[str, Any]:
                 "queues": _check_queue_health(),
                 "storage": _check_storage_health()
             }
-            
+
             overall_healthy = all(health_status.values())
             processing_time = time.time() - task_start_time
-            
+
             logger.info(
                 "Health check completed",
                 overall_healthy=overall_healthy,
@@ -249,22 +246,22 @@ def health_check_task(self) -> Dict[str, Any]:
                 redis_healthy=health_status["redis"],
                 processing_time=processing_time
             )
-            
+
             return {
                 "success": True,
                 "overall_healthy": overall_healthy,
                 "health_status": health_status,
                 "processing_time": processing_time
             }
-            
+
         except Exception as e:
             logger.error("Health check failed", error=str(e))
             raise
 
 
 # Helper functions
-def _check_duplicate_event(db_session: Session, event_type: str, 
-                          entity_id: str, payload: Dict[str, Any]) -> Optional[str]:
+def _check_duplicate_event(db_session: Session, event_type: str,
+                          entity_id: str, payload: dict[str, Any]) -> str | None:
     """Check for duplicate events based on content hash."""
     # This is a placeholder - would check deduplication table
     # In real implementation:
@@ -274,14 +271,14 @@ def _check_duplicate_event(db_session: Session, event_type: str,
     return None
 
 
-def _get_pending_outbox_events(db_session: Session, limit: int = 100) -> List[Dict[str, Any]]:
+def _get_pending_outbox_events(db_session: Session, limit: int = 100) -> list[dict[str, Any]]:
     """Get pending outbox events ready for processing."""
     # This is a placeholder - would query outbox_events table
     # In real implementation:
-    # SELECT * FROM outbox_events 
+    # SELECT * FROM outbox_events
     # WHERE status = 'pending' AND next_retry_at <= NOW()
     # ORDER BY created_at ASC LIMIT limit
-    
+
     # Placeholder data
     return [
         {
@@ -297,17 +294,17 @@ def _get_pending_outbox_events(db_session: Session, limit: int = 100) -> List[Di
     ]
 
 
-def _process_single_outbox_event(event: Dict[str, Any]) -> bool:
+def _process_single_outbox_event(event: dict[str, Any]) -> bool:
     """Process a single outbox event and dispatch to appropriate queue."""
     event_type = event["event_type"]
     payload = json.loads(event["payload"])
-    
+
     logger.debug(
         "Processing outbox event",
         event_id=event["id"],
         event_type=event_type
     )
-    
+
     try:
         # Route event to appropriate task based on event type
         if event_type == "post_created":
@@ -316,15 +313,15 @@ def _process_single_outbox_event(event: Dict[str, Any]) -> bool:
                 payload.get("update_data", {}),
                 payload["post_id"]
             )
-            
+
         elif event_type == "post_updated":
             # Handle post update event
             logger.info("Handling post update event", event_id=event["id"])
-            
+
         elif event_type == "media_uploaded":
             # Handle media upload event
             logger.info("Handling media upload event", event_id=event["id"])
-            
+
         else:
             logger.warning(
                 "Unknown event type",
@@ -332,9 +329,9 @@ def _process_single_outbox_event(event: Dict[str, Any]) -> bool:
                 event_type=event_type
             )
             return False
-        
+
         return True
-        
+
     except Exception as e:
         logger.error(
             "Failed to dispatch outbox event",
@@ -353,12 +350,12 @@ def _mark_event_processed(db_session: Session, event_id: str):
     logger.debug("Marked event as processed", event_id=event_id)
 
 
-def _handle_event_retry(db_session: Session, event: Dict[str, Any], error_message: str = None):
+def _handle_event_retry(db_session: Session, event: dict[str, Any], error_message: str = None):
     """Handle event retry logic with exponential backoff."""
     event_id = event["id"]
     retry_count = event.get("retry_count", 0) + 1
     max_retries = 5
-    
+
     if retry_count >= max_retries:
         # Mark as failed permanently
         logger.error(
@@ -371,16 +368,16 @@ def _handle_event_retry(db_session: Session, event: Dict[str, Any], error_messag
     else:
         # Schedule retry with exponential backoff
         backoff_seconds = min(60 * (2 ** retry_count), 3600)  # Max 1 hour
-        next_retry_at = datetime.utcnow() + timedelta(seconds=backoff_seconds)
-        
+        datetime.utcnow() + timedelta(seconds=backoff_seconds)
+
         logger.warning(
             "Scheduling event retry",
             event_id=event_id,
             retry_count=retry_count,
             next_retry_in_seconds=backoff_seconds
         )
-        
-        # UPDATE outbox_events SET retry_count = retry_count, 
+
+        # UPDATE outbox_events SET retry_count = retry_count,
         # next_retry_at = next_retry_at WHERE id = event_id
 
 

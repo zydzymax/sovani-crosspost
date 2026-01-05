@@ -4,16 +4,15 @@ CRUD for user data: accounts, posts, topics, schedules.
 """
 
 from datetime import datetime
-from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.logging import get_logger
-from .deps import get_db_async_session, get_current_user, check_subscription_active
+from .deps import check_subscription_active, get_current_user, get_db_async_session
 
 logger = get_logger("api.user")
 
@@ -24,11 +23,11 @@ router = APIRouter(prefix="/user", tags=["User API"])
 
 class AccountCreate(BaseModel):
     platform: str = Field(..., description="Platform: telegram, vk, instagram, tiktok, youtube, rutube, facebook, dzen")
-    access_token: Optional[str] = Field(None, description="Platform access token")
-    platform_user_id: Optional[str] = Field(None, description="Platform user ID")
-    username: Optional[str] = Field(None, description="Platform username")
-    display_name: Optional[str] = Field(None, description="Display name")
-    credentials: Optional[dict] = Field(None, description="Platform-specific credentials")
+    access_token: str | None = Field(None, description="Platform access token")
+    platform_user_id: str | None = Field(None, description="Platform user ID")
+    username: str | None = Field(None, description="Platform username")
+    display_name: str | None = Field(None, description="Display name")
+    credentials: dict | None = Field(None, description="Platform-specific credentials")
 
     @model_validator(mode='after')
     def validate_and_extract_credentials(self):
@@ -46,11 +45,11 @@ class AccountCreate(BaseModel):
                     if key in self.credentials:
                         self.platform_user_id = str(self.credentials[key])
                         break
-        
+
         # Validation: must have access_token
         if not self.access_token:
             raise ValueError('access_token is required (either directly or in credentials)')
-        
+
         return self
 
 
@@ -58,8 +57,8 @@ class AccountResponse(BaseModel):
     id: str
     platform: str
     platform_user_id: str
-    username: Optional[str]
-    display_name: Optional[str]
+    username: str | None
+    display_name: str | None
     is_active: bool
     is_verified: bool
     can_publish: bool
@@ -69,84 +68,84 @@ class AccountResponse(BaseModel):
 
 class TopicCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: str | None = None
     color: str = Field(default="#6366f1", pattern="^#[0-9a-fA-F]{6}$")
-    tone: Optional[str] = Field(None, description="Content tone: professional, casual, humorous")
-    hashtags: Optional[List[str]] = None
-    call_to_action: Optional[str] = None
+    tone: str | None = Field(None, description="Content tone: professional, casual, humorous")
+    hashtags: list[str] | None = None
+    call_to_action: str | None = None
 
 
 class TopicUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
-    color: Optional[str] = Field(None, pattern="^#[0-9a-fA-F]{6}$")
-    tone: Optional[str] = None
-    hashtags: Optional[List[str]] = None
-    call_to_action: Optional[str] = None
-    is_active: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    color: str | None = Field(None, pattern="^#[0-9a-fA-F]{6}$")
+    tone: str | None = None
+    hashtags: list[str] | None = None
+    call_to_action: str | None = None
+    is_active: bool | None = None
 
 
 class TopicResponse(BaseModel):
     id: str
     name: str
-    description: Optional[str]
+    description: str | None
     color: str
-    tone: Optional[str]
-    hashtags: Optional[List[str]]
-    call_to_action: Optional[str]
+    tone: str | None
+    hashtags: list[str] | None
+    call_to_action: str | None
     is_active: bool
     created_at: datetime
 
 
 class PostCreate(BaseModel):
     text: str = Field(..., min_length=1)
-    topic_id: Optional[str] = None
-    platforms: List[str] = Field(..., min_items=1)
-    scheduled_at: Optional[datetime] = None
-    media_urls: Optional[List[str]] = None
+    topic_id: str | None = None
+    platforms: list[str] = Field(..., min_items=1)
+    scheduled_at: datetime | None = None
+    media_urls: list[str] | None = None
 
 
 class PostResponse(BaseModel):
     id: str
     original_text: str
-    generated_caption: Optional[str]
+    generated_caption: str | None
     status: str
-    topic_id: Optional[str]
-    scheduled_at: Optional[datetime]
+    topic_id: str | None
+    scheduled_at: datetime | None
     created_at: datetime
-    published_at: Optional[datetime]
+    published_at: datetime | None
 
 
 class UserSettingsUpdate(BaseModel):
-    image_gen_provider: Optional[str] = Field(None, description="openai, stability, flux")
+    image_gen_provider: str | None = Field(None, description="openai, stability, flux")
 
 
 class UserStatsResponse(BaseModel):
     posts_count_this_month: int
     images_generated_this_month: int
     subscription_plan: str
-    demo_days_left: Optional[int]
+    demo_days_left: int | None
     accounts_count: int
     topics_count: int
 
 
 # ==================== ACCOUNTS ROUTES ====================
 
-@router.get("/accounts", response_model=List[AccountResponse])
+@router.get("/accounts", response_model=list[AccountResponse])
 async def list_accounts(
     user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_async_session)
 ):
     """List user's connected social accounts."""
-    from ..models.entities import UserSocialAccount, SocialAccount
-    
+    from ..models.entities import SocialAccount, UserSocialAccount
+
     result = await db.execute(
         select(UserSocialAccount, SocialAccount)
         .join(SocialAccount, UserSocialAccount.account_id == SocialAccount.id)
         .where(UserSocialAccount.user_id == user.id)
     )
     rows = result.all()
-    
+
     return [
         AccountResponse(
             id=str(usa.account_id),
@@ -172,10 +171,10 @@ async def add_account(
 ):
     """Add a new social account."""
     check_subscription_active(user)
-    
-    from ..models.entities import SocialAccount, UserSocialAccount, Platform
+
     from ..core.security import SecurityUtils
-    
+    from ..models.entities import Platform, SocialAccount, UserSocialAccount
+
     # Validate platform
     try:
         platform = Platform(data.platform.lower())
@@ -184,7 +183,7 @@ async def add_account(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid platform: {data.platform}"
         )
-    
+
     # Check if account already exists
     result = await db.execute(
         select(SocialAccount).where(
@@ -193,7 +192,7 @@ async def add_account(
         )
     )
     existing = result.scalar_one_or_none()
-    
+
     if existing:
         # Check if already linked to this user
         link_result = await db.execute(
@@ -207,7 +206,7 @@ async def add_account(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Account already connected"
             )
-        
+
         # Link existing account to user
         link = UserSocialAccount(
             user_id=user.id,
@@ -215,7 +214,7 @@ async def add_account(
         )
         db.add(link)
         await db.commit()
-        
+
         return AccountResponse(
             id=str(existing.id),
             platform=existing.platform.value if hasattr(existing.platform, 'value') else existing.platform,
@@ -228,7 +227,7 @@ async def add_account(
             is_primary=False,
             created_at=datetime.utcnow(),
         )
-    
+
     # Create new account
     account = SocialAccount(
         platform=platform,
@@ -239,7 +238,7 @@ async def add_account(
     )
     db.add(account)
     await db.flush()
-    
+
     # Link to user
     link = UserSocialAccount(
         user_id=user.id,
@@ -247,9 +246,9 @@ async def add_account(
     )
     db.add(link)
     await db.commit()
-    
+
     logger.info(f"Account added: {account.id} for user {user.id}")
-    
+
     return AccountResponse(
         id=str(account.id),
         platform=platform.value,
@@ -272,39 +271,39 @@ async def remove_account(
 ):
     """Remove a social account from user."""
     from ..models.entities import UserSocialAccount
-    
+
     result = await db.execute(
         delete(UserSocialAccount).where(
             UserSocialAccount.user_id == user.id,
             UserSocialAccount.account_id == account_id
         )
     )
-    
+
     if result.rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Account not found"
         )
-    
+
     await db.commit()
     return {"success": True, "message": "Account removed"}
 
 
 # ==================== TOPICS ROUTES ====================
 
-@router.get("/topics", response_model=List[TopicResponse])
+@router.get("/topics", response_model=list[TopicResponse])
 async def list_topics(
     user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_async_session)
 ):
     """List user's content topics."""
     from ..models.entities import Topic
-    
+
     result = await db.execute(
         select(Topic).where(Topic.user_id == user.id).order_by(Topic.created_at.desc())
     )
     topics = result.scalars().all()
-    
+
     return [
         TopicResponse(
             id=str(t.id),
@@ -329,9 +328,9 @@ async def create_topic(
 ):
     """Create a new content topic."""
     check_subscription_active(user)
-    
+
     from ..models.entities import Topic
-    
+
     topic = Topic(
         user_id=user.id,
         name=data.name,
@@ -344,7 +343,7 @@ async def create_topic(
     db.add(topic)
     await db.commit()
     await db.refresh(topic)
-    
+
     return TopicResponse(
         id=str(topic.id),
         name=topic.name,
@@ -367,24 +366,24 @@ async def update_topic(
 ):
     """Update a content topic."""
     from ..models.entities import Topic
-    
+
     result = await db.execute(
         select(Topic).where(Topic.id == topic_id, Topic.user_id == user.id)
     )
     topic = result.scalar_one_or_none()
-    
+
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
-    
+
     # Update fields
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(topic, field, value)
-    
+
     topic.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(topic)
-    
+
     return TopicResponse(
         id=str(topic.id),
         name=topic.name,
@@ -406,14 +405,14 @@ async def delete_topic(
 ):
     """Delete a content topic."""
     from ..models.entities import Topic
-    
+
     result = await db.execute(
         delete(Topic).where(Topic.id == topic_id, Topic.user_id == user.id)
     )
-    
+
     if result.rowcount == 0:
         raise HTTPException(status_code=404, detail="Topic not found")
-    
+
     await db.commit()
     return {"success": True, "message": "Topic deleted"}
 
@@ -426,26 +425,26 @@ async def get_user_stats(
     db: AsyncSession = Depends(get_db_async_session)
 ):
     """Get user statistics."""
-    from ..models.entities import UserSocialAccount, Topic, SubscriptionPlan
-    
+    from ..models.entities import SubscriptionPlan, Topic, UserSocialAccount
+
     # Count accounts
     acc_result = await db.execute(
         select(UserSocialAccount).where(UserSocialAccount.user_id == user.id)
     )
     accounts_count = len(acc_result.scalars().all())
-    
+
     # Count topics
     topic_result = await db.execute(
-        select(Topic).where(Topic.user_id == user.id, Topic.is_active == True)
+        select(Topic).where(Topic.user_id == user.id, Topic.is_active)
     )
     topics_count = len(topic_result.scalars().all())
-    
+
     # Calculate demo days left
     demo_days_left = None
     if user.subscription_plan == SubscriptionPlan.DEMO and user.demo_started_at:
         days_passed = (datetime.utcnow() - user.demo_started_at).days
         demo_days_left = max(0, 7 - days_passed)
-    
+
     return UserStatsResponse(
         posts_count_this_month=user.posts_count_this_month,
         images_generated_this_month=user.images_generated_this_month,
@@ -464,7 +463,7 @@ async def update_settings(
 ):
     """Update user settings."""
     from ..models.entities import ImageGenProvider
-    
+
     if data.image_gen_provider:
         try:
             provider = ImageGenProvider(data.image_gen_provider.lower())
@@ -474,10 +473,10 @@ async def update_settings(
                 status_code=400,
                 detail=f"Invalid provider: {data.image_gen_provider}"
             )
-    
+
     user.updated_at = datetime.utcnow()
     await db.commit()
-    
+
     return {
         "success": True,
         "image_gen_provider": user.image_gen_provider.value
@@ -493,9 +492,9 @@ class ImageGenerateRequest(BaseModel):
 
 class ImageGenerateResponse(BaseModel):
     success: bool
-    image_url: Optional[str] = None
-    image_base64: Optional[str] = None
-    error: Optional[str] = None
+    image_url: str | None = None
+    image_base64: str | None = None
+    error: str | None = None
     provider: str
     cost_estimate: float
 
@@ -508,10 +507,10 @@ async def generate_image(
 ):
     """Generate an image using user's selected provider."""
     check_subscription_active(user)
-    
-    from ..services.image_gen import image_service
+
     from ..models.entities import SubscriptionPlan
-    
+    from ..services.image_gen import image_service
+
     # Check usage limits
     if user.subscription_plan == SubscriptionPlan.DEMO:
         if user.images_generated_this_month >= 5:
@@ -525,20 +524,20 @@ async def generate_image(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail="Monthly image limit reached."
             )
-    
+
     # Generate image
     result = await image_service.generate(
         prompt=data.prompt,
         provider=user.image_gen_provider.value,
         size=data.size
     )
-    
+
     if result.success:
         # Update usage counter
         user.images_generated_this_month += 1
         user.updated_at = datetime.utcnow()
         await db.commit()
-    
+
     return ImageGenerateResponse(
         success=result.success,
         image_url=result.image_url,
@@ -553,7 +552,7 @@ async def generate_image(
 async def get_image_providers():
     """Get available image generation providers."""
     from ..services.image_gen import image_service
-    
+
     return {
         "providers": image_service.get_available_providers(),
         "default": "openai"

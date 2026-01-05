@@ -10,31 +10,30 @@ syncs media files automatically.
 """
 
 import os
-import asyncio
-from typing import Optional, List, Dict, Any, Union
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-from ..core.logging import get_logger
 from ..adapters.google_drive import (
-    GoogleDriveAdapter,
-    google_drive,
     CloudFile,
-    SyncResult,
+    GoogleDriveAdapter,
     MediaType,
-    get_google_oauth_url,
+    SyncResult,
     exchange_google_code,
-    refresh_google_token
+    get_google_oauth_url,
+    google_drive,
+    refresh_google_token,
 )
 from ..adapters.yandex_disk import (
     YandexDiskAdapter,
-    yandex_disk,
-    get_yandex_oauth_url,
     exchange_yandex_code,
-    refresh_yandex_token
+    get_yandex_oauth_url,
+    refresh_yandex_token,
+    yandex_disk,
 )
+from ..core.logging import get_logger
 
 logger = get_logger("services.cloud_storage")
 
@@ -63,13 +62,13 @@ class CloudConnection:
     folder_id: str  # Google Drive folder ID or Yandex Disk path
     folder_name: str
     status: ConnectionStatus
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    token_expires_at: Optional[datetime] = None
-    public_url: Optional[str] = None  # For public folders (Yandex)
-    last_sync_at: Optional[datetime] = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_expires_at: datetime | None = None
+    public_url: str | None = None  # For public folders (Yandex)
+    last_sync_at: datetime | None = None
     files_synced: int = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -114,7 +113,7 @@ class CloudStorageService:
         self,
         provider: CloudProvider,
         redirect_uri: str,
-        state: Optional[str] = None
+        state: str | None = None
     ) -> str:
         """
         Get OAuth authorization URL for provider.
@@ -139,7 +138,7 @@ class CloudStorageService:
         provider: CloudProvider,
         code: str,
         redirect_uri: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Exchange OAuth code for tokens.
 
@@ -162,7 +161,7 @@ class CloudStorageService:
         self,
         provider: CloudProvider,
         refresh_token: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Refresh expired access token.
 
@@ -186,7 +185,7 @@ class CloudStorageService:
         self,
         provider: CloudProvider,
         url_or_id: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Extract folder ID from sharing URL or return ID as-is.
 
@@ -214,9 +213,9 @@ class CloudStorageService:
         self,
         provider: CloudProvider,
         folder_id: str,
-        credentials: Optional[Dict[str, Any]] = None,
-        public_url: Optional[str] = None
-    ) -> Optional[CloudFolderInfo]:
+        credentials: dict[str, Any] | None = None,
+        public_url: str | None = None
+    ) -> CloudFolderInfo | None:
         """
         Get information about a cloud folder.
 
@@ -320,10 +319,10 @@ class CloudStorageService:
         self,
         provider: CloudProvider,
         folder_id: str,
-        credentials: Optional[Dict[str, Any]] = None,
-        public_url: Optional[str] = None,
-        media_types: Optional[List[str]] = None
-    ) -> List[CloudFile]:
+        credentials: dict[str, Any] | None = None,
+        public_url: str | None = None,
+        media_types: list[str] | None = None
+    ) -> list[CloudFile]:
         """
         List all media files in a cloud folder.
 
@@ -368,9 +367,9 @@ class CloudStorageService:
         provider: CloudProvider,
         folder_id: str,
         user_id: str,
-        credentials: Optional[Dict[str, Any]] = None,
-        public_url: Optional[str] = None,
-        media_types: Optional[List[str]] = None
+        credentials: dict[str, Any] | None = None,
+        public_url: str | None = None,
+        media_types: list[str] | None = None
     ) -> SyncResult:
         """
         Sync all media from a cloud folder to local storage.
@@ -443,8 +442,8 @@ class CloudStorageService:
         provider: CloudProvider,
         file_id: str,
         output_path: str,
-        credentials: Optional[Dict[str, Any]] = None,
-        download_url: Optional[str] = None
+        credentials: dict[str, Any] | None = None,
+        download_url: str | None = None
     ) -> bool:
         """
         Download a single file from cloud storage.
@@ -489,9 +488,9 @@ class CloudStorageService:
         self,
         provider: CloudProvider,
         folder_id: str,
-        credentials: Optional[Dict[str, Any]] = None,
-        public_url: Optional[str] = None
-    ) -> tuple[bool, Optional[str]]:
+        credentials: dict[str, Any] | None = None,
+        public_url: str | None = None
+    ) -> tuple[bool, str | None]:
         """
         Validate that a cloud connection is working.
 
@@ -523,7 +522,7 @@ class CloudStorageService:
         except Exception as e:
             return False, str(e)
 
-    def get_expected_folder_structure(self) -> Dict[str, Any]:
+    def get_expected_folder_structure(self) -> dict[str, Any]:
         """Get expected folder structure for user guidance."""
         return {
             "description": "Create folders with this structure in your cloud storage",

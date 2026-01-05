@@ -5,18 +5,15 @@ Supports OpenAI TTS-1 and TTS-1-HD for voice synthesis.
 
 import asyncio
 import os
-from datetime import datetime
-from typing import Optional, Dict, Any, BinaryIO
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-import tempfile
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.logging import get_logger
-
 
 logger = get_logger("services.tts_openai")
 
@@ -71,12 +68,12 @@ class AudioFormat(str, Enum):
 class TTSResult:
     """Result of TTS generation."""
     success: bool
-    audio_data: Optional[bytes] = None
-    audio_url: Optional[str] = None
-    file_path: Optional[str] = None
+    audio_data: bytes | None = None
+    audio_url: str | None = None
+    file_path: str | None = None
     duration_seconds: float = 0
     character_count: int = 0
-    error: Optional[str] = None
+    error: str | None = None
     cost_estimate: float = 0.0  # $0.015 per 1K chars for tts-1, $0.030 for tts-1-hd
 
 
@@ -157,7 +154,7 @@ class OpenAITTSService:
         speed = max(0.25, min(4.0, speed))
 
         logger.info(
-            f"Starting TTS generation",
+            "Starting TTS generation",
             voice=voice.value,
             model=model.value,
             chars=len(text)
@@ -190,7 +187,7 @@ class OpenAITTSService:
             cost = self._calculate_cost(text, model)
 
             logger.info(
-                f"TTS generation completed",
+                "TTS generation completed",
                 size_bytes=len(audio_data),
                 cost=cost
             )
@@ -370,7 +367,7 @@ class OpenAITTSService:
 
         return chunks if chunks else [text[:max_chunk]]
 
-    async def list_voices(self) -> list[Dict[str, str]]:
+    async def list_voices(self) -> list[dict[str, str]]:
         """List available voices with descriptions."""
         return [
             {"id": "alloy", "name": "Alloy", "description": "Neutral, balanced voice"},
@@ -388,7 +385,7 @@ class OpenAITTSService:
 
 
 # Singleton instance
-_tts_service: Optional[OpenAITTSService] = None
+_tts_service: OpenAITTSService | None = None
 
 
 def get_tts_service() -> OpenAITTSService:

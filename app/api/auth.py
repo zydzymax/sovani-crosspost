@@ -5,25 +5,23 @@ Email-based authentication with JWT tokens.
 
 import hashlib
 import hmac
-import time
 import random
-import string
 import re
+import string
+import time
 from datetime import datetime, timedelta
-from typing import Optional
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field, EmailStr
-import jwt
 import httpx
-from sqlalchemy import select, or_
+import jwt
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
+from ..services.email_service import EmailConfig, get_email_service, init_email_service
 from .deps import get_db_async_session, get_redis_client
-from ..services.email_service import EmailService, EmailConfig, get_email_service, init_email_service
 
 logger = get_logger("api.auth")
 
@@ -55,9 +53,9 @@ class TelegramAuthData(BaseModel):
     """Telegram Login Widget data (legacy support)."""
     id: int = Field(..., description="Telegram user ID")
     first_name: str = Field(..., description="User first name")
-    last_name: Optional[str] = Field(None, description="User last name")
-    username: Optional[str] = Field(None, description="Telegram username")
-    photo_url: Optional[str] = Field(None, description="Profile photo URL")
+    last_name: str | None = Field(None, description="User last name")
+    username: str | None = Field(None, description="Telegram username")
+    photo_url: str | None = Field(None, description="Profile photo URL")
     auth_date: int = Field(..., description="Auth timestamp")
     hash: str = Field(..., description="Data hash for verification")
 
@@ -92,14 +90,14 @@ class VerifyCodeRequest(BaseModel):
 class UserResponse(BaseModel):
     """User info response."""
     id: str
-    email: Optional[str]
+    email: str | None
     email_verified: bool = False
-    telegram_id: Optional[int]
-    telegram_username: Optional[str]
-    first_name: Optional[str]
-    last_name: Optional[str]
-    company_name: Optional[str]
-    photo_url: Optional[str]
+    telegram_id: int | None
+    telegram_username: str | None
+    first_name: str | None
+    last_name: str | None
+    company_name: str | None
+    photo_url: str | None
     is_active: bool
     created_at: datetime
 
@@ -111,7 +109,7 @@ class SubscriptionInfo(BaseModel):
     plan_code: str
     plan_name: str
     status: str
-    expires_at: Optional[datetime]
+    expires_at: datetime | None
 
 
 class MeResponse(BaseModel):
@@ -127,7 +125,7 @@ def verify_telegram_auth(data: TelegramAuthData) -> bool:
     # Check auth_date is not too old (24 hours)
     if time.time() - data.auth_date > 86400:
         return False
-    
+
     # Build data-check-string
     check_dict = {
         "id": str(data.id),
@@ -140,23 +138,23 @@ def verify_telegram_auth(data: TelegramAuthData) -> bool:
         check_dict["username"] = data.username
     if data.photo_url:
         check_dict["photo_url"] = data.photo_url
-    
+
     # Sort and join
     data_check_string = "\n".join(
         f"{k}={v}" for k, v in sorted(check_dict.items())
     )
-    
+
     # Create secret key from bot token
     bot_token = settings.telegram.bot_token.get_secret_value()
     secret_key = hashlib.sha256(bot_token.encode()).digest()
-    
+
     # Calculate hash
     calculated_hash = hmac.new(
         secret_key,
         data_check_string.encode(),
         hashlib.sha256
     ).hexdigest()
-    
+
     return calculated_hash == data.hash
 
 
@@ -190,7 +188,7 @@ def create_jwt_token_legacy(user_id: str, telegram_id: int) -> tuple[str, int]:
     return token, expires_in
 
 
-def decode_jwt_token(token: str) -> Optional[dict]:
+def decode_jwt_token(token: str) -> dict | None:
     """Decode and verify JWT token."""
     try:
         secret_key = settings.security.jwt_secret_key.get_secret_value()
@@ -224,16 +222,16 @@ async def telegram_login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid Telegram auth data"
         )
-    
+
     # Import here to avoid circular imports
-    from ..models.entities import User, SubscriptionPlan
-    
+    from ..models.entities import SubscriptionPlan, User
+
     # Find or create user
     result = await db.execute(
         select(User).where(User.telegram_id == auth_data.id)
     )
     user = result.scalar_one_or_none()
-    
+
     if user is None:
         # Create new user with demo subscription
         user = User(
@@ -258,13 +256,12 @@ async def telegram_login(
         user.updated_at = datetime.utcnow()
         await db.commit()
         logger.info(f"User logged in: {user.id} (tg: {auth_data.id})")
-    
+
     # Calculate demo days left
-    demo_days_left = None
     if user.subscription_plan == SubscriptionPlan.DEMO and user.demo_started_at:
         days_passed = (datetime.utcnow() - user.demo_started_at).days
-        demo_days_left = max(0, 7 - days_passed)
-    
+        max(0, 7 - days_passed)
+
     # Create JWT token (use email if available, else legacy telegram)
     if user.email:
         token, expires_in = create_jwt_token(str(user.id), user.email)
@@ -331,7 +328,7 @@ async def send_telegram_message(chat_id: int, text: str) -> bool:
             return False
 
 
-async def get_telegram_user_by_username(username: str) -> Optional[dict]:
+async def get_telegram_user_by_username(username: str) -> dict | None:
     """Get Telegram user info by username using getChat."""
     bot_token = settings.telegram.bot_token.get_secret_value()
     url = f"https://api.telegram.org/bot{bot_token}/getChat"
@@ -406,7 +403,7 @@ async def send_auth_code(
         )
     except RuntimeError:
         # Email service not configured
-        logger.warning(f"Email service not configured")
+        logger.warning("Email service not configured")
     except Exception as e:
         logger.error(f"Email sending error: {e}")
 
@@ -471,7 +468,7 @@ async def verify_auth_code(
     await redis.delete(redis_key)
 
     # Import here to avoid circular imports
-    from ..models.entities import User, SubscriptionPlan
+    from ..models.entities import SubscriptionPlan, User
 
     # Find user by email
     result = await db.execute(

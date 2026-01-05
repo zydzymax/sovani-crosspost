@@ -13,14 +13,25 @@ This module defines all database entities:
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from sqlalchemy import (
-    Column, String, Integer, BigInteger, Text, Boolean, DateTime, Date,
-    ForeignKey, JSON, Enum as SQLEnum, Float, Index, UniqueConstraint
+    BigInteger,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
 )
-from sqlalchemy.orm import relationship, Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.orm import relationship
 
 from .db import Base
 
@@ -137,7 +148,7 @@ class Post(Base):
         Index("ix_posts_source", "source_platform", "source_chat_id"),
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -196,7 +207,7 @@ class MediaAsset(Base):
     # Relationships
     post = relationship("Post", back_populates="media_assets")
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -250,7 +261,7 @@ class SocialAccount(Base):
         Index("ix_social_accounts_active", "platform", "is_active"),
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary (without sensitive data)."""
         return {
             "id": str(self.id),
@@ -387,7 +398,7 @@ class Schedule(Base):
     last_run_at = Column(DateTime, nullable=True)
     next_run_at = Column(DateTime, nullable=True)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -678,7 +689,7 @@ class ContentPlan(Base):
     activated_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -727,28 +738,28 @@ class GenerationStep(str, Enum):
 
 class PostGenerationProgress(Base):
     """Tracks generation progress for each post in a content plan."""
-    
+
     __tablename__ = "post_generation_progress"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     content_plan_id = Column(UUID(as_uuid=True), ForeignKey("content_plans.id", ondelete="CASCADE"), nullable=False, index=True)
     post_index = Column(Integer, nullable=False)
-    
+
     post_date = Column(Date, nullable=False)
     post_topic = Column(String(500), nullable=True)
-    
+
     steps = Column(JSONB, nullable=False, default=dict)
     overall_status = Column(SQLEnum(GenerationStepStatus), default=GenerationStepStatus.PENDING)
     progress_percent = Column(Integer, default=0)
-    
+
     last_error = Column(Text, nullable=True)
     error_count = Column(Integer, default=0)
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -802,7 +813,7 @@ class VideoGenTask(Base):
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -892,7 +903,7 @@ class CloudStorageConnection(Base):
         Index("ix_cloud_connections_status", "status", "sync_enabled"),
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary (without sensitive tokens)."""
         return {
             "id": str(self.id),
@@ -959,7 +970,7 @@ class CloudSyncedFile(Base):
         Index("ix_cloud_synced_files_media_type", "connection_id", "media_type"),
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -1037,7 +1048,7 @@ class FraudEvent(Base):
         Index("ix_fraud_events_risk_created", "risk_level", "created_at"),
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -1093,7 +1104,7 @@ class BlockedIP(Base):
         Index("ix_blocked_ips_expires", "expires_at"),
     )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return {
             "id": str(self.id),
@@ -1430,50 +1441,50 @@ class OptimizationMode(str, Enum):
 
 class PostMetrics(Base):
     """Time-series engagement metrics for published posts."""
-    
+
     __tablename__ = "post_metrics"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     publish_result_id = Column(UUID(as_uuid=True), ForeignKey("publish_results.id", ondelete="CASCADE"), nullable=False)
     post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
     platform = Column(String(50), nullable=False, index=True)
-    
+
     # Core metrics
     views = Column(Integer, default=0)
     likes = Column(Integer, default=0)
     comments = Column(Integer, default=0)
     shares = Column(Integer, default=0)
     saves = Column(Integer, default=0)
-    
+
     # Calculated metrics
     engagement_rate = Column(Float, default=0)  # (likes+comments+shares)/views
     click_through_rate = Column(Float, default=0)
-    
+
     # Platform-specific (JSONB)
     platform_metrics = Column(JSONB, default=dict)
     audience_data = Column(JSONB, default=dict)
-    
+
     # Growth tracking
     followers_before = Column(Integer, nullable=True)
     followers_after = Column(Integer, nullable=True)
     followers_gained = Column(Integer, default=0)
-    
+
     # Time tracking
     hours_since_publish = Column(Integer, default=0)
     measured_at = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relationships
     post = relationship("Post", backref="metrics")
     publish_result = relationship("PublishResult", backref="metrics")
-    
+
     def calculate_engagement_rate(self):
         """Calculate engagement rate from metrics."""
         if self.views and self.views > 0:
             self.engagement_rate = (self.likes + self.comments + self.shares) / self.views
         return self.engagement_rate
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": str(self.id),
             "post_id": str(self.post_id),
@@ -1493,62 +1504,62 @@ class PostMetrics(Base):
 
 class ContentInsight(Base):
     """AI-generated insights and recommendations."""
-    
+
     __tablename__ = "content_insights"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # Scope
     post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=True)
     platform = Column(String(50), nullable=True)
-    
+
     # Insight details
     insight_type = Column(SQLEnum(InsightType), nullable=False)
     priority = Column(SQLEnum(InsightPriority), default=InsightPriority.MEDIUM)
     status = Column(SQLEnum(InsightStatus), default=InsightStatus.PENDING)
-    
+
     # Content
     title = Column(String(255), nullable=False)
     summary = Column(Text, nullable=False)
     detailed_analysis = Column(Text, nullable=True)
-    
+
     # Recommendations
     recommendations = Column(JSONB, default=list)
     confidence_score = Column(Float, default=0.8)
     ai_reasoning = Column(Text, nullable=True)
     supporting_data = Column(JSONB, default=dict)
-    
+
     # Auto-action
     auto_action_type = Column(String(50), nullable=True)
     auto_action_payload = Column(JSONB, nullable=True)
     auto_action_executed = Column(Boolean, default=False)
     auto_action_result = Column(JSONB, nullable=True)
-    
+
     # User interaction
     user_feedback = Column(String(20), nullable=True)
     user_notes = Column(Text, nullable=True)
-    
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     shown_at = Column(DateTime, nullable=True)
     applied_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime, nullable=True)
-    
+
     # Relationships
     post = relationship("Post", backref="insights")
-    
+
     def mark_shown(self):
         self.status = InsightStatus.SHOWN
         self.shown_at = datetime.utcnow()
-    
+
     def mark_applied(self, feedback: str = None):
         self.status = InsightStatus.APPLIED
         self.applied_at = datetime.utcnow()
         if feedback:
             self.user_feedback = feedback
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": str(self.id),
             "post_id": str(self.post_id) if self.post_id else None,
@@ -1568,39 +1579,39 @@ class ContentInsight(Base):
 
 class AnalyticsSettings(Base):
     """User preferences for analytics and optimization."""
-    
+
     __tablename__ = "analytics_settings"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    
+
     # Collection settings
     collect_metrics = Column(Boolean, default=True)
     metrics_frequency_hours = Column(Integer, default=24)
-    
+
     # Optimization mode
     optimization_mode = Column(SQLEnum(OptimizationMode), default=OptimizationMode.HINTS_ONLY)
-    
+
     # Feature toggles
     auto_adjust_timing = Column(Boolean, default=False)
     auto_optimize_hashtags = Column(Boolean, default=False)
     auto_adjust_content_length = Column(Boolean, default=False)
     auto_suggest_topics = Column(Boolean, default=True)
-    
+
     # Notifications
     notify_on_viral = Column(Boolean, default=True)
     notify_on_drop = Column(Boolean, default=True)
     notify_weekly_report = Column(Boolean, default=True)
-    
+
     # Thresholds
     viral_threshold_multiplier = Column(Float, default=3.0)
     drop_threshold_percent = Column(Integer, default=50)
     benchmark_period_days = Column(Integer, default=30)
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "optimization_mode": self.optimization_mode.value,
             "collect_metrics": self.collect_metrics,
@@ -1614,17 +1625,17 @@ class AnalyticsSettings(Base):
 
 class PerformanceBenchmark(Base):
     """Aggregated performance data for comparison."""
-    
+
     __tablename__ = "performance_benchmarks"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     platform = Column(String(50), nullable=False)
-    
+
     # Period
     period_start = Column(Date, nullable=False)
     period_end = Column(Date, nullable=False)
-    
+
     # Aggregated metrics
     total_posts = Column(Integer, default=0)
     avg_views = Column(Float, default=0)
@@ -1632,28 +1643,28 @@ class PerformanceBenchmark(Base):
     avg_comments = Column(Float, default=0)
     avg_shares = Column(Float, default=0)
     avg_engagement_rate = Column(Float, default=0)
-    
+
     # Best/worst performers
     best_performing_post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=True)
     worst_performing_post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=True)
-    
+
     # Patterns
     best_posting_times = Column(JSONB, default=list)
     best_days_of_week = Column(JSONB, default=list)
     top_hashtags = Column(JSONB, default=list)
     top_content_types = Column(JSONB, default=list)
-    
+
     # Growth
     followers_start = Column(Integer, nullable=True)
     followers_end = Column(Integer, nullable=True)
     followers_growth_rate = Column(Float, nullable=True)
-    
+
     # AI summary
     period_summary = Column(Text, nullable=True)
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": str(self.id),
             "platform": self.platform,

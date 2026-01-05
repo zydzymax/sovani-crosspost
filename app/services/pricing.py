@@ -4,12 +4,10 @@ Credit-based system where expensive providers consume more credits.
 Each subscription tier includes a fixed number of credits.
 """
 
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
+from typing import Any
 
 from ..core.logging import get_logger
-
 
 logger = get_logger("services.pricing")
 
@@ -295,31 +293,31 @@ class CreditsUsage:
     image_credits_used: int
     video_credits_used: int
     tts_credits_used: int
-    
+
     image_credits_included: int
     video_credits_included: int
     tts_credits_included: int
-    
+
     image_overage: int = 0
     video_overage: int = 0
     tts_overage: int = 0
-    
+
     overage_cost_usd: float = 0.0
 
 
-@dataclass 
+@dataclass
 class PlanRecommendation:
     """Recommended plan with breakdown."""
     plan_id: str
     plan_name: str
     monthly_cost_rub: float
     monthly_cost_usd: float
-    
+
     # What you get
-    images_available: Dict[str, int]  # provider -> count
-    videos_available: Dict[str, int]   # provider -> count  
-    tts_chars_available: Dict[str, int] # provider -> chars
-    
+    images_available: dict[str, int]  # provider -> count
+    videos_available: dict[str, int]   # provider -> count
+    tts_chars_available: dict[str, int] # provider -> chars
+
     # Overage if any
     overage_cost_usd: float = 0.0
     total_cost_usd: float = 0.0
@@ -336,11 +334,11 @@ class PricingService:
     def __init__(self):
         logger.info("Pricing service initialized")
 
-    def get_platforms(self) -> List[Dict[str, Any]]:
+    def get_platforms(self) -> list[dict[str, Any]]:
         """Get all available platforms."""
         return [{"id": k, **v} for k, v in PLATFORM_COSTS.items()]
 
-    def get_image_providers(self) -> List[Dict[str, Any]]:
+    def get_image_providers(self) -> list[dict[str, Any]]:
         """Get all image providers with credit costs."""
         result = []
         for provider_id, data in IMAGE_PROVIDERS.items():
@@ -353,7 +351,7 @@ class PricingService:
             result.append(provider)
         return result
 
-    def get_video_providers(self) -> List[Dict[str, Any]]:
+    def get_video_providers(self) -> list[dict[str, Any]]:
         """Get all video providers with credit costs."""
         result = []
         for provider_id, data in VIDEO_PROVIDERS.items():
@@ -366,7 +364,7 @@ class PricingService:
             result.append(provider)
         return result
 
-    def get_tts_providers(self) -> List[Dict[str, Any]]:
+    def get_tts_providers(self) -> list[dict[str, Any]]:
         """Get all TTS providers with credit costs."""
         result = []
         for provider_id, data in TTS_PROVIDERS.items():
@@ -379,7 +377,7 @@ class PricingService:
             result.append(provider)
         return result
 
-    def get_subscription_plans(self) -> List[Dict[str, Any]]:
+    def get_subscription_plans(self) -> list[dict[str, Any]]:
         """Get all subscription plans."""
         return [{"id": k, **v} for k, v in SUBSCRIPTION_PLANS.items()]
 
@@ -395,29 +393,29 @@ class PricingService:
     ) -> CreditsUsage:
         """Calculate credits usage for given providers and quantities."""
         plan = SUBSCRIPTION_PLANS.get(plan_id, SUBSCRIPTION_PLANS["pro"])
-        
+
         # Image credits
         img_provider = IMAGE_PROVIDERS.get(image_provider, IMAGE_PROVIDERS["nanobana"])
         image_credits = images_count * img_provider["credits_per_image"]
         image_overage = max(0, image_credits - plan["image_credits"])
-        
+
         # Video credits
         vid_provider = VIDEO_PROVIDERS.get(video_provider, VIDEO_PROVIDERS["minimax"])
         video_credits = video_clips * vid_provider["credits_per_5sec"]
         video_overage = max(0, video_credits - plan["video_credits"])
-        
+
         # TTS credits
         tts_prov = TTS_PROVIDERS.get(tts_provider, TTS_PROVIDERS["openai-tts"])
         tts_credits = (tts_chars / 1000) * tts_prov["credits_per_1k_chars"]
         tts_overage = max(0, tts_credits - plan["tts_credits"])
-        
+
         # Calculate overage cost
         overage_cost = (
             image_overage * OVERAGE_PRICING["image_credit"] +
             video_overage * OVERAGE_PRICING["video_credit"] +
             tts_overage * OVERAGE_PRICING["tts_credit"]
         )
-        
+
         return CreditsUsage(
             image_credits_used=int(image_credits),
             video_credits_used=int(video_credits),
@@ -445,46 +443,46 @@ class PricingService:
         img_prov = IMAGE_PROVIDERS.get(image_provider, IMAGE_PROVIDERS["nanobana"])
         vid_prov = VIDEO_PROVIDERS.get(video_provider, VIDEO_PROVIDERS["minimax"]) if video_provider else None
         tts_prov = TTS_PROVIDERS.get(tts_provider, TTS_PROVIDERS["openai-tts"]) if tts_provider else None
-        
+
         # Calculate required credits
         image_credits_needed = images_per_month * img_prov["credits_per_image"]
         video_credits_needed = video_clips_per_month * (vid_prov["credits_per_5sec"] if vid_prov else 0)
         tts_credits_needed = (tts_chars_per_month / 1000) * (tts_prov["credits_per_1k_chars"] if tts_prov else 0)
-        
+
         # Find best plan
         best_plan = "business"
         for plan_id in ["starter", "pro", "business"]:
             plan = SUBSCRIPTION_PLANS[plan_id]
-            
+
             # Check platform limit
             if plan["platforms_limit"] != -1 and platforms_count > plan["platforms_limit"]:
                 continue
-            
+
             # Check if credits fit
             if (image_credits_needed <= plan["image_credits"] and
                 video_credits_needed <= plan["video_credits"] and
                 tts_credits_needed <= plan["tts_credits"]):
                 best_plan = plan_id
                 break
-        
+
         plan = SUBSCRIPTION_PLANS[best_plan]
-        
+
         # Calculate what you get
         images_available = {
             pid: plan["image_credits"] // pdata["credits_per_image"]
             for pid, pdata in IMAGE_PROVIDERS.items()
         }
-        
+
         videos_available = {
             pid: plan["video_credits"] // pdata["credits_per_5sec"]
             for pid, pdata in VIDEO_PROVIDERS.items()
         }
-        
+
         tts_available = {
             pid: (plan["tts_credits"] // pdata["credits_per_1k_chars"]) * 1000
             for pid, pdata in TTS_PROVIDERS.items()
         }
-        
+
         # Calculate overage
         overage_cost = 0.0
         if image_credits_needed > plan["image_credits"]:
@@ -493,10 +491,10 @@ class PricingService:
             overage_cost += (video_credits_needed - plan["video_credits"]) * OVERAGE_PRICING["video_credit"]
         if tts_credits_needed > plan["tts_credits"]:
             overage_cost += (tts_credits_needed - plan["tts_credits"]) * OVERAGE_PRICING["tts_credit"]
-        
+
         total_usd = plan["price_usd"] + overage_cost
         total_rub = total_usd * USD_TO_RUB
-        
+
         return PlanRecommendation(
             plan_id=best_plan,
             plan_name=plan["display_name"],
@@ -510,10 +508,10 @@ class PricingService:
             total_cost_rub=round(total_rub, -1)
         )
 
-    def get_provider_comparison(self, plan_id: str = "pro") -> Dict[str, Any]:
+    def get_provider_comparison(self, plan_id: str = "pro") -> dict[str, Any]:
         """Get comparison of all providers for a plan."""
         plan = SUBSCRIPTION_PLANS.get(plan_id, SUBSCRIPTION_PLANS["pro"])
-        
+
         return {
             "plan": {"id": plan_id, **plan},
             "image_providers": [
