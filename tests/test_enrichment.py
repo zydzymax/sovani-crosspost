@@ -106,12 +106,7 @@ class TestProductEnrichmentService:
     def test_product_attributes_dataclass(self):
         """Test ProductAttributes dataclass functionality."""
         # Test basic creation
-        product = ProductAttributes(
-            external_id="test_001",
-            source="test",
-            title="Test Product",
-            price=1000.0
-        )
+        product = ProductAttributes(external_id="test_001", source="test", title="Test Product", price=1000.0)
 
         assert product.external_id == "test_001"
         assert product.source == "test"
@@ -126,11 +121,7 @@ class TestProductEnrichmentService:
     def test_product_to_dict_conversion(self):
         """Test ProductAttributes to dictionary conversion."""
         product = ProductAttributes(
-            external_id="test_001",
-            source="test",
-            title="Test Product",
-            colors=["Red", "Blue"],
-            sizes=["M", "L"]
+            external_id="test_001", source="test", title="Test Product", colors=["Red", "Blue"], sizes=["M", "L"]
         )
 
         product_dict = product.to_dict()
@@ -153,11 +144,11 @@ class TestProductEnrichmentService:
             price=2500.0,
             original_price=3500.0,
             colors=["Красный", "Синий"],
-            sizes=["S", "M", "L"]
+            sizes=["S", "M", "L"],
         )
 
         context = product.to_llm_context()
-        lines = context.split('\n')
+        lines = context.split("\n")
 
         assert "Товар: Тестовое платье" in lines
         assert "Бренд: TestBrand" in lines
@@ -172,11 +163,7 @@ class TestProductEnrichmentService:
         from datetime import datetime, timedelta
 
         # Fresh product (just created)
-        product = ProductAttributes(
-            external_id="test_001",
-            source="test",
-            title="Fresh Product"
-        )
+        product = ProductAttributes(external_id="test_001", source="test", title="Fresh Product")
         assert product.is_fresh(max_age_hours=24) is True
 
         # Old product (simulate old timestamp)
@@ -267,11 +254,7 @@ class TestProductAttributesEdgeCases:
 
     def test_minimal_product_creation(self):
         """Test creating product with minimal required fields."""
-        product = ProductAttributes(
-            external_id="min_001",
-            source="test",
-            title="Minimal Product"
-        )
+        product = ProductAttributes(external_id="min_001", source="test", title="Minimal Product")
 
         # Check all defaults are set correctly
         assert product.external_id == "min_001"
@@ -293,12 +276,7 @@ class TestProductAttributesEdgeCases:
     def test_product_with_empty_collections(self):
         """Test product with explicitly empty collections."""
         product = ProductAttributes(
-            external_id="empty_001",
-            source="test",
-            title="Empty Collections",
-            colors=[],
-            sizes=[],
-            tags=[]
+            external_id="empty_001", source="test", title="Empty Collections", colors=[], sizes=[], tags=[]
         )
 
         context = product.to_llm_context()
@@ -306,16 +284,11 @@ class TestProductAttributesEdgeCases:
         # Should not include empty collections in context
         assert "Цвета:" not in context
         assert "Размеры:" not in context
-        assert context.count('\n') <= 3  # Only basic info
+        assert context.count("\n") <= 3  # Only basic info
 
     def test_product_context_with_no_price(self):
         """Test LLM context when product has no price."""
-        product = ProductAttributes(
-            external_id="no_price_001",
-            source="test",
-            title="No Price Product",
-            price=None
-        )
+        product = ProductAttributes(external_id="no_price_001", source="test", title="No Price Product", price=None)
 
         context = product.to_llm_context()
         assert "Цена:" not in context

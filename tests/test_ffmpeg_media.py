@@ -66,13 +66,13 @@ class TestAspectRatioMath:
         """Test aspect ratio calculations for common resolutions."""
         # Test cases: (width, height, expected_ratio_string)
         test_cases = [
-            (1920, 1080, "16:9"),    # Full HD
-            (1080, 1920, "9:16"),    # Vertical HD
-            (1080, 1350, "4:5"),     # Instagram feed
-            (1080, 1080, "1:1"),     # Square
-            (1280, 720, "16:9"),     # HD
-            (640, 480, "4:3"),       # Standard definition
-            (3840, 2160, "16:9"),    # 4K
+            (1920, 1080, "16:9"),  # Full HD
+            (1080, 1920, "9:16"),  # Vertical HD
+            (1080, 1350, "4:5"),  # Instagram feed
+            (1080, 1080, "1:1"),  # Square
+            (1280, 720, "16:9"),  # HD
+            (640, 480, "4:3"),  # Standard definition
+            (3840, 2160, "16:9"),  # 4K
         ]
 
         for width, height, expected_ratio in test_cases:
@@ -87,15 +87,17 @@ class TestAspectRatioMath:
             ratio_h = height // divisor
             calculated_ratio = f"{ratio_w}:{ratio_h}"
 
-            assert calculated_ratio == expected_ratio, f"Failed for {width}x{height}: got {calculated_ratio}, expected {expected_ratio}"
+            assert (
+                calculated_ratio == expected_ratio
+            ), f"Failed for {width}x{height}: got {calculated_ratio}, expected {expected_ratio}"
 
     def test_decimal_aspect_ratios(self):
         """Test decimal aspect ratio calculations."""
         test_cases = [
-            (1920, 1080, 16/9),      # 1.777...
-            (1080, 1920, 9/16),      # 0.5625
-            (1080, 1350, 4/5),       # 0.8
-            (1080, 1080, 1/1),       # 1.0
+            (1920, 1080, 16 / 9),  # 1.777...
+            (1080, 1920, 9 / 16),  # 0.5625
+            (1080, 1350, 4 / 5),  # 0.8
+            (1080, 1080, 1 / 1),  # 1.0
         ]
 
         for width, height, expected_decimal in test_cases:
@@ -109,9 +111,7 @@ class TestConversionParams:
     def test_conversion_params_defaults(self):
         """Test ConversionParams with default values."""
         params = ConversionParams(
-            input_path="/test/input.mp4",
-            output_path="/test/output.mp4",
-            aspect_ratio=AspectRatio.NINE_SIXTEEN
+            input_path="/test/input.mp4", output_path="/test/output.mp4", aspect_ratio=AspectRatio.NINE_SIXTEEN
         )
 
         assert params.input_path == "/test/input.mp4"
@@ -133,7 +133,7 @@ class TestConversionParams:
             background_color="white",
             quality=QualityProfile.HIGH,
             timeout_seconds=600,
-            max_retries=5
+            max_retries=5,
         )
 
         assert params.strategy == ConversionStrategy.CROP
@@ -160,7 +160,7 @@ class TestConversionResult:
             aspect_ratio_input="16:9",
             aspect_ratio_output="9:16",
             dimensions_input=(1920, 1080),
-            dimensions_output=(1080, 1920)
+            dimensions_output=(1080, 1920),
         )
 
         assert result.success is True
@@ -184,7 +184,7 @@ class TestConversionResult:
             file_size_output=0,
             stdout="",
             stderr="FFmpeg error",
-            error_message="Conversion failed"
+            error_message="Conversion failed",
         )
 
         assert result.success is False
@@ -197,7 +197,7 @@ class TestFFmpegWrapperMocked:
 
     def test_wrapper_initialization_missing_script(self):
         """Test wrapper initialization with missing script."""
-        with patch('app.media.ffmpeg_wrapper.Path') as mock_path:
+        with patch("app.media.ffmpeg_wrapper.Path") as mock_path:
             mock_path.return_value.parent.parent = MagicMock()
             mock_path.return_value.parent.parent.__truediv__.return_value.exists.return_value = False
 
@@ -208,9 +208,11 @@ class TestFFmpegWrapperMocked:
 
     def test_build_command(self):
         """Test command building."""
-        with patch('app.media.ffmpeg_wrapper.Path') as mock_path, \
-             patch('os.path.exists', return_value=True), \
-             patch('os.access', return_value=True):
+        with (
+            patch("app.media.ffmpeg_wrapper.Path") as mock_path,
+            patch("os.path.exists", return_value=True),
+            patch("os.access", return_value=True),
+        ):
 
             # Mock script path
             mock_script_path = "/test/ffmpeg_profiles.sh"
@@ -225,7 +227,7 @@ class TestFFmpegWrapperMocked:
                 output_path="/test/output.mp4",
                 aspect_ratio=AspectRatio.NINE_SIXTEEN,
                 strategy=ConversionStrategy.PAD,
-                background_color="black"
+                background_color="black",
             )
 
             command = wrapper._build_command(params)
@@ -242,9 +244,11 @@ class TestFFmpegWrapperMocked:
     @pytest.mark.asyncio
     async def test_get_file_info_success(self):
         """Test successful file info retrieval."""
-        with patch('app.media.ffmpeg_wrapper.Path') as mock_path, \
-             patch('os.path.exists', return_value=True), \
-             patch('os.access', return_value=True):
+        with (
+            patch("app.media.ffmpeg_wrapper.Path") as mock_path,
+            patch("os.path.exists", return_value=True),
+            patch("os.access", return_value=True),
+        ):
 
             # Mock script path
             mock_script_path = "/test/ffmpeg_profiles.sh"
@@ -259,7 +263,7 @@ class TestFFmpegWrapperMocked:
             mock_process.returncode = 0
             mock_process.communicate.return_value = (b"1920,1080", b"")
 
-            with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            with patch("asyncio.create_subprocess_exec", return_value=mock_process):
                 info = await wrapper._get_file_info("/test/video.mp4")
 
                 assert info["dimensions"] == (1920, 1080)
@@ -268,9 +272,11 @@ class TestFFmpegWrapperMocked:
     @pytest.mark.asyncio
     async def test_get_file_info_failure(self):
         """Test file info retrieval failure."""
-        with patch('app.media.ffmpeg_wrapper.Path') as mock_path, \
-             patch('os.path.exists', return_value=True), \
-             patch('os.access', return_value=True):
+        with (
+            patch("app.media.ffmpeg_wrapper.Path") as mock_path,
+            patch("os.path.exists", return_value=True),
+            patch("os.access", return_value=True),
+        ):
 
             # Mock script path
             mock_script_path = "/test/ffmpeg_profiles.sh"
@@ -285,16 +291,18 @@ class TestFFmpegWrapperMocked:
             mock_process.returncode = 1
             mock_process.communicate.return_value = (b"", b"No such file")
 
-            with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            with patch("asyncio.create_subprocess_exec", return_value=mock_process):
                 info = await wrapper._get_file_info("/test/nonexistent.mp4")
 
                 assert info == {}  # Should return empty dict on failure
 
     def test_gcd_calculation(self):
         """Test GCD calculation."""
-        with patch('app.media.ffmpeg_wrapper.Path') as mock_path, \
-             patch('os.path.exists', return_value=True), \
-             patch('os.access', return_value=True):
+        with (
+            patch("app.media.ffmpeg_wrapper.Path") as mock_path,
+            patch("os.path.exists", return_value=True),
+            patch("os.access", return_value=True),
+        ):
 
             # Mock script path
             mock_script_path = "/test/ffmpeg_profiles.sh"
@@ -335,7 +343,7 @@ class TestNonDistortionValidation:
                 AspectRatio.NINE_SIXTEEN: (1080, 1920),
                 AspectRatio.FOUR_FIVE: (1080, 1350),
                 AspectRatio.ONE_ONE: (1080, 1080),
-                AspectRatio.SIXTEEN_NINE: (1920, 1080)
+                AspectRatio.SIXTEEN_NINE: (1920, 1080),
             }
 
             target_w, target_h = target_dims[target_aspect]
@@ -346,13 +354,19 @@ class TestNonDistortionValidation:
 
             if expected_behavior == "vertical_padding":
                 # Input is wider than target - needs vertical padding
-                assert input_ratio > target_ratio, f"Expected vertical padding for {input_w}x{input_h} to {target_aspect.value}"
+                assert (
+                    input_ratio > target_ratio
+                ), f"Expected vertical padding for {input_w}x{input_h} to {target_aspect.value}"
             elif expected_behavior == "horizontal_padding":
                 # Input is taller than target - needs horizontal padding
-                assert input_ratio < target_ratio, f"Expected horizontal padding for {input_w}x{input_h} to {target_aspect.value}"
+                assert (
+                    input_ratio < target_ratio
+                ), f"Expected horizontal padding for {input_w}x{input_h} to {target_aspect.value}"
             elif expected_behavior == "no_padding":
                 # Aspect ratios should be very close
-                assert abs(input_ratio - target_ratio) < 0.01, f"Expected no padding for {input_w}x{input_h} to {target_aspect.value}"
+                assert (
+                    abs(input_ratio - target_ratio) < 0.01
+                ), f"Expected no padding for {input_w}x{input_h} to {target_aspect.value}"
 
     def test_padding_calculations_preserve_content(self):
         """Test that padding calculations preserve all original content."""
@@ -384,7 +398,9 @@ class TestNonDistortionValidation:
             # Verify aspect ratio is preserved (within floating point tolerance)
             original_ratio = input_w / input_h
             scaled_ratio = scaled_w / scaled_h
-            assert abs(original_ratio - scaled_ratio) < 0.01, f"Aspect ratio not preserved: {original_ratio} vs {scaled_ratio}"
+            assert (
+                abs(original_ratio - scaled_ratio) < 0.01
+            ), f"Aspect ratio not preserved: {original_ratio} vs {scaled_ratio}"
 
             # Calculate padding needed
             pad_w = target_w - scaled_w
@@ -432,7 +448,7 @@ class TestSmartCropStub:
         params = SmartCropParams(
             input_path="/test/video.mp4",
             target_aspect_ratio=AspectRatio.NINE_SIXTEEN,
-            content_type_hint=ContentType.PORTRAIT
+            content_type_hint=ContentType.PORTRAIT,
         )
 
         analysis = await stub.analyze_content(params)
@@ -450,10 +466,7 @@ class TestSmartCropStub:
         """Test that crop region is None for pad strategy."""
         stub = SmartCropStub()
 
-        params = SmartCropParams(
-            input_path="/test/video.mp4",
-            target_aspect_ratio=AspectRatio.ONE_ONE
-        )
+        params = SmartCropParams(input_path="/test/video.mp4", target_aspect_ratio=AspectRatio.ONE_ONE)
 
         crop_region = await stub.get_crop_region(params)
 
@@ -473,20 +486,10 @@ class TestSmartCropStub:
         """Test that platform recommendations return pad strategy (safe)."""
         stub = SmartCropStub()
 
-        platforms = [
-            "instagram_stories",
-            "instagram_feed",
-            "instagram_square",
-            "youtube",
-            "tiktok",
-            "vk",
-            "facebook"
-        ]
+        platforms = ["instagram_stories", "instagram_feed", "instagram_square", "youtube", "tiktok", "vk", "facebook"]
 
         for platform in platforms:
-            strategy = await stub.recommend_strategy_for_platform(
-                "/test/video.mp4", platform, ContentType.UNKNOWN
-            )
+            strategy = await stub.recommend_strategy_for_platform("/test/video.mp4", platform, ContentType.UNKNOWN)
 
             assert strategy == CropStrategy.PAD, f"Platform {platform} should recommend PAD strategy"
 
@@ -496,9 +499,7 @@ class TestSmartCropStub:
         stub = SmartCropStub()
 
         for platform in ["instagram_stories", "youtube", "tiktok"]:
-            strategy = await stub.recommend_strategy_for_platform(
-                "/test/video.mp4", platform, ContentType.TEXT_OVERLAY
-            )
+            strategy = await stub.recommend_strategy_for_platform("/test/video.mp4", platform, ContentType.TEXT_OVERLAY)
 
             assert strategy == CropStrategy.PAD, f"Text overlay should always use PAD strategy for {platform}"
 
@@ -518,7 +519,7 @@ class TestSmartCropStub:
         out_of_bounds_regions = [
             CropRegion(x=-10, y=100, width=800, height=800),  # Negative X
             CropRegion(x=100, y=-10, width=800, height=800),  # Negative Y
-            CropRegion(x=1500, y=100, width=800, height=800), # X + width > input width
+            CropRegion(x=1500, y=100, width=800, height=800),  # X + width > input width
             CropRegion(x=100, y=600, width=800, height=800),  # Y + height > input height
         ]
 
@@ -548,22 +549,18 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_analyze_for_smart_crop(self):
         """Test analyze_for_smart_crop convenience function."""
-        with patch('app.media.smart_crop_stub.smart_crop_stub.analyze_content') as mock_analyze:
+        with patch("app.media.smart_crop_stub.smart_crop_stub.analyze_content") as mock_analyze:
             mock_analysis = SmartCropAnalysis(
                 content_type=ContentType.UNKNOWN,
                 recommended_strategy=CropStrategy.PAD,
                 crop_regions=[],
                 confidence_score=1.0,
                 analysis_time=0.1,
-                metadata={}
+                metadata={},
             )
             mock_analyze.return_value = mock_analysis
 
-            result = await analyze_for_smart_crop(
-                "/test/video.mp4",
-                AspectRatio.NINE_SIXTEEN,
-                ContentType.PORTRAIT
-            )
+            result = await analyze_for_smart_crop("/test/video.mp4", AspectRatio.NINE_SIXTEEN, ContentType.PORTRAIT)
 
             assert result == mock_analysis
             mock_analyze.assert_called_once()
@@ -571,17 +568,15 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_get_platform_strategy(self):
         """Test get_platform_strategy convenience function."""
-        with patch('app.media.smart_crop_stub.smart_crop_stub.recommend_strategy_for_platform') as mock_recommend, \
-             patch('app.media.smart_crop_stub.smart_crop_stub.get_conversion_strategy') as mock_convert:
+        with (
+            patch("app.media.smart_crop_stub.smart_crop_stub.recommend_strategy_for_platform") as mock_recommend,
+            patch("app.media.smart_crop_stub.smart_crop_stub.get_conversion_strategy") as mock_convert,
+        ):
 
             mock_recommend.return_value = CropStrategy.PAD
             mock_convert.return_value = ConversionStrategy.PAD
 
-            result = await get_platform_strategy(
-                "/test/video.mp4",
-                "instagram_stories",
-                ContentType.PORTRAIT
-            )
+            result = await get_platform_strategy("/test/video.mp4", "instagram_stories", ContentType.PORTRAIT)
 
             assert result == ConversionStrategy.PAD
             mock_recommend.assert_called_once_with("/test/video.mp4", "instagram_stories", ContentType.PORTRAIT)
@@ -589,7 +584,7 @@ class TestConvenienceFunctions:
 
     def test_get_smart_crop_info(self):
         """Test get_smart_crop_info convenience function."""
-        with patch('app.media.smart_crop_stub.smart_crop_stub.get_stub_info') as mock_info:
+        with patch("app.media.smart_crop_stub.smart_crop_stub.get_stub_info") as mock_info:
             mock_info.return_value = {"type": "stub", "version": "1.0.0"}
 
             result = get_smart_crop_info()
@@ -614,7 +609,7 @@ class TestIntegrationValidation:
                 "target_aspect": AspectRatio.NINE_SIXTEEN,
                 "expected_strategy": ConversionStrategy.PAD,
                 "expected_output_dims": (1080, 1920),
-                "description": "Landscape to portrait conversion"
+                "description": "Landscape to portrait conversion",
             },
             {
                 "input_dimensions": (1080, 1920),
@@ -622,7 +617,7 @@ class TestIntegrationValidation:
                 "target_aspect": AspectRatio.SIXTEEN_NINE,
                 "expected_strategy": ConversionStrategy.PAD,
                 "expected_output_dims": (1920, 1080),
-                "description": "Portrait to landscape conversion"
+                "description": "Portrait to landscape conversion",
             },
             {
                 "input_dimensions": (1080, 1080),
@@ -630,23 +625,21 @@ class TestIntegrationValidation:
                 "target_aspect": AspectRatio.FOUR_FIVE,
                 "expected_strategy": ConversionStrategy.PAD,
                 "expected_output_dims": (1080, 1350),
-                "description": "Square to Instagram feed conversion"
-            }
+                "description": "Square to Instagram feed conversion",
+            },
         ]
 
         for scenario in test_scenarios:
             # Step 1: Smart crop analysis should recommend PAD strategy
-            analysis = await analyze_for_smart_crop(
-                "/test/video.mp4",
-                scenario["target_aspect"],
-                ContentType.UNKNOWN
-            )
+            analysis = await analyze_for_smart_crop("/test/video.mp4", scenario["target_aspect"], ContentType.UNKNOWN)
 
             assert analysis.recommended_strategy == CropStrategy.PAD, f"Failed for {scenario['description']}"
 
             # Step 2: Strategy mapping should preserve safety
             conversion_strategy = smart_crop_stub.get_conversion_strategy(analysis.recommended_strategy)
-            assert conversion_strategy == scenario["expected_strategy"], f"Strategy mapping failed for {scenario['description']}"
+            assert (
+                conversion_strategy == scenario["expected_strategy"]
+            ), f"Strategy mapping failed for {scenario['description']}"
 
             # Step 3: Validate that no content would be lost
             input_w, input_h = scenario["input_dimensions"]

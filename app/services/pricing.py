@@ -21,44 +21,29 @@ PLATFORM_COSTS = {
         "cost_per_post": 0.00,
         "display_name": "Telegram",
         "description": "Каналы и группы",
-        "icon": "telegram"
+        "icon": "telegram",
     },
-    "vk": {
-        "cost_per_post": 0.00,
-        "display_name": "ВКонтакте",
-        "description": "Группы и паблики",
-        "icon": "vk"
-    },
+    "vk": {"cost_per_post": 0.00, "display_name": "ВКонтакте", "description": "Группы и паблики", "icon": "vk"},
     "instagram": {
         "cost_per_post": 0.03,
         "display_name": "Instagram",
         "description": "Посты, Stories, Reels",
-        "icon": "instagram"
+        "icon": "instagram",
     },
     "facebook": {
         "cost_per_post": 0.03,
         "display_name": "Facebook",
         "description": "Страницы и группы",
-        "icon": "facebook"
+        "icon": "facebook",
     },
-    "tiktok": {
-        "cost_per_post": 0.06,
-        "display_name": "TikTok",
-        "description": "Видео контент",
-        "icon": "tiktok"
-    },
-    "youtube": {
-        "cost_per_post": 0.09,
-        "display_name": "YouTube",
-        "description": "Видео и Shorts",
-        "icon": "youtube"
-    },
+    "tiktok": {"cost_per_post": 0.06, "display_name": "TikTok", "description": "Видео контент", "icon": "tiktok"},
+    "youtube": {"cost_per_post": 0.09, "display_name": "YouTube", "description": "Видео и Shorts", "icon": "youtube"},
     "rutube": {
         "cost_per_post": 0.03,
         "display_name": "RuTube",
         "description": "Российский видеохостинг",
-        "icon": "rutube"
-    }
+        "icon": "rutube",
+    },
 }
 
 
@@ -77,7 +62,7 @@ IMAGE_PROVIDERS = {
         "strengths": ["Скорость", "Низкая цена", "Большие объёмы"],
         "best_for": "Массовая генерация, тесты идей",
         "speed": "fast",
-        "max_resolution": "1024x1024"
+        "max_resolution": "1024x1024",
     },
     "openai": {
         "credits_per_image": 2,
@@ -88,7 +73,7 @@ IMAGE_PROVIDERS = {
         "strengths": ["Фотореализм", "Текст на изображениях", "Сложные сцены"],
         "best_for": "Реалистичные фото, продуктовые изображения",
         "speed": "medium",
-        "max_resolution": "1024x1024"
+        "max_resolution": "1024x1024",
     },
     "midjourney": {
         "credits_per_image": 4,
@@ -99,7 +84,7 @@ IMAGE_PROVIDERS = {
         "strengths": ["Художественный стиль", "Эстетика", "Маркетинговые материалы"],
         "best_for": "Арт, иллюстрации, креативные посты",
         "speed": "slow",
-        "max_resolution": "1024x1024"
+        "max_resolution": "1024x1024",
     },
     "nanobana-pro": {
         "credits_per_image": 6,
@@ -110,8 +95,8 @@ IMAGE_PROVIDERS = {
         "strengths": ["4K разрешение", "Детализация", "Сложные промпты"],
         "best_for": "Премиум контент, печать, баннеры",
         "speed": "medium",
-        "max_resolution": "4096x4096"
-    }
+        "max_resolution": "4096x4096",
+    },
 }
 
 
@@ -130,7 +115,7 @@ VIDEO_PROVIDERS = {
         "strengths": ["Реалистичные движения", "Персонажи", "Доступная цена"],
         "best_for": "Контент для соцсетей, анимация",
         "duration_options": [6],
-        "aspect_ratios": ["16:9", "9:16", "1:1"]
+        "aspect_ratios": ["16:9", "9:16", "1:1"],
     },
     "kling": {
         "credits_per_5sec": 1,
@@ -141,7 +126,7 @@ VIDEO_PROVIDERS = {
         "strengths": ["Image-to-video", "Низкая цена", "Быстрая генерация"],
         "best_for": "Анимация изображений, Reels/TikTok",
         "duration_options": [5, 10],
-        "aspect_ratios": ["16:9", "9:16", "1:1"]
+        "aspect_ratios": ["16:9", "9:16", "1:1"],
     },
     "runway": {
         "credits_per_5sec": 3,
@@ -152,8 +137,8 @@ VIDEO_PROVIDERS = {
         "strengths": ["Премиум качество", "Контроль движения", "Кинематографичность"],
         "best_for": "Рекламные ролики, премиум контент",
         "duration_options": [5, 10],
-        "aspect_ratios": ["16:9", "9:16", "1:1"]
-    }
+        "aspect_ratios": ["16:9", "9:16", "1:1"],
+    },
 }
 
 
@@ -177,8 +162,8 @@ TTS_PROVIDERS = {
             {"id": "fable", "name": "Fable", "gender": "neutral"},
             {"id": "onyx", "name": "Onyx", "gender": "male"},
             {"id": "nova", "name": "Nova", "gender": "female"},
-            {"id": "shimmer", "name": "Shimmer", "gender": "female"}
-        ]
+            {"id": "shimmer", "name": "Shimmer", "gender": "female"},
+        ],
     },
     "openai-tts-hd": {
         "credits_per_1k_chars": 2,
@@ -194,9 +179,9 @@ TTS_PROVIDERS = {
             {"id": "fable", "name": "Fable", "gender": "neutral"},
             {"id": "onyx", "name": "Onyx", "gender": "male"},
             {"id": "nova", "name": "Nova", "gender": "female"},
-            {"id": "shimmer", "name": "Shimmer", "gender": "female"}
-        ]
-    }
+            {"id": "shimmer", "name": "Shimmer", "gender": "female"},
+        ],
+    },
 }
 
 
@@ -210,9 +195,9 @@ SUBSCRIPTION_PLANS = {
         "price_usd": 11,
         "display_name": "Starter",
         "description": "Для начинающих",
-        "image_credits": 50,      # 50 Nanobana или 25 DALL-E или 12 Midjourney
-        "video_credits": 6,       # 6 MiniMax/Kling клипов или 2 Runway
-        "tts_credits": 20,        # 20K символов TTS или 10K TTS HD
+        "image_credits": 50,  # 50 Nanobana или 25 DALL-E или 12 Midjourney
+        "video_credits": 6,  # 6 MiniMax/Kling клипов или 2 Runway
+        "tts_credits": 20,  # 20K символов TTS или 10K TTS HD
         "posts_limit": 100,
         "platforms_limit": 3,
         "features": [
@@ -221,17 +206,17 @@ SUBSCRIPTION_PLANS = {
             "50 кредитов на изображения",
             "6 видео-кредитов",
             "20K символов озвучки",
-            "AI-подписи"
-        ]
+            "AI-подписи",
+        ],
     },
     "pro": {
         "price_rub": 2990,
         "price_usd": 33,
         "display_name": "Pro",
         "description": "Для активных блогеров",
-        "image_credits": 200,     # 200 Nanobana или 100 DALL-E или 50 Midjourney
-        "video_credits": 24,      # 24 клипа или 8 Runway
-        "tts_credits": 100,       # 100K символов
+        "image_credits": 200,  # 200 Nanobana или 100 DALL-E или 50 Midjourney
+        "video_credits": 24,  # 24 клипа или 8 Runway
+        "tts_credits": 100,  # 100K символов
         "posts_limit": 500,
         "platforms_limit": 5,
         "features": [
@@ -242,19 +227,19 @@ SUBSCRIPTION_PLANS = {
             "100K символов озвучки",
             "AI-подписи",
             "Контент-план",
-            "Приоритетная поддержка"
-        ]
+            "Приоритетная поддержка",
+        ],
     },
     "business": {
         "price_rub": 9990,
         "price_usd": 111,
         "display_name": "Business",
         "description": "Для команд и агентств",
-        "image_credits": 1000,    # 1000 Nanobana или 500 DALL-E или 250 Midjourney
-        "video_credits": 120,     # 120 клипов или 40 Runway
-        "tts_credits": 500,       # 500K символов
-        "posts_limit": -1,        # Unlimited
-        "platforms_limit": -1,    # Unlimited
+        "image_credits": 1000,  # 1000 Nanobana или 500 DALL-E или 250 Midjourney
+        "video_credits": 120,  # 120 клипов или 40 Runway
+        "tts_credits": 500,  # 500K символов
+        "posts_limit": -1,  # Unlimited
+        "platforms_limit": -1,  # Unlimited
         "features": [
             "Безлимит постов",
             "Все соцсети",
@@ -264,9 +249,9 @@ SUBSCRIPTION_PLANS = {
             "AI-подписи",
             "Контент-план",
             "API доступ",
-            "Выделенная поддержка"
-        ]
-    }
+            "Выделенная поддержка",
+        ],
+    },
 }
 
 
@@ -275,9 +260,9 @@ SUBSCRIPTION_PLANS = {
 # =============================================================================
 
 OVERAGE_PRICING = {
-    "image_credit": 0.06,    # /bin/bash.06 per image credit
-    "video_credit": 0.25,    # /bin/bash.25 per video credit (5 sec)
-    "tts_credit": 0.045      # /bin/bash.045 per 1K chars
+    "image_credit": 0.06,  # /bin/bash.06 per image credit
+    "video_credit": 0.25,  # /bin/bash.25 per video credit (5 sec)
+    "tts_credit": 0.045,  # /bin/bash.045 per 1K chars
 }
 
 USD_TO_RUB = 90
@@ -287,9 +272,11 @@ USD_TO_RUB = 90
 # DATA CLASSES
 # =============================================================================
 
+
 @dataclass
 class CreditsUsage:
     """Credits usage breakdown."""
+
     image_credits_used: int
     video_credits_used: int
     tts_credits_used: int
@@ -308,6 +295,7 @@ class CreditsUsage:
 @dataclass
 class PlanRecommendation:
     """Recommended plan with breakdown."""
+
     plan_id: str
     plan_name: str
     monthly_cost_rub: float
@@ -315,8 +303,8 @@ class PlanRecommendation:
 
     # What you get
     images_available: dict[str, int]  # provider -> count
-    videos_available: dict[str, int]   # provider -> count
-    tts_chars_available: dict[str, int] # provider -> chars
+    videos_available: dict[str, int]  # provider -> count
+    tts_chars_available: dict[str, int]  # provider -> chars
 
     # Overage if any
     overage_cost_usd: float = 0.0
@@ -327,6 +315,7 @@ class PlanRecommendation:
 # =============================================================================
 # PRICING SERVICE
 # =============================================================================
+
 
 class PricingService:
     """Service for calculating subscription prices."""
@@ -389,7 +378,7 @@ class PricingService:
         video_clips: int,  # 5-sec clips
         tts_provider: str,
         tts_chars: int,
-        plan_id: str = "pro"
+        plan_id: str = "pro",
     ) -> CreditsUsage:
         """Calculate credits usage for given providers and quantities."""
         plan = SUBSCRIPTION_PLANS.get(plan_id, SUBSCRIPTION_PLANS["pro"])
@@ -411,9 +400,9 @@ class PricingService:
 
         # Calculate overage cost
         overage_cost = (
-            image_overage * OVERAGE_PRICING["image_credit"] +
-            video_overage * OVERAGE_PRICING["video_credit"] +
-            tts_overage * OVERAGE_PRICING["tts_credit"]
+            image_overage * OVERAGE_PRICING["image_credit"]
+            + video_overage * OVERAGE_PRICING["video_credit"]
+            + tts_overage * OVERAGE_PRICING["tts_credit"]
         )
 
         return CreditsUsage(
@@ -426,7 +415,7 @@ class PricingService:
             image_overage=int(image_overage),
             video_overage=int(video_overage),
             tts_overage=int(tts_overage),
-            overage_cost_usd=round(overage_cost, 2)
+            overage_cost_usd=round(overage_cost, 2),
         )
 
     def recommend_plan(
@@ -437,7 +426,7 @@ class PricingService:
         video_clips_per_month: int = 0,
         tts_provider: str = None,
         tts_chars_per_month: int = 0,
-        platforms_count: int = 3
+        platforms_count: int = 3,
     ) -> PlanRecommendation:
         """Recommend best plan for given usage."""
         img_prov = IMAGE_PROVIDERS.get(image_provider, IMAGE_PROVIDERS["nanobana"])
@@ -459,9 +448,11 @@ class PricingService:
                 continue
 
             # Check if credits fit
-            if (image_credits_needed <= plan["image_credits"] and
-                video_credits_needed <= plan["video_credits"] and
-                tts_credits_needed <= plan["tts_credits"]):
+            if (
+                image_credits_needed <= plan["image_credits"]
+                and video_credits_needed <= plan["video_credits"]
+                and tts_credits_needed <= plan["tts_credits"]
+            ):
                 best_plan = plan_id
                 break
 
@@ -469,18 +460,15 @@ class PricingService:
 
         # Calculate what you get
         images_available = {
-            pid: plan["image_credits"] // pdata["credits_per_image"]
-            for pid, pdata in IMAGE_PROVIDERS.items()
+            pid: plan["image_credits"] // pdata["credits_per_image"] for pid, pdata in IMAGE_PROVIDERS.items()
         }
 
         videos_available = {
-            pid: plan["video_credits"] // pdata["credits_per_5sec"]
-            for pid, pdata in VIDEO_PROVIDERS.items()
+            pid: plan["video_credits"] // pdata["credits_per_5sec"] for pid, pdata in VIDEO_PROVIDERS.items()
         }
 
         tts_available = {
-            pid: (plan["tts_credits"] // pdata["credits_per_1k_chars"]) * 1000
-            for pid, pdata in TTS_PROVIDERS.items()
+            pid: (plan["tts_credits"] // pdata["credits_per_1k_chars"]) * 1000 for pid, pdata in TTS_PROVIDERS.items()
         }
 
         # Calculate overage
@@ -505,7 +493,7 @@ class PricingService:
             tts_chars_available=tts_available,
             overage_cost_usd=round(overage_cost, 2),
             total_cost_usd=round(total_usd, 2),
-            total_cost_rub=round(total_rub, -1)
+            total_cost_rub=round(total_rub, -1),
         )
 
     def get_provider_comparison(self, plan_id: str = "pro") -> dict[str, Any]:
@@ -522,7 +510,7 @@ class PricingService:
                     "images_included": plan["image_credits"] // pdata["credits_per_image"],
                     "credits_per_image": pdata["credits_per_image"],
                     "strengths": pdata["strengths"],
-                    "best_for": pdata["best_for"]
+                    "best_for": pdata["best_for"],
                 }
                 for pid, pdata in IMAGE_PROVIDERS.items()
             ],
@@ -534,7 +522,7 @@ class PricingService:
                     "clips_included": plan["video_credits"] // pdata["credits_per_5sec"],
                     "credits_per_clip": pdata["credits_per_5sec"],
                     "strengths": pdata["strengths"],
-                    "best_for": pdata["best_for"]
+                    "best_for": pdata["best_for"],
                 }
                 for pid, pdata in VIDEO_PROVIDERS.items()
             ],
@@ -546,10 +534,10 @@ class PricingService:
                     "chars_included": (plan["tts_credits"] // pdata["credits_per_1k_chars"]) * 1000,
                     "credits_per_1k": pdata["credits_per_1k_chars"],
                     "strengths": pdata["strengths"],
-                    "best_for": pdata["best_for"]
+                    "best_for": pdata["best_for"],
                 }
                 for pid, pdata in TTS_PROVIDERS.items()
-            ]
+            ],
         }
 
 
@@ -561,17 +549,22 @@ pricing_service = PricingService()
 def get_available_platforms():
     return pricing_service.get_platforms()
 
+
 def get_available_image_providers():
     return pricing_service.get_image_providers()
+
 
 def get_available_video_providers():
     return pricing_service.get_video_providers()
 
+
 def get_available_tts_providers():
     return pricing_service.get_tts_providers()
 
+
 def get_subscription_plans():
     return pricing_service.get_subscription_plans()
+
 
 def get_provider_comparison(plan_id: str = "pro"):
     return pricing_service.get_provider_comparison(plan_id)

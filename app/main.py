@@ -66,11 +66,9 @@ async def lifespan(app: FastAPI):
             logger.info("Database connection verified")
 
         # Track application start
-        metrics.app_info.info({
-            'version': settings.app.version,
-            'environment': settings.app.environment,
-            'name': settings.app.app_name
-        })
+        metrics.app_info.info(
+            {"version": settings.app.version, "environment": settings.app.environment, "name": settings.app.app_name}
+        )
 
         logger.info("Application startup completed successfully")
 
@@ -109,7 +107,7 @@ def create_application() -> FastAPI:
         debug=settings.app.debug,
         lifespan=lifespan,
         docs_url="/docs" if settings.app.is_development else None,
-        redoc_url="/redoc" if settings.app.is_development else None
+        redoc_url="/redoc" if settings.app.is_development else None,
     )
 
     # Add middleware
@@ -151,13 +149,13 @@ def create_application() -> FastAPI:
         """Handle uncaught exceptions."""
         logger = get_logger("app.error")
 
-        with with_logging_context(request_id=getattr(request.state, 'request_id', None)):
+        with with_logging_context(request_id=getattr(request.state, "request_id", None)):
             logger.error(
                 "Unhandled exception in request",
                 path=request.url.path,
                 method=request.method,
                 error=str(exc),
-                exc_info=True
+                exc_info=True,
             )
 
         # Track error metric
@@ -169,20 +167,21 @@ def create_application() -> FastAPI:
         )
 
         from fastapi.responses import JSONResponse
+
         return JSONResponse(
             status_code=500,
             content={
                 "error": "Internal server error",
                 "message": "An unexpected error occurred",
-                "request_id": getattr(request.state, 'request_id', None)
-            }
+                "request_id": getattr(request.state, "request_id", None),
+            },
         )
 
     logger.info(
         "FastAPI application created",
         version=settings.app.version,
         environment=settings.app.environment,
-        debug=settings.app.debug
+        debug=settings.app.debug,
     )
 
     return app
@@ -195,14 +194,18 @@ def setup_middleware(app: FastAPI):
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"] if settings.app.is_development else [
-            "https://admin.saleswhisper.ru",
-            "https://app.saleswhisper.ru",
-            "https://saleswhisper.pro",
-            "https://crosspost.saleswhisper.pro",
-            "https://headofsales.saleswhisper.pro",
-            "https://sites.saleswhisper.pro",
-        ],
+        allow_origins=(
+            ["*"]
+            if settings.app.is_development
+            else [
+                "https://admin.saleswhisper.ru",
+                "https://app.saleswhisper.ru",
+                "https://saleswhisper.pro",
+                "https://crosspost.saleswhisper.pro",
+                "https://headofsales.saleswhisper.pro",
+                "https://sites.saleswhisper.pro",
+            ]
+        ),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=[
@@ -212,15 +215,15 @@ def setup_middleware(app: FastAPI):
             "Content-Type",
             "Authorization",
             "X-Request-ID",
-            "X-API-Key"
-        ]
+            "X-API-Key",
+        ],
     )
 
     # Trusted host middleware (security)
     if not settings.app.is_development:
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["api.saleswhisper.ru", "*.saleswhisper.ru", "*.saleswhisper.pro", "saleswhisper.pro"]
+            allowed_hosts=["api.saleswhisper.ru", "*.saleswhisper.ru", "*.saleswhisper.pro", "saleswhisper.pro"],
         )
 
     # Anti-fraud middleware (rate limiting + bot detection)
@@ -254,7 +257,7 @@ def setup_middleware(app: FastAPI):
                 path=request.url.path,
                 query=str(request.query_params) if request.query_params else None,
                 user_agent=request.headers.get("user-agent"),
-                client_ip=request.client.host if request.client else None
+                client_ip=request.client.host if request.client else None,
             )
 
             try:
@@ -265,18 +268,14 @@ def setup_middleware(app: FastAPI):
                 duration = time.time() - start_time
 
                 # Log response
-                logger.info(
-                    "Request completed",
-                    status_code=response.status_code,
-                    duration_seconds=round(duration, 3)
-                )
+                logger.info("Request completed", status_code=response.status_code, duration_seconds=round(duration, 3))
 
                 # Track metrics
                 metrics.track_request(
                     method=request.method,
                     endpoint=request.url.path,
                     status_code=response.status_code,
-                    duration=duration
+                    duration=duration,
                 )
 
                 # Add request ID to response headers
@@ -288,18 +287,12 @@ def setup_middleware(app: FastAPI):
                 duration = time.time() - start_time
 
                 logger.error(
-                    "Request failed with exception",
-                    error=str(exc),
-                    duration_seconds=round(duration, 3),
-                    exc_info=True
+                    "Request failed with exception", error=str(exc), duration_seconds=round(duration, 3), exc_info=True
                 )
 
                 # Track error metrics
                 metrics.track_request(
-                    method=request.method,
-                    endpoint=request.url.path,
-                    status_code=500,
-                    duration=duration
+                    method=request.method, endpoint=request.url.path, status_code=500, duration=duration
                 )
 
                 raise
@@ -322,7 +315,7 @@ def main():
         log_level=settings.app.log_level.lower(),
         access_log=True,
         server_header=False,  # Security
-        date_header=False,    # Security
+        date_header=False,  # Security
     )
 
 

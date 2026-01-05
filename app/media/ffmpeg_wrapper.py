@@ -23,21 +23,24 @@ logger = get_logger("media.ffmpeg_wrapper")
 
 class AspectRatio(Enum):
     """Supported aspect ratios."""
+
     NINE_SIXTEEN = "9x16"  # Instagram Stories, TikTok
-    FOUR_FIVE = "4x5"      # Instagram Feed
-    ONE_ONE = "1x1"        # Instagram Square
+    FOUR_FIVE = "4x5"  # Instagram Feed
+    ONE_ONE = "1x1"  # Instagram Square
     SIXTEEN_NINE = "16x9"  # YouTube, VK, Facebook
 
 
 class ConversionStrategy(Enum):
     """Video conversion strategies."""
-    PAD = "pad"        # Add padding (no distortion)
-    CROP = "crop"      # Crop to fit (may lose content)
+
+    PAD = "pad"  # Add padding (no distortion)
+    CROP = "crop"  # Crop to fit (may lose content)
     STRETCH = "stretch"  # Stretch to fit (may distort)
 
 
 class QualityProfile(Enum):
     """Quality profiles for conversion."""
+
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
@@ -47,6 +50,7 @@ class QualityProfile(Enum):
 @dataclass
 class ConversionParams:
     """Parameters for video conversion."""
+
     input_path: str
     output_path: str
     aspect_ratio: AspectRatio
@@ -60,6 +64,7 @@ class ConversionParams:
 @dataclass
 class ConversionResult:
     """Result of video conversion operation."""
+
     success: bool
     input_path: str
     output_path: str
@@ -77,11 +82,13 @@ class ConversionResult:
 
 class FFmpegError(Exception):
     """Custom exception for FFmpeg operations."""
+
     pass
 
 
 class FFmpegTimeoutError(FFmpegError):
     """Exception raised when FFmpeg operation times out."""
+
     pass
 
 
@@ -127,7 +134,7 @@ class FFmpegWrapper:
             return str(script_path)
 
         # Fallback to configured path if available
-        if hasattr(settings, 'ffmpeg_script_path') and settings.ffmpeg_script_path:
+        if hasattr(settings, "ffmpeg_script_path") and settings.ffmpeg_script_path:
             if Path(settings.ffmpeg_script_path).exists():
                 return settings.ffmpeg_script_path
 
@@ -153,7 +160,7 @@ class FFmpegWrapper:
                 input_path=params.input_path,
                 output_path=params.output_path,
                 aspect_ratio=params.aspect_ratio.value,
-                strategy=params.strategy.value
+                strategy=params.strategy.value,
             )
 
             # Validate input file
@@ -183,7 +190,7 @@ class FFmpegWrapper:
                     platform="ffmpeg",
                     success=True,
                     duration=total_time,
-                    file_size=result.file_size_output
+                    file_size=result.file_size_output,
                 )
 
                 logger.info(
@@ -191,7 +198,7 @@ class FFmpegWrapper:
                     input_path=params.input_path,
                     output_path=params.output_path,
                     execution_time=total_time,
-                    compression_ratio=result.file_size_output / result.file_size_input
+                    compression_ratio=result.file_size_output / result.file_size_input,
                 )
             else:
                 metrics.track_media_failed("video", "ffmpeg", "conversion_error")
@@ -200,13 +207,14 @@ class FFmpegWrapper:
                     "Video conversion failed",
                     input_path=params.input_path,
                     error=result.error_message,
-                    execution_time=total_time
+                    execution_time=total_time,
                 )
 
             return result
 
-    async def _execute_with_retries(self, params: ConversionParams,
-                                  input_info: dict[str, Any], input_size: int) -> ConversionResult:
+    async def _execute_with_retries(
+        self, params: ConversionParams, input_info: dict[str, Any], input_size: int
+    ) -> ConversionResult:
         """Execute conversion with retry logic."""
         last_error = None
 
@@ -222,7 +230,7 @@ class FFmpegWrapper:
                     last_error = result.error_message
                     if attempt < params.max_retries - 1:
                         # Wait before retry (exponential backoff)
-                        wait_time = 2 ** attempt
+                        wait_time = 2**attempt
                         logger.warning(f"Conversion failed, retrying in {wait_time}s", error=last_error)
                         await asyncio.sleep(wait_time)
 
@@ -231,7 +239,7 @@ class FFmpegWrapper:
                 logger.warning(f"Conversion attempt {attempt + 1} failed", error=last_error)
 
                 if attempt < params.max_retries - 1:
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     await asyncio.sleep(wait_time)
 
         # All retries failed
@@ -245,11 +253,12 @@ class FFmpegWrapper:
             stdout="",
             stderr="",
             error_message=f"All {params.max_retries} conversion attempts failed. Last error: {last_error}",
-            **input_info
+            **input_info,
         )
 
-    async def _execute_conversion(self, params: ConversionParams,
-                                input_info: dict[str, Any], input_size: int) -> ConversionResult:
+    async def _execute_conversion(
+        self, params: ConversionParams, input_info: dict[str, Any], input_size: int
+    ) -> ConversionResult:
         """Execute single conversion attempt."""
         # Build command
         command = self._build_command(params)
@@ -262,21 +271,18 @@ class FFmpegWrapper:
                 *command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=os.path.dirname(self.script_path)
+                cwd=os.path.dirname(self.script_path),
             )
 
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=params.timeout_seconds
-                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=params.timeout_seconds)
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
                 raise FFmpegTimeoutError(f"Conversion timed out after {params.timeout_seconds}s")
 
-            stdout_str = stdout.decode('utf-8', errors='replace')
-            stderr_str = stderr.decode('utf-8', errors='replace')
+            stdout_str = stdout.decode("utf-8", errors="replace")
+            stderr_str = stderr.decode("utf-8", errors="replace")
 
             # Check if conversion was successful
             success = process.returncode == 0 and os.path.exists(params.output_path)
@@ -312,7 +318,7 @@ class FFmpegWrapper:
                 aspect_ratio_input=input_info.get("aspect_ratio"),
                 aspect_ratio_output=output_info.get("aspect_ratio"),
                 dimensions_input=input_info.get("dimensions"),
-                dimensions_output=output_info.get("dimensions")
+                dimensions_output=output_info.get("dimensions"),
             )
 
         except FFmpegTimeoutError:
@@ -328,7 +334,7 @@ class FFmpegWrapper:
                 stdout="",
                 stderr="",
                 error_message=f"Command execution failed: {str(e)}",
-                **input_info
+                **input_info,
             )
 
     def _build_command(self, params: ConversionParams) -> list[str]:
@@ -337,8 +343,9 @@ class FFmpegWrapper:
         function_name = f"to_{params.aspect_ratio.value.replace('x', 'x')}"
 
         command = [
-            "bash", "-c",
-            f"source '{self.script_path}' && {function_name} '{params.input_path}' '{params.output_path}' '{params.strategy.value}' '{params.background_color}'"
+            "bash",
+            "-c",
+            f"source '{self.script_path}' && {function_name} '{params.input_path}' '{params.output_path}' '{params.strategy.value}' '{params.background_color}'",
         ]
 
         return command
@@ -348,33 +355,35 @@ class FFmpegWrapper:
         try:
             # Get dimensions
             cmd = [
-                "ffprobe", "-v", "quiet", "-select_streams", "v:0",
-                "-show_entries", "stream=width,height",
-                "-of", "csv=p=0", file_path
+                "ffprobe",
+                "-v",
+                "quiet",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height",
+                "-of",
+                "csv=p=0",
+                file_path,
             ]
 
             process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
 
             stdout, stderr = await process.communicate()
 
             if process.returncode == 0:
                 dimensions_str = stdout.decode().strip()
-                if ',' in dimensions_str:
-                    width, height = map(int, dimensions_str.split(','))
+                if "," in dimensions_str:
+                    width, height = map(int, dimensions_str.split(","))
 
                     # Calculate aspect ratio
                     gcd = self._gcd(width, height)
                     ratio_w = width // gcd
                     ratio_h = height // gcd
 
-                    return {
-                        "dimensions": (width, height),
-                        "aspect_ratio": f"{ratio_w}:{ratio_h}"
-                    }
+                    return {"dimensions": (width, height), "aspect_ratio": f"{ratio_w}:{ratio_h}"}
 
             logger.warning(f"Failed to get file info for {file_path}: {stderr.decode()}")
             return {}
@@ -393,27 +402,22 @@ class FFmpegWrapper:
         """Get detailed aspect ratio information about a file."""
         try:
             # Use bash script's get_aspect_info function
-            command = [
-                "bash", "-c",
-                f"source '{self.script_path}' && get_aspect_info '{file_path}'"
-            ]
+            command = ["bash", "-c", f"source '{self.script_path}' && get_aspect_info '{file_path}'"]
 
             process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
 
             stdout, stderr = await process.communicate()
 
             if process.returncode == 0:
-                output = stdout.decode('utf-8').strip()
+                output = stdout.decode("utf-8").strip()
 
                 # Parse output
                 info = {}
-                for line in output.split('\n'):
-                    if ':' in line:
-                        key, value = line.split(':', 1)
+                for line in output.split("\n"):
+                    if ":" in line:
+                        key, value = line.split(":", 1)
                         info[key.strip()] = value.strip()
 
                 return info
@@ -425,10 +429,14 @@ class FFmpegWrapper:
             logger.error(f"Error getting aspect info: {e}")
             return {}
 
-    async def batch_convert(self, input_dir: str, output_dir: str,
-                          aspect_ratio: AspectRatio,
-                          strategy: ConversionStrategy = ConversionStrategy.PAD,
-                          quality: QualityProfile = QualityProfile.MEDIUM) -> list[ConversionResult]:
+    async def batch_convert(
+        self,
+        input_dir: str,
+        output_dir: str,
+        aspect_ratio: AspectRatio,
+        strategy: ConversionStrategy = ConversionStrategy.PAD,
+        quality: QualityProfile = QualityProfile.MEDIUM,
+    ) -> list[ConversionResult]:
         """
         Batch convert multiple files.
 
@@ -448,12 +456,13 @@ class FFmpegWrapper:
         os.makedirs(output_dir, exist_ok=True)
 
         # Find video files
-        video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v']
+        video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v"]
         input_files = []
 
         for ext in video_extensions:
             pattern = os.path.join(input_dir, f"*{ext}")
             import glob
+
             input_files.extend(glob.glob(pattern))
 
         logger.info(f"Found {len(input_files)} video files for batch conversion")
@@ -472,7 +481,7 @@ class FFmpegWrapper:
                     output_path=output_file,
                     aspect_ratio=aspect_ratio,
                     strategy=strategy,
-                    quality=quality
+                    quality=quality,
                 )
 
                 # Convert file
@@ -481,27 +490,26 @@ class FFmpegWrapper:
 
             except Exception as e:
                 logger.error(f"Failed to convert {input_file}: {e}")
-                results.append(ConversionResult(
-                    success=False,
-                    input_path=input_file,
-                    output_path="",
-                    execution_time=0.0,
-                    file_size_input=0,
-                    file_size_output=0,
-                    stdout="",
-                    stderr="",
-                    error_message=str(e)
-                ))
+                results.append(
+                    ConversionResult(
+                        success=False,
+                        input_path=input_file,
+                        output_path="",
+                        execution_time=0.0,
+                        file_size_input=0,
+                        file_size_output=0,
+                        stdout="",
+                        stderr="",
+                        error_message=str(e),
+                    )
+                )
 
         # Log batch results
         success_count = sum(1 for r in results if r.success)
         failed_count = len(results) - success_count
 
         logger.info(
-            "Batch conversion completed",
-            total_files=len(results),
-            successful=success_count,
-            failed=failed_count
+            "Batch conversion completed", total_files=len(results), successful=success_count, failed=failed_count
         )
 
         return results
@@ -512,12 +520,15 @@ ffmpeg_wrapper = FFmpegWrapper()
 
 
 # Convenience functions
-async def convert_to_aspect_ratio(input_path: str, output_path: str,
-                                aspect_ratio: AspectRatio,
-                                strategy: ConversionStrategy = ConversionStrategy.PAD,
-                                background_color: str = "black",
-                                quality: QualityProfile = QualityProfile.MEDIUM,
-                                timeout_seconds: int = 300) -> ConversionResult:
+async def convert_to_aspect_ratio(
+    input_path: str,
+    output_path: str,
+    aspect_ratio: AspectRatio,
+    strategy: ConversionStrategy = ConversionStrategy.PAD,
+    background_color: str = "black",
+    quality: QualityProfile = QualityProfile.MEDIUM,
+    timeout_seconds: int = 300,
+) -> ConversionResult:
     """
     Convert video to specified aspect ratio.
 
@@ -540,14 +551,15 @@ async def convert_to_aspect_ratio(input_path: str, output_path: str,
         strategy=strategy,
         background_color=background_color,
         quality=quality,
-        timeout_seconds=timeout_seconds
+        timeout_seconds=timeout_seconds,
     )
 
     return await ffmpeg_wrapper.convert_aspect_ratio(params)
 
 
-async def convert_for_platform(input_path: str, output_dir: str,
-                             platform: str, strategy: ConversionStrategy = ConversionStrategy.PAD) -> ConversionResult:
+async def convert_for_platform(
+    input_path: str, output_dir: str, platform: str, strategy: ConversionStrategy = ConversionStrategy.PAD
+) -> ConversionResult:
     """
     Convert video for specific social media platform.
 
@@ -568,7 +580,7 @@ async def convert_for_platform(input_path: str, output_dir: str,
         "youtube": AspectRatio.SIXTEEN_NINE,
         "vk": AspectRatio.SIXTEEN_NINE,
         "tiktok": AspectRatio.NINE_SIXTEEN,
-        "facebook": AspectRatio.SIXTEEN_NINE
+        "facebook": AspectRatio.SIXTEEN_NINE,
     }
 
     if platform not in platform_ratios:
@@ -581,10 +593,7 @@ async def convert_for_platform(input_path: str, output_dir: str,
     output_path = os.path.join(output_dir, f"{basename}_{platform}.mp4")
 
     return await convert_to_aspect_ratio(
-        input_path=input_path,
-        output_path=output_path,
-        aspect_ratio=aspect_ratio,
-        strategy=strategy
+        input_path=input_path, output_path=output_path, aspect_ratio=aspect_ratio, strategy=strategy
     )
 
 

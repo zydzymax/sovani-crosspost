@@ -27,31 +27,37 @@ logger = get_logger("adapters.telegram")
 
 class TelegramError(Exception):
     """Base exception for Telegram Bot API errors."""
+
     pass
 
 
 class TelegramRateLimitError(TelegramError):
     """Raised when Telegram Bot API rate limit is exceeded."""
+
     pass
 
 
 class TelegramAuthError(TelegramError):
     """Raised when Telegram Bot API authentication fails."""
+
     pass
 
 
 class TelegramValidationError(TelegramError):
     """Raised when Telegram Bot API validation fails."""
+
     pass
 
 
 class TelegramFileError(TelegramError):
     """Raised when Telegram file operations fail."""
+
     pass
 
 
 class MediaType(Enum):
     """Telegram media types."""
+
     PHOTO = "photo"
     VIDEO = "video"
     ANIMATION = "animation"
@@ -61,6 +67,7 @@ class MediaType(Enum):
 
 class ParseMode(Enum):
     """Telegram message parse modes."""
+
     MARKDOWN = "Markdown"
     MARKDOWNV2 = "MarkdownV2"
     HTML = "HTML"
@@ -68,6 +75,7 @@ class ParseMode(Enum):
 
 class SendStatus(Enum):
     """Telegram send status."""
+
     PENDING = "pending"
     SENT = "sent"
     ERROR = "error"
@@ -76,6 +84,7 @@ class SendStatus(Enum):
 @dataclass
 class TelegramMediaItem:
     """Represents a media item for Telegram."""
+
     file_path: str
     media_type: MediaType
     caption: str | None = None
@@ -90,6 +99,7 @@ class TelegramMediaItem:
 @dataclass
 class TelegramMessage:
     """Represents a Telegram message."""
+
     chat_id: int | str
     text: str | None = None
     media_items: list[TelegramMediaItem] = None
@@ -107,6 +117,7 @@ class TelegramMessage:
 @dataclass
 class TelegramSendResult:
     """Result of Telegram message sending."""
+
     message_id: int | None
     status: SendStatus
     message: str
@@ -134,9 +145,7 @@ class TelegramAdapter:
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(60.0),  # Telegram uploads can be slow
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
-            headers={
-                "User-Agent": "SalesWhisper-Crosspost/1.0"
-            }
+            headers={"User-Agent": "SalesWhisper-Crosspost/1.0"},
         )
 
         # Rate limiting - Telegram Bot API has flexible limits
@@ -155,26 +164,26 @@ class TelegramAdapter:
 
         if use_publishing_bot:
             # Try to get publishing bot token first
-            if hasattr(settings, 'telegram') and hasattr(settings.telegram, 'publishing_bot_token'):
+            if hasattr(settings, "telegram") and hasattr(settings.telegram, "publishing_bot_token"):
                 token = settings.telegram.publishing_bot_token
-                if hasattr(token, 'get_secret_value'):
+                if hasattr(token, "get_secret_value"):
                     return token.get_secret_value()
                 return str(token)
 
             # Fallback to environment variable for publishing bot
-            token = os.getenv('TG_PUBLISHING_BOT_TOKEN')
+            token = os.getenv("TG_PUBLISHING_BOT_TOKEN")
             if token:
                 return token
 
         # Default bot token
-        if hasattr(settings, 'telegram') and hasattr(settings.telegram, 'bot_token'):
+        if hasattr(settings, "telegram") and hasattr(settings.telegram, "bot_token"):
             token = settings.telegram.bot_token
-            if hasattr(token, 'get_secret_value'):
+            if hasattr(token, "get_secret_value"):
                 return token.get_secret_value()
             return str(token)
 
         # Fallback to environment variable for main bot
-        token = os.getenv('TG_BOT_TOKEN')
+        token = os.getenv("TG_BOT_TOKEN")
         if token:
             return token
 
@@ -199,7 +208,7 @@ class TelegramAdapter:
                 chat_id=message.chat_id,
                 has_text=bool(message.text),
                 media_count=len(message.media_items),
-                parse_mode=message.parse_mode.value if message.parse_mode else None
+                parse_mode=message.parse_mode.value if message.parse_mode else None,
             )
 
             try:
@@ -220,10 +229,7 @@ class TelegramAdapter:
 
                 # Track metrics
                 metrics.track_external_api_call(
-                    service="telegram",
-                    endpoint="send_message",
-                    status_code=200,
-                    duration=processing_time
+                    service="telegram", endpoint="send_message", status_code=200, duration=processing_time
                 )
 
                 logger.info(
@@ -231,7 +237,7 @@ class TelegramAdapter:
                     message_id=result.message_id,
                     chat_id=message.chat_id,
                     processing_time=processing_time,
-                    message_url=result.message_url
+                    message_url=result.message_url,
                 )
 
                 return result
@@ -243,9 +249,9 @@ class TelegramAdapter:
                 metrics.track_external_api_call(
                     service="telegram",
                     endpoint="send_message",
-                    status_code=getattr(e, 'error_code', 500),
+                    status_code=getattr(e, "error_code", 500),
                     duration=processing_time,
-                    error=str(e)
+                    error=str(e),
                 )
 
                 logger.error(
@@ -253,7 +259,7 @@ class TelegramAdapter:
                     chat_id=message.chat_id,
                     error=str(e),
                     processing_time=processing_time,
-                    exc_info=True
+                    exc_info=True,
                 )
 
                 return TelegramSendResult(
@@ -261,14 +267,14 @@ class TelegramAdapter:
                     status=SendStatus.ERROR,
                     message=str(e),
                     chat_id=message.chat_id,
-                    error_code=getattr(e, 'error_code', None),
-                    retry_after=getattr(e, 'retry_after', None)
+                    error_code=getattr(e, "error_code", None),
+                    retry_after=getattr(e, "retry_after", None),
                 )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, TelegramRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, TelegramRateLimitError)),
     )
     async def _send_text_message(self, message: TelegramMessage, correlation_id: str = None) -> TelegramSendResult:
         """Send text message using sendMessage method."""
@@ -280,7 +286,7 @@ class TelegramAdapter:
                 "text": message.text,
                 "disable_web_page_preview": message.disable_web_page_preview,
                 "disable_notification": message.disable_notification,
-                "protect_content": message.protect_content
+                "protect_content": message.protect_content,
             }
 
             if message.parse_mode:
@@ -303,13 +309,13 @@ class TelegramAdapter:
                 message="Message sent successfully",
                 chat_id=message.chat_id,
                 sent_at=datetime.now(timezone.utc),
-                message_url=message_url
+                message_url=message_url,
             )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, TelegramRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, TelegramRateLimitError)),
     )
     async def _send_single_media(self, message: TelegramMessage, correlation_id: str = None) -> TelegramSendResult:
         """Send single media item using specific method (sendPhoto, sendVideo, etc.)."""
@@ -320,7 +326,7 @@ class TelegramAdapter:
                 "Sending single media",
                 chat_id=message.chat_id,
                 media_type=media_item.media_type.value,
-                file_path=media_item.file_path
+                file_path=media_item.file_path,
             )
 
             # Determine method based on media type
@@ -346,7 +352,7 @@ class TelegramAdapter:
             params = {
                 "chat_id": message.chat_id,
                 "disable_notification": message.disable_notification,
-                "protect_content": message.protect_content
+                "protect_content": message.protect_content,
             }
 
             # Add caption
@@ -374,7 +380,7 @@ class TelegramAdapter:
 
             # Send file
             files = None
-            if media_item.file_path.startswith(('http://', 'https://')):
+            if media_item.file_path.startswith(("http://", "https://")):
                 # Use URL
                 params[file_field] = media_item.file_path
             else:
@@ -383,13 +389,11 @@ class TelegramAdapter:
                 file_name = Path(media_item.file_path).name
                 mime_type, _ = mimetypes.guess_type(file_name)
 
-                files = {
-                    file_field: (file_name, file_content, mime_type or "application/octet-stream")
-                }
+                files = {file_field: (file_name, file_content, mime_type or "application/octet-stream")}
 
                 # Add thumbnail if provided for video
                 if media_item.media_type == MediaType.VIDEO and media_item.thumbnail:
-                    if media_item.thumbnail.startswith(('http://', 'https://')):
+                    if media_item.thumbnail.startswith(("http://", "https://")):
                         params["thumb"] = media_item.thumbnail
                     else:
                         thumb_content = await self._read_file(media_item.thumbnail)
@@ -412,22 +416,18 @@ class TelegramAdapter:
                 message="Media sent successfully",
                 chat_id=message.chat_id,
                 sent_at=datetime.now(timezone.utc),
-                message_url=message_url
+                message_url=message_url,
             )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, TelegramRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, TelegramRateLimitError)),
     )
     async def _send_media_group(self, message: TelegramMessage, correlation_id: str = None) -> TelegramSendResult:
         """Send multiple media items using sendMediaGroup method."""
         with with_logging_context(correlation_id=correlation_id, method="sendMediaGroup"):
-            logger.info(
-                "Sending media group",
-                chat_id=message.chat_id,
-                media_count=len(message.media_items)
-            )
+            logger.info("Sending media group", chat_id=message.chat_id, media_count=len(message.media_items))
 
             media_array = []
             files = {}
@@ -435,12 +435,10 @@ class TelegramAdapter:
 
             for i, media_item in enumerate(message.media_items):
                 # Prepare media object
-                media_obj = {
-                    "type": media_item.media_type.value
-                }
+                media_obj = {"type": media_item.media_type.value}
 
                 # Handle file/URL
-                if media_item.file_path.startswith(('http://', 'https://')):
+                if media_item.file_path.startswith(("http://", "https://")):
                     media_obj["media"] = media_item.file_path
                 else:
                     # Use attach:// prefix for file uploads
@@ -480,7 +478,7 @@ class TelegramAdapter:
 
                     # Handle thumbnail
                     if media_item.thumbnail:
-                        if media_item.thumbnail.startswith(('http://', 'https://')):
+                        if media_item.thumbnail.startswith(("http://", "https://")):
                             media_obj["thumb"] = media_item.thumbnail
                         else:
                             thumb_key = f"thumb_{file_counter}"
@@ -500,7 +498,7 @@ class TelegramAdapter:
                 "chat_id": message.chat_id,
                 "media": json.dumps(media_array),
                 "disable_notification": message.disable_notification,
-                "protect_content": message.protect_content
+                "protect_content": message.protect_content,
             }
 
             if message.reply_to_message_id:
@@ -522,12 +520,12 @@ class TelegramAdapter:
                 message=f"Media group with {len(messages)} items sent successfully",
                 chat_id=message.chat_id,
                 sent_at=datetime.now(timezone.utc),
-                message_url=message_url
+                message_url=message_url,
             )
 
     async def _read_file(self, file_path: str) -> bytes:
         """Read file content from local path or URL."""
-        if file_path.startswith(('http://', 'https://')):
+        if file_path.startswith(("http://", "https://")):
             # Download from URL
             response = await self.http_client.get(file_path)
             response.raise_for_status()
@@ -543,7 +541,7 @@ class TelegramAdapter:
     def _generate_message_url(self, chat_id: int | str, message_id: int) -> str | None:
         """Generate message URL if possible."""
         # Only generate URLs for channels/public groups with username
-        if isinstance(chat_id, str) and chat_id.startswith('@'):
+        if isinstance(chat_id, str) and chat_id.startswith("@"):
             username = chat_id[1:]  # Remove @
             return f"https://t.me/{username}/{message_id}"
 
@@ -556,10 +554,7 @@ class TelegramAdapter:
             current_time = time.time()
 
             # Global rate limit (30 requests per second)
-            self.last_request_times = [
-                t for t in self.last_request_times
-                if current_time - t < 1.0
-            ]
+            self.last_request_times = [t for t in self.last_request_times if current_time - t < 1.0]
 
             if len(self.last_request_times) >= self.rate_limit_per_second:
                 oldest_request = min(self.last_request_times)
@@ -592,10 +587,11 @@ class TelegramAdapter:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, TelegramRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, TelegramRateLimitError)),
     )
-    async def _make_api_request(self, method: str, params: dict[str, Any] = None,
-                              files: dict[str, Any] = None) -> dict[str, Any]:
+    async def _make_api_request(
+        self, method: str, params: dict[str, Any] = None, files: dict[str, Any] = None
+    ) -> dict[str, Any]:
         """Make authenticated API request to Telegram."""
         # Extract chat_id for rate limiting
         chat_id = params.get("chat_id") if params else None
@@ -634,10 +630,7 @@ class TelegramAdapter:
         description = response_data.get("description", "Unknown error")
 
         logger.error(
-            "Telegram Bot API error",
-            error_code=error_code,
-            description=description,
-            response_data=response_data
+            "Telegram Bot API error", error_code=error_code, description=description, response_data=response_data
         )
 
         # Handle specific error codes
@@ -686,13 +679,7 @@ class TelegramAdapter:
     async def delete_message(self, chat_id: int | str, message_id: int) -> bool:
         """Delete a message."""
         try:
-            await self._make_api_request(
-                "deleteMessage",
-                params={
-                    "chat_id": chat_id,
-                    "message_id": message_id
-                }
-            )
+            await self._make_api_request("deleteMessage", params={"chat_id": chat_id, "message_id": message_id})
 
             logger.info("Telegram message deleted successfully", chat_id=chat_id, message_id=message_id)
             return True
@@ -701,15 +688,12 @@ class TelegramAdapter:
             logger.error(f"Failed to delete Telegram message: {e}", chat_id=chat_id, message_id=message_id)
             return False
 
-    async def edit_message_text(self, chat_id: int | str, message_id: int,
-                              text: str, parse_mode: ParseMode = None) -> bool:
+    async def edit_message_text(
+        self, chat_id: int | str, message_id: int, text: str, parse_mode: ParseMode = None
+    ) -> bool:
         """Edit message text."""
         try:
-            params = {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text
-            }
+            params = {"chat_id": chat_id, "message_id": message_id, "text": text}
 
             if parse_mode:
                 params["parse_mode"] = parse_mode.value
@@ -725,12 +709,7 @@ class TelegramAdapter:
 
     async def update_message_status(self, post_id: str, status: str, result_data: dict[str, Any] = None):
         """Update message status in database."""
-        logger.info(
-            "Updating Telegram message status",
-            post_id=post_id,
-            status=status,
-            result_data=result_data
-        )
+        logger.info("Updating Telegram message status", post_id=post_id, status=status, result_data=result_data)
 
     async def close(self):
         """Close HTTP client and cleanup resources."""
@@ -744,11 +723,14 @@ telegram_publishing_adapter = TelegramAdapter(use_publishing_bot=True)  # Publis
 
 
 # Convenience functions
-async def send_telegram_message(chat_id: int | str, text: str = None,
-                              media_files: list[str] = None,
-                              parse_mode: ParseMode = None,
-                              disable_notification: bool = False,
-                              correlation_id: str = None) -> TelegramSendResult:
+async def send_telegram_message(
+    chat_id: int | str,
+    text: str = None,
+    media_files: list[str] = None,
+    parse_mode: ParseMode = None,
+    disable_notification: bool = False,
+    correlation_id: str = None,
+) -> TelegramSendResult:
     """
     Send message to Telegram.
 
@@ -769,57 +751,54 @@ async def send_telegram_message(chat_id: int | str, text: str = None,
         for file_path in media_files:
             # Detect media type based on file extension
             file_ext = Path(file_path).suffix.lower()
-            if file_ext in ['.jpg', '.jpeg', '.png', '.webp']:
+            if file_ext in [".jpg", ".jpeg", ".png", ".webp"]:
                 media_type = MediaType.PHOTO
-            elif file_ext in ['.mp4', '.mov', '.avi', '.mkv']:
+            elif file_ext in [".mp4", ".mov", ".avi", ".mkv"]:
                 media_type = MediaType.VIDEO
-            elif file_ext in ['.gif']:
+            elif file_ext in [".gif"]:
                 media_type = MediaType.ANIMATION
-            elif file_ext in ['.mp3', '.wav', '.ogg']:
+            elif file_ext in [".mp3", ".wav", ".ogg"]:
                 media_type = MediaType.AUDIO
             else:
                 # Default to document for other file types
                 media_type = MediaType.DOCUMENT
 
-            media_items.append(TelegramMediaItem(
-                file_path=file_path,
-                media_type=media_type
-            ))
+            media_items.append(TelegramMediaItem(file_path=file_path, media_type=media_type))
 
     message = TelegramMessage(
         chat_id=chat_id,
         text=text,
         media_items=media_items,
         parse_mode=parse_mode,
-        disable_notification=disable_notification
+        disable_notification=disable_notification,
     )
 
     return await telegram_adapter.send_message(message, correlation_id)
 
 
-async def send_telegram_photo(chat_id: int | str, photo_path: str,
-                            caption: str = None, parse_mode: ParseMode = None,
-                            correlation_id: str = None) -> TelegramSendResult:
+async def send_telegram_photo(
+    chat_id: int | str, photo_path: str, caption: str = None, parse_mode: ParseMode = None, correlation_id: str = None
+) -> TelegramSendResult:
     """Send photo to Telegram."""
     media_item = TelegramMediaItem(
-        file_path=photo_path,
-        media_type=MediaType.PHOTO,
-        caption=caption,
-        parse_mode=parse_mode
+        file_path=photo_path, media_type=MediaType.PHOTO, caption=caption, parse_mode=parse_mode
     )
 
-    message = TelegramMessage(
-        chat_id=chat_id,
-        media_items=[media_item]
-    )
+    message = TelegramMessage(chat_id=chat_id, media_items=[media_item])
 
     return await telegram_adapter.send_message(message, correlation_id)
 
 
-async def send_telegram_video(chat_id: int | str, video_path: str,
-                            caption: str = None, thumbnail: str = None,
-                            width: int = None, height: int = None,
-                            duration: int = None, correlation_id: str = None) -> TelegramSendResult:
+async def send_telegram_video(
+    chat_id: int | str,
+    video_path: str,
+    caption: str = None,
+    thumbnail: str = None,
+    width: int = None,
+    height: int = None,
+    duration: int = None,
+    correlation_id: str = None,
+) -> TelegramSendResult:
     """Send video to Telegram."""
     media_item = TelegramMediaItem(
         file_path=video_path,
@@ -828,28 +807,29 @@ async def send_telegram_video(chat_id: int | str, video_path: str,
         thumbnail=thumbnail,
         width=width,
         height=height,
-        duration=duration
+        duration=duration,
     )
 
-    message = TelegramMessage(
-        chat_id=chat_id,
-        media_items=[media_item]
-    )
+    message = TelegramMessage(chat_id=chat_id, media_items=[media_item])
 
     return await telegram_adapter.send_message(message, correlation_id)
 
 
-async def send_telegram_media_group(chat_id: int | str, media_files: list[str],
-                                  caption: str = None, parse_mode: ParseMode = None,
-                                  correlation_id: str = None) -> TelegramSendResult:
+async def send_telegram_media_group(
+    chat_id: int | str,
+    media_files: list[str],
+    caption: str = None,
+    parse_mode: ParseMode = None,
+    correlation_id: str = None,
+) -> TelegramSendResult:
     """Send media group to Telegram."""
     media_items = []
     for i, file_path in enumerate(media_files):
         # Detect media type
         file_ext = Path(file_path).suffix.lower()
-        if file_ext in ['.jpg', '.jpeg', '.png', '.webp']:
+        if file_ext in [".jpg", ".jpeg", ".png", ".webp"]:
             media_type = MediaType.PHOTO
-        elif file_ext in ['.mp4', '.mov', '.avi']:
+        elif file_ext in [".mp4", ".mov", ".avi"]:
             media_type = MediaType.VIDEO
         else:
             continue  # Skip unsupported files for media group
@@ -857,17 +837,11 @@ async def send_telegram_media_group(chat_id: int | str, media_files: list[str],
         # Add caption only to first item
         item_caption = caption if i == 0 else None
 
-        media_items.append(TelegramMediaItem(
-            file_path=file_path,
-            media_type=media_type,
-            caption=item_caption,
-            parse_mode=parse_mode
-        ))
+        media_items.append(
+            TelegramMediaItem(file_path=file_path, media_type=media_type, caption=item_caption, parse_mode=parse_mode)
+        )
 
-    message = TelegramMessage(
-        chat_id=chat_id,
-        media_items=media_items
-    )
+    message = TelegramMessage(chat_id=chat_id, media_items=media_items)
 
     return await telegram_adapter.send_message(message, correlation_id)
 
@@ -894,11 +868,14 @@ async def cleanup_telegram_adapter():
 
 
 # Publishing-specific convenience functions
-async def publish_telegram_message(chat_id: int | str, text: str = None,
-                                 media_files: list[str] = None,
-                                 parse_mode: ParseMode = None,
-                                 disable_notification: bool = False,
-                                 correlation_id: str = None) -> TelegramSendResult:
+async def publish_telegram_message(
+    chat_id: int | str,
+    text: str = None,
+    media_files: list[str] = None,
+    parse_mode: ParseMode = None,
+    disable_notification: bool = False,
+    correlation_id: str = None,
+) -> TelegramSendResult:
     """
     Publish message to Telegram using publishing bot.
 
@@ -919,57 +896,54 @@ async def publish_telegram_message(chat_id: int | str, text: str = None,
         for file_path in media_files:
             # Detect media type based on file extension
             file_ext = Path(file_path).suffix.lower()
-            if file_ext in ['.jpg', '.jpeg', '.png', '.webp']:
+            if file_ext in [".jpg", ".jpeg", ".png", ".webp"]:
                 media_type = MediaType.PHOTO
-            elif file_ext in ['.mp4', '.mov', '.avi', '.mkv']:
+            elif file_ext in [".mp4", ".mov", ".avi", ".mkv"]:
                 media_type = MediaType.VIDEO
-            elif file_ext in ['.gif']:
+            elif file_ext in [".gif"]:
                 media_type = MediaType.ANIMATION
-            elif file_ext in ['.mp3', '.wav', '.ogg']:
+            elif file_ext in [".mp3", ".wav", ".ogg"]:
                 media_type = MediaType.AUDIO
             else:
                 # Default to document for other file types
                 media_type = MediaType.DOCUMENT
 
-            media_items.append(TelegramMediaItem(
-                file_path=file_path,
-                media_type=media_type
-            ))
+            media_items.append(TelegramMediaItem(file_path=file_path, media_type=media_type))
 
     message = TelegramMessage(
         chat_id=chat_id,
         text=text,
         media_items=media_items,
         parse_mode=parse_mode,
-        disable_notification=disable_notification
+        disable_notification=disable_notification,
     )
 
     return await telegram_publishing_adapter.send_message(message, correlation_id)
 
 
-async def publish_telegram_photo(chat_id: int | str, photo_path: str,
-                                caption: str = None, parse_mode: ParseMode = None,
-                                correlation_id: str = None) -> TelegramSendResult:
+async def publish_telegram_photo(
+    chat_id: int | str, photo_path: str, caption: str = None, parse_mode: ParseMode = None, correlation_id: str = None
+) -> TelegramSendResult:
     """Publish photo to Telegram using publishing bot."""
     media_item = TelegramMediaItem(
-        file_path=photo_path,
-        media_type=MediaType.PHOTO,
-        caption=caption,
-        parse_mode=parse_mode
+        file_path=photo_path, media_type=MediaType.PHOTO, caption=caption, parse_mode=parse_mode
     )
 
-    message = TelegramMessage(
-        chat_id=chat_id,
-        media_items=[media_item]
-    )
+    message = TelegramMessage(chat_id=chat_id, media_items=[media_item])
 
     return await telegram_publishing_adapter.send_message(message, correlation_id)
 
 
-async def publish_telegram_video(chat_id: int | str, video_path: str,
-                                caption: str = None, thumbnail: str = None,
-                                width: int = None, height: int = None,
-                                duration: int = None, correlation_id: str = None) -> TelegramSendResult:
+async def publish_telegram_video(
+    chat_id: int | str,
+    video_path: str,
+    caption: str = None,
+    thumbnail: str = None,
+    width: int = None,
+    height: int = None,
+    duration: int = None,
+    correlation_id: str = None,
+) -> TelegramSendResult:
     """Publish video to Telegram using publishing bot."""
     media_item = TelegramMediaItem(
         file_path=video_path,
@@ -978,28 +952,29 @@ async def publish_telegram_video(chat_id: int | str, video_path: str,
         thumbnail=thumbnail,
         width=width,
         height=height,
-        duration=duration
+        duration=duration,
     )
 
-    message = TelegramMessage(
-        chat_id=chat_id,
-        media_items=[media_item]
-    )
+    message = TelegramMessage(chat_id=chat_id, media_items=[media_item])
 
     return await telegram_publishing_adapter.send_message(message, correlation_id)
 
 
-async def publish_telegram_media_group(chat_id: int | str, media_files: list[str],
-                                     caption: str = None, parse_mode: ParseMode = None,
-                                     correlation_id: str = None) -> TelegramSendResult:
+async def publish_telegram_media_group(
+    chat_id: int | str,
+    media_files: list[str],
+    caption: str = None,
+    parse_mode: ParseMode = None,
+    correlation_id: str = None,
+) -> TelegramSendResult:
     """Publish media group to Telegram using publishing bot."""
     media_items = []
     for i, file_path in enumerate(media_files):
         # Detect media type
         file_ext = Path(file_path).suffix.lower()
-        if file_ext in ['.jpg', '.jpeg', '.png', '.webp']:
+        if file_ext in [".jpg", ".jpeg", ".png", ".webp"]:
             media_type = MediaType.PHOTO
-        elif file_ext in ['.mp4', '.mov', '.avi']:
+        elif file_ext in [".mp4", ".mov", ".avi"]:
             media_type = MediaType.VIDEO
         else:
             continue  # Skip unsupported files for media group
@@ -1007,16 +982,10 @@ async def publish_telegram_media_group(chat_id: int | str, media_files: list[str
         # Add caption only to first item
         item_caption = caption if i == 0 else None
 
-        media_items.append(TelegramMediaItem(
-            file_path=file_path,
-            media_type=media_type,
-            caption=item_caption,
-            parse_mode=parse_mode
-        ))
+        media_items.append(
+            TelegramMediaItem(file_path=file_path, media_type=media_type, caption=item_caption, parse_mode=parse_mode)
+        )
 
-    message = TelegramMessage(
-        chat_id=chat_id,
-        media_items=media_items
-    )
+    message = TelegramMessage(chat_id=chat_id, media_items=media_items)
 
     return await telegram_publishing_adapter.send_message(message, correlation_id)

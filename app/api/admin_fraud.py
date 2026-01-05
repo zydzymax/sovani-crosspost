@@ -27,6 +27,7 @@ router = APIRouter(prefix="/admin/fraud", tags=["Admin - Fraud"])
 
 # ============ Pydantic Schemas ============
 
+
 class FraudEventResponse(BaseModel):
     id: UUID
     event_type: str
@@ -98,6 +99,7 @@ class RateLimitOverrideResponse(BaseModel):
 
 # ============ Fraud Events ============
 
+
 @router.get("/events", response_model=list[FraudEventResponse])
 async def list_fraud_events(
     event_type: FraudEventType | None = None,
@@ -109,7 +111,7 @@ async def list_fraud_events(
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
 ):
     """
     List fraud events with filtering.
@@ -154,24 +156,21 @@ async def list_fraud_events(
     return [
         FraudEventResponse(
             id=e.id,
-            event_type=e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
-            risk_level=e.risk_level.value if hasattr(e.risk_level, 'value') else str(e.risk_level),
+            event_type=e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type),
+            risk_level=e.risk_level.value if hasattr(e.risk_level, "value") else str(e.risk_level),
             score=e.score,
             user_id=e.user_id,
             ip_address=e.ip_address,
             device_fingerprint=e.device_fingerprint,
             details=e.details,
-            created_at=e.created_at
+            created_at=e.created_at,
         )
         for e in events
     ]
 
 
 @router.get("/stats", response_model=FraudStatsResponse)
-async def get_fraud_stats(
-    db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
-):
+async def get_fraud_stats(db: AsyncSession = Depends(get_db_async_session), admin: User = Depends(require_admin)):
     """
     Get fraud statistics for dashboard.
 
@@ -181,70 +180,63 @@ async def get_fraud_stats(
     day_ago = now - timedelta(days=1)
 
     # Total events in 24h
-    total_query = select(func.count()).select_from(FraudEvent).where(
-        FraudEvent.created_at >= day_ago
-    )
+    total_query = select(func.count()).select_from(FraudEvent).where(FraudEvent.created_at >= day_ago)
     total_result = await db.execute(total_query)
     total_events_24h = total_result.scalar() or 0
 
     # High risk events in 24h
-    high_risk_query = select(func.count()).select_from(FraudEvent).where(
-        and_(
-            FraudEvent.created_at >= day_ago,
-            FraudEvent.risk_level.in_([FraudRiskLevel.HIGH, FraudRiskLevel.CRITICAL])
+    high_risk_query = (
+        select(func.count())
+        .select_from(FraudEvent)
+        .where(
+            and_(
+                FraudEvent.created_at >= day_ago,
+                FraudEvent.risk_level.in_([FraudRiskLevel.HIGH, FraudRiskLevel.CRITICAL]),
+            )
         )
     )
     high_risk_result = await db.execute(high_risk_query)
     high_risk_events_24h = high_risk_result.scalar() or 0
 
     # Blocked IPs count
-    blocked_query = select(func.count()).select_from(BlockedIP).where(
-        BlockedIP.is_active
-    )
+    blocked_query = select(func.count()).select_from(BlockedIP).where(BlockedIP.is_active)
     blocked_result = await db.execute(blocked_query)
     blocked_ips_count = blocked_result.scalar() or 0
 
     # Events by type (24h)
-    type_query = select(
-        FraudEvent.event_type,
-        func.count().label('count')
-    ).where(
-        FraudEvent.created_at >= day_ago
-    ).group_by(FraudEvent.event_type)
+    type_query = (
+        select(FraudEvent.event_type, func.count().label("count"))
+        .where(FraudEvent.created_at >= day_ago)
+        .group_by(FraudEvent.event_type)
+    )
 
     type_result = await db.execute(type_query)
     events_by_type = {
-        row.event_type.value if hasattr(row.event_type, 'value') else str(row.event_type): row.count
+        row.event_type.value if hasattr(row.event_type, "value") else str(row.event_type): row.count
         for row in type_result
     }
 
     # Events by risk level (24h)
-    risk_query = select(
-        FraudEvent.risk_level,
-        func.count().label('count')
-    ).where(
-        FraudEvent.created_at >= day_ago
-    ).group_by(FraudEvent.risk_level)
+    risk_query = (
+        select(FraudEvent.risk_level, func.count().label("count"))
+        .where(FraudEvent.created_at >= day_ago)
+        .group_by(FraudEvent.risk_level)
+    )
 
     risk_result = await db.execute(risk_query)
     events_by_risk = {
-        row.risk_level.value if hasattr(row.risk_level, 'value') else str(row.risk_level): row.count
+        row.risk_level.value if hasattr(row.risk_level, "value") else str(row.risk_level): row.count
         for row in risk_result
     }
 
     # Top IPs by fraud events (24h)
-    top_ip_query = select(
-        FraudEvent.ip_address,
-        func.count().label('count'),
-        func.max(FraudEvent.score).label('max_score')
-    ).where(
-        and_(
-            FraudEvent.created_at >= day_ago,
-            FraudEvent.ip_address.isnot(None)
-        )
-    ).group_by(FraudEvent.ip_address).order_by(
-        desc(func.count())
-    ).limit(10)
+    top_ip_query = (
+        select(FraudEvent.ip_address, func.count().label("count"), func.max(FraudEvent.score).label("max_score"))
+        .where(and_(FraudEvent.created_at >= day_ago, FraudEvent.ip_address.isnot(None)))
+        .group_by(FraudEvent.ip_address)
+        .order_by(desc(func.count()))
+        .limit(10)
+    )
 
     top_ip_result = await db.execute(top_ip_query)
     top_ips = [
@@ -258,19 +250,15 @@ async def get_fraud_stats(
         hour_start = day_ago + timedelta(hours=i)
         hour_end = hour_start + timedelta(hours=1)
 
-        hour_query = select(func.count()).select_from(FraudEvent).where(
-            and_(
-                FraudEvent.created_at >= hour_start,
-                FraudEvent.created_at < hour_end
-            )
+        hour_query = (
+            select(func.count())
+            .select_from(FraudEvent)
+            .where(and_(FraudEvent.created_at >= hour_start, FraudEvent.created_at < hour_end))
         )
         hour_result = await db.execute(hour_query)
         count = hour_result.scalar() or 0
 
-        hourly_trend.append({
-            "hour": hour_start.strftime("%H:00"),
-            "count": count
-        })
+        hourly_trend.append({"hour": hour_start.strftime("%H:00"), "count": count})
 
     return FraudStatsResponse(
         total_events_24h=total_events_24h,
@@ -279,11 +267,12 @@ async def get_fraud_stats(
         events_by_type=events_by_type,
         events_by_risk=events_by_risk,
         top_ips=top_ips,
-        hourly_trend=hourly_trend
+        hourly_trend=hourly_trend,
     )
 
 
 # ============ Blocked IPs ============
+
 
 @router.get("/blocked-ips", response_model=list[BlockedIPResponse])
 async def list_blocked_ips(
@@ -291,7 +280,7 @@ async def list_blocked_ips(
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
 ):
     """
     List blocked IPs.
@@ -311,9 +300,7 @@ async def list_blocked_ips(
 
 @router.post("/blocked-ips", response_model=BlockedIPResponse)
 async def block_ip(
-    data: BlockedIPCreate,
-    db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
+    data: BlockedIPCreate, db: AsyncSession = Depends(get_db_async_session), admin: User = Depends(require_admin)
 ):
     """
     Block an IP address.
@@ -322,77 +309,50 @@ async def block_ip(
     """
     # Check if already blocked
     existing = await db.execute(
-        select(BlockedIP).where(
-            and_(
-                BlockedIP.ip_address == data.ip_address,
-                BlockedIP.is_active
-            )
-        )
+        select(BlockedIP).where(and_(BlockedIP.ip_address == data.ip_address, BlockedIP.is_active))
     )
 
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="IP is already blocked"
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="IP is already blocked")
 
     blocked_ip = BlockedIP(
-        ip_address=data.ip_address,
-        reason=data.reason,
-        blocked_by=admin.id,
-        expires_at=data.expires_at,
-        is_active=True
+        ip_address=data.ip_address, reason=data.reason, blocked_by=admin.id, expires_at=data.expires_at, is_active=True
     )
 
     db.add(blocked_ip)
     await db.commit()
     await db.refresh(blocked_ip)
 
-    logger.info(
-        "IP blocked by admin",
-        ip=data.ip_address[:8] + "...",
-        admin_id=str(admin.id),
-        reason=data.reason
-    )
+    logger.info("IP blocked by admin", ip=data.ip_address[:8] + "...", admin_id=str(admin.id), reason=data.reason)
 
     return blocked_ip
 
 
 @router.delete("/blocked-ips/{blocked_id}")
 async def unblock_ip(
-    blocked_id: UUID,
-    db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
+    blocked_id: UUID, db: AsyncSession = Depends(get_db_async_session), admin: User = Depends(require_admin)
 ):
     """
     Unblock an IP address.
 
     Admin only.
     """
-    result = await db.execute(
-        select(BlockedIP).where(BlockedIP.id == blocked_id)
-    )
+    result = await db.execute(select(BlockedIP).where(BlockedIP.id == blocked_id))
     blocked_ip = result.scalar_one_or_none()
 
     if not blocked_ip:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Blocked IP not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blocked IP not found")
 
     blocked_ip.is_active = False
     await db.commit()
 
-    logger.info(
-        "IP unblocked by admin",
-        ip=blocked_ip.ip_address[:8] + "...",
-        admin_id=str(admin.id)
-    )
+    logger.info("IP unblocked by admin", ip=blocked_ip.ip_address[:8] + "...", admin_id=str(admin.id))
 
     return {"status": "success", "message": "IP unblocked"}
 
 
 # ============ Rate Limit Overrides ============
+
 
 @router.get("/rate-limits", response_model=list[RateLimitOverrideResponse])
 async def list_rate_limit_overrides(
@@ -400,7 +360,7 @@ async def list_rate_limit_overrides(
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
 ):
     """
     List rate limit overrides.
@@ -422,7 +382,7 @@ async def list_rate_limit_overrides(
 async def create_rate_limit_override(
     data: RateLimitOverrideCreate,
     db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
 ):
     """
     Create a rate limit override.
@@ -436,15 +396,14 @@ async def create_rate_limit_override(
             and_(
                 RateLimitOverride.identifier == data.identifier,
                 RateLimitOverride.identifier_type == data.identifier_type,
-                RateLimitOverride.is_active
+                RateLimitOverride.is_active,
             )
         )
     )
 
     if existing.scalar_one_or_none():
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Active rate limit override already exists for this identifier"
+            status_code=status.HTTP_409_CONFLICT, detail="Active rate limit override already exists for this identifier"
         )
 
     override = RateLimitOverride(
@@ -455,7 +414,7 @@ async def create_rate_limit_override(
         reason=data.reason,
         created_by=admin.id,
         expires_at=data.expires_at,
-        is_active=True
+        is_active=True,
     )
 
     db.add(override)
@@ -466,7 +425,7 @@ async def create_rate_limit_override(
         "Rate limit override created",
         identifier=data.identifier[:16] + "..." if len(data.identifier) > 16 else data.identifier,
         type=data.identifier_type,
-        admin_id=str(admin.id)
+        admin_id=str(admin.id),
     )
 
     return override
@@ -474,45 +433,33 @@ async def create_rate_limit_override(
 
 @router.delete("/rate-limits/{override_id}")
 async def delete_rate_limit_override(
-    override_id: UUID,
-    db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
+    override_id: UUID, db: AsyncSession = Depends(get_db_async_session), admin: User = Depends(require_admin)
 ):
     """
     Delete a rate limit override.
 
     Admin only.
     """
-    result = await db.execute(
-        select(RateLimitOverride).where(RateLimitOverride.id == override_id)
-    )
+    result = await db.execute(select(RateLimitOverride).where(RateLimitOverride.id == override_id))
     override = result.scalar_one_or_none()
 
     if not override:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Rate limit override not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate limit override not found")
 
     override.is_active = False
     await db.commit()
 
-    logger.info(
-        "Rate limit override deleted",
-        override_id=str(override_id),
-        admin_id=str(admin.id)
-    )
+    logger.info("Rate limit override deleted", override_id=str(override_id), admin_id=str(admin.id))
 
     return {"status": "success", "message": "Rate limit override deleted"}
 
 
 # ============ Manual Actions ============
 
+
 @router.post("/check-user/{user_id}")
 async def check_user_fraud_risk(
-    user_id: UUID,
-    db: AsyncSession = Depends(get_db_async_session),
-    admin: User = Depends(require_admin)
+    user_id: UUID, db: AsyncSession = Depends(get_db_async_session), admin: User = Depends(require_admin)
 ):
     """
     Manually check fraud risk for a user.
@@ -524,17 +471,11 @@ async def check_user_fraud_risk(
     user = result.scalar_one_or_none()
 
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # Get fraud history
     events_result = await db.execute(
-        select(FraudEvent)
-        .where(FraudEvent.user_id == user_id)
-        .order_by(desc(FraudEvent.created_at))
-        .limit(20)
+        select(FraudEvent).where(FraudEvent.user_id == user_id).order_by(desc(FraudEvent.created_at)).limit(20)
     )
     events = events_result.scalars().all()
 
@@ -550,16 +491,16 @@ async def check_user_fraud_risk(
         "average_score": round(avg_score, 2),
         "recent_events": [
             {
-                "type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
-                "risk": e.risk_level.value if hasattr(e.risk_level, 'value') else str(e.risk_level),
+                "type": e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type),
+                "risk": e.risk_level.value if hasattr(e.risk_level, "value") else str(e.risk_level),
                 "score": e.score,
-                "created_at": e.created_at.isoformat()
+                "created_at": e.created_at.isoformat(),
             }
             for e in events[:10]
         ],
         "recommendation": (
-            "block" if high_risk_events > 3 or avg_score > 0.7
-            else "monitor" if high_risk_events > 0 or avg_score > 0.4
-            else "ok"
-        )
+            "block"
+            if high_risk_events > 3 or avg_score > 0.7
+            else "monitor" if high_risk_events > 0 or avg_score > 0.4 else "ok"
+        ),
     }

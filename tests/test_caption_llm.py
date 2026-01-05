@@ -100,10 +100,7 @@ class TestPlatformInput:
 
     def test_platform_input_basic_creation(self):
         """Test basic PlatformInput creation."""
-        platform_input = PlatformInput(
-            platform="instagram",
-            content_text="Новая коллекция"
-        )
+        platform_input = PlatformInput(platform="instagram", content_text="Новая коллекция")
 
         assert platform_input.platform == "instagram"
         assert platform_input.content_text == "Новая коллекция"
@@ -122,7 +119,7 @@ class TestPlatformInput:
             media_type="photo",
             media_count=3,
             hashtags=["#SalesWhisper", "#Fashion"],
-            call_to_action="Купить сейчас"
+            call_to_action="Купить сейчас",
         )
 
         assert platform_input.platform == "instagram"
@@ -143,7 +140,7 @@ class TestCaptionOutput:
             platform="instagram",
             caption="Красивый текст с хэштегами #SalesWhisper",
             hashtags=["#SalesWhisper", "#Fashion"],
-            character_count=35
+            character_count=35,
         )
 
         assert output.platform == "instagram"
@@ -163,7 +160,7 @@ class TestCaptionOutput:
             character_count=10,
             is_truncated=True,
             confidence_score=0.8,
-            generation_time=1.5
+            generation_time=1.5,
         )
 
         result_dict = output.to_dict()
@@ -210,9 +207,7 @@ class TestCaptionLLMService:
     async def test_generate_single_caption_instagram(self, llm_service):
         """Test generating single caption for Instagram."""
         platform_input = PlatformInput(
-            platform="instagram",
-            content_text="Новая коллекция SalesWhisper",
-            hashtags=["#SalesWhisper", "#Fashion"]
+            platform="instagram", content_text="Новая коллекция SalesWhisper", hashtags=["#SalesWhisper", "#Fashion"]
         )
 
         result = await llm_service._generate_single_caption("instagram", platform_input)
@@ -231,20 +226,10 @@ class TestCaptionLLMService:
         """Test generating captions for multiple platforms."""
         platform_inputs = {
             "instagram": PlatformInput(
-                platform="instagram",
-                content_text="Элегантное платье",
-                hashtags=["#SalesWhisper"]
+                platform="instagram", content_text="Элегантное платье", hashtags=["#SalesWhisper"]
             ),
-            "vk": PlatformInput(
-                platform="vk",
-                content_text="Стильная одежда",
-                hashtags=["#SalesWhisper", "#Мода"]
-            ),
-            "tiktok": PlatformInput(
-                platform="tiktok",
-                content_text="Модный тренд",
-                hashtags=["#saleswhisper"]
-            )
+            "vk": PlatformInput(platform="vk", content_text="Стильная одежда", hashtags=["#SalesWhisper", "#Мода"]),
+            "tiktok": PlatformInput(platform="tiktok", content_text="Модный тренд", hashtags=["#saleswhisper"]),
         }
 
         results = await llm_service.generate_all(platform_inputs)
@@ -268,7 +253,7 @@ class TestCaptionLLMService:
             platform="instagram",
             content_text="Красивое платье",
             product_context="Платье SalesWhisper Classic, размеры S-XL",
-            hashtags=["#SalesWhisper", "#Fashion"]
+            hashtags=["#SalesWhisper", "#Fashion"],
         )
 
         config = llm_service.platform_configs["instagram"]
@@ -317,10 +302,7 @@ class TestCaptionLLMService:
 
     def test_create_fallback_caption(self, llm_service):
         """Test fallback caption creation."""
-        platform_input = PlatformInput(
-            platform="instagram",
-            content_text="Тестовый контент для фоллбэка"
-        )
+        platform_input = PlatformInput(platform="instagram", content_text="Тестовый контент для фоллбэка")
 
         fallback = llm_service._create_fallback_caption("instagram", platform_input)
 
@@ -332,15 +314,10 @@ class TestCaptionLLMService:
     @pytest.mark.asyncio
     async def test_error_handling_with_fallback(self, llm_service):
         """Test error handling creates fallback caption."""
-        platform_inputs = {
-            "instagram": PlatformInput(
-                platform="instagram",
-                content_text="Тест ошибки"
-            )
-        }
+        platform_inputs = {"instagram": PlatformInput(platform="instagram", content_text="Тест ошибки")}
 
         # Mock provider to raise an error
-        with patch.object(llm_service.provider, 'generate_text', side_effect=Exception("Mock error")):
+        with patch.object(llm_service.provider, "generate_text", side_effect=Exception("Mock error")):
             results = await llm_service.generate_all(platform_inputs)
 
             assert "instagram" in results
@@ -397,18 +374,10 @@ class TestOpenAIProvider:
 
         # Mock successful HTTP response
         mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": "Сгенерированный текст для поста"
-                    }
-                }
-            ]
-        }
+        mock_response.json.return_value = {"choices": [{"message": {"content": "Сгенерированный текст для поста"}}]}
         mock_response.raise_for_status.return_value = None
 
-        with patch.object(provider.http_client, 'post', return_value=mock_response) as mock_post:
+        with patch.object(provider.http_client, "post", return_value=mock_response) as mock_post:
             result = await provider.generate_text("Тестовый промпт", max_tokens=100)
 
             assert result == "Сгенерированный текст для поста"
@@ -428,7 +397,7 @@ class TestOpenAIProvider:
         provider = OpenAIProvider("test_key")
 
         # Mock HTTP error
-        with patch.object(provider.http_client, 'post', side_effect=Exception("Network error")):
+        with patch.object(provider.http_client, "post", side_effect=Exception("Network error")):
             with pytest.raises(LLMError) as exc_info:
                 await provider.generate_text("Тест")
 
@@ -442,21 +411,13 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_generate_all_captions_function(self):
         """Test generate_all_captions convenience function."""
-        platform_inputs = {
-            "instagram": PlatformInput(
-                platform="instagram",
-                content_text="Тест функции"
-            )
-        }
+        platform_inputs = {"instagram": PlatformInput(platform="instagram", content_text="Тест функции")}
 
         # Mock the global service
-        with patch('app.services.caption_llm.caption_service') as mock_service:
+        with patch("app.services.caption_llm.caption_service") as mock_service:
             mock_result = {
                 "instagram": CaptionOutput(
-                    platform="instagram",
-                    caption="Мокированный результат",
-                    hashtags=["#test"],
-                    character_count=20
+                    platform="instagram", caption="Мокированный результат", hashtags=["#test"], character_count=20
                 )
             }
             mock_service.generate_all.return_value = mock_result
@@ -485,12 +446,7 @@ class TestEdgeCases:
         """Test handling empty content text."""
         service = CaptionLLMService()
 
-        platform_inputs = {
-            "instagram": PlatformInput(
-                platform="instagram",
-                content_text=""
-            )
-        }
+        platform_inputs = {"instagram": PlatformInput(platform="instagram", content_text="")}
 
         results = await service.generate_all(platform_inputs)
 
@@ -504,10 +460,7 @@ class TestEdgeCases:
         service = CaptionLLMService()
 
         # Test with unknown platform - should fall back to Instagram config
-        platform_input = PlatformInput(
-            platform="unknown_platform",
-            content_text="Тест"
-        )
+        platform_input = PlatformInput(platform="unknown_platform", content_text="Тест")
 
         config = service.platform_configs.get("unknown_platform", service.platform_configs["instagram"])
         prompt = service._build_prompt("unknown_platform", platform_input, config)
@@ -522,11 +475,7 @@ class TestEdgeCases:
         # Create many hashtags (more than limit)
         many_hashtags = [f"#tag{i}" for i in range(50)]
 
-        platform_input = PlatformInput(
-            platform="instagram",
-            content_text="Тест",
-            hashtags=many_hashtags
-        )
+        platform_input = PlatformInput(platform="instagram", content_text="Тест", hashtags=many_hashtags)
 
         config = service.platform_configs["instagram"]
         prompt = service._build_prompt("instagram", platform_input, config)

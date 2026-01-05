@@ -43,7 +43,7 @@ class TestTelegramAdapterInitialization:
 
     def test_adapter_initialization_success(self):
         """Test successful adapter initialization."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
 
             adapter = TelegramAdapter()
@@ -56,9 +56,9 @@ class TestTelegramAdapterInitialization:
 
     def test_adapter_initialization_missing_token(self):
         """Test adapter initialization with missing bot token."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             # Remove bot_token attribute
-            delattr(mock_settings, 'bot_token')
+            delattr(mock_settings, "bot_token")
 
             with pytest.raises(TelegramAuthError) as exc_info:
                 TelegramAdapter()
@@ -70,7 +70,7 @@ class TestTelegramAdapterInitialization:
         adapter = TelegramAdapter.__new__(TelegramAdapter)  # Create without __init__
 
         # Test with SecretStr-like object
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_token = MagicMock()
             mock_token.get_secret_value.return_value = "secret_bot_token"
             mock_settings.bot_token = mock_token
@@ -79,7 +79,7 @@ class TestTelegramAdapterInitialization:
             assert token == "secret_bot_token"
 
         # Test with string token
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token = "plain_string_token"
 
             token = adapter._get_bot_token()
@@ -92,7 +92,7 @@ class TestTextMessageSending:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -106,28 +106,20 @@ class TestTextMessageSending:
             "ok": True,
             "result": {
                 "message_id": 123,
-                "from": {
-                    "id": 123456,
-                    "is_bot": True,
-                    "first_name": "TestBot"
-                },
-                "chat": {
-                    "id": -1001234567890,
-                    "title": "Test Chat",
-                    "type": "supergroup"
-                },
+                "from": {"id": 123456, "is_bot": True, "first_name": "TestBot"},
+                "chat": {"id": -1001234567890, "title": "Test Chat", "type": "supergroup"},
                 "date": 1640995200,
-                "text": "Hello, World!"
-            }
+                "text": "Hello, World!",
+            },
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response) as mock_api:
+        with patch.object(mock_adapter, "_make_api_request", return_value=api_response) as mock_api:
             message = TelegramMessage(
                 chat_id=-1001234567890,
                 text="Hello, World!",
                 parse_mode=ParseMode.HTML,
                 disable_web_page_preview=True,
-                disable_notification=True
+                disable_notification=True,
             )
 
             result = await mock_adapter._send_text_message(message, "test_correlation_id")
@@ -148,8 +140,8 @@ class TestTextMessageSending:
                     "parse_mode": "HTML",
                     "disable_web_page_preview": True,
                     "disable_notification": True,
-                    "protect_content": False
-                }
+                    "protect_content": False,
+                },
             )
 
     @pytest.mark.asyncio
@@ -162,16 +154,12 @@ class TestTextMessageSending:
                 "chat": {"id": -1001234567890},
                 "date": 1640995200,
                 "text": "Reply message",
-                "reply_to_message": {"message_id": 100}
-            }
+                "reply_to_message": {"message_id": 100},
+            },
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response) as mock_api:
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                text="Reply message",
-                reply_to_message_id=100
-            )
+        with patch.object(mock_adapter, "_make_api_request", return_value=api_response) as mock_api:
+            message = TelegramMessage(chat_id=-1001234567890, text="Reply message", reply_to_message_id=100)
 
             result = await mock_adapter._send_text_message(message)
 
@@ -190,15 +178,12 @@ class TestTextMessageSending:
                 "message_id": 456,
                 "chat": {"id": -1001234567890, "username": "testchannel"},
                 "date": 1640995200,
-                "text": "Channel message"
-            }
+                "text": "Channel message",
+            },
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response):
-            message = TelegramMessage(
-                chat_id="@testchannel",
-                text="Channel message"
-            )
+        with patch.object(mock_adapter, "_make_api_request", return_value=api_response):
+            message = TelegramMessage(chat_id="@testchannel", text="Channel message")
 
             result = await mock_adapter._send_text_message(message)
 
@@ -211,7 +196,7 @@ class TestSingleMediaSending:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -226,25 +211,20 @@ class TestSingleMediaSending:
                 "message_id": 789,
                 "chat": {"id": -1001234567890},
                 "date": 1640995200,
-                "photo": [
-                    {"file_id": "photo_id", "width": 1280, "height": 720}
-                ],
-                "caption": "Test photo"
-            }
+                "photo": [{"file_id": "photo_id", "width": 1280, "height": 720}],
+                "caption": "Test photo",
+            },
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response) as mock_api:
+        with patch.object(mock_adapter, "_make_api_request", return_value=api_response) as mock_api:
             media_item = TelegramMediaItem(
                 file_path="https://example.com/photo.jpg",
                 media_type=MediaType.PHOTO,
                 caption="Test photo",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.MARKDOWN,
             )
 
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                media_items=[media_item]
-            )
+            message = TelegramMessage(chat_id=-1001234567890, media_items=[media_item])
 
             result = await mock_adapter._send_single_media(message, "test_correlation_id")
 
@@ -261,9 +241,9 @@ class TestSingleMediaSending:
                     "caption": "Test photo",
                     "parse_mode": "Markdown",
                     "disable_notification": False,
-                    "protect_content": False
+                    "protect_content": False,
                 },
-                files=None
+                files=None,
             )
 
     @pytest.mark.asyncio
@@ -275,19 +255,16 @@ class TestSingleMediaSending:
                 "message_id": 790,
                 "chat": {"id": -1001234567890},
                 "date": 1640995200,
-                "video": {
-                    "file_id": "video_id",
-                    "width": 1920,
-                    "height": 1080,
-                    "duration": 60
-                }
-            }
+                "video": {"file_id": "video_id", "width": 1920, "height": 1080, "duration": 60},
+            },
         }
 
         mock_file_content = b"fake_video_data"
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response) as mock_api, \
-             patch.object(mock_adapter, '_read_file', return_value=mock_file_content) as mock_read:
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=api_response) as mock_api,
+            patch.object(mock_adapter, "_read_file", return_value=mock_file_content) as mock_read,
+        ):
 
             media_item = TelegramMediaItem(
                 file_path="/local/video.mp4",
@@ -295,14 +272,10 @@ class TestSingleMediaSending:
                 width=1920,
                 height=1080,
                 duration=60,
-                supports_streaming=True
+                supports_streaming=True,
             )
 
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                media_items=[media_item],
-                text="Video caption"
-            )
+            message = TelegramMessage(chat_id=-1001234567890, media_items=[media_item], text="Video caption")
 
             result = await mock_adapter._send_single_media(message)
 
@@ -327,29 +300,22 @@ class TestSingleMediaSending:
         """Test sending video with thumbnail."""
         api_response = {
             "ok": True,
-            "result": {
-                "message_id": 791,
-                "chat": {"id": -1001234567890},
-                "video": {"file_id": "video_with_thumb"}
-            }
+            "result": {"message_id": 791, "chat": {"id": -1001234567890}, "video": {"file_id": "video_with_thumb"}},
         }
 
         mock_video_content = b"fake_video_data"
         mock_thumb_content = b"fake_thumb_data"
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response) as mock_api, \
-             patch.object(mock_adapter, '_read_file', side_effect=[mock_video_content, mock_thumb_content]):
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=api_response) as mock_api,
+            patch.object(mock_adapter, "_read_file", side_effect=[mock_video_content, mock_thumb_content]),
+        ):
 
             media_item = TelegramMediaItem(
-                file_path="/local/video.mp4",
-                media_type=MediaType.VIDEO,
-                thumbnail="/local/thumb.jpg"
+                file_path="/local/video.mp4", media_type=MediaType.VIDEO, thumbnail="/local/thumb.jpg"
             )
 
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                media_items=[media_item]
-            )
+            message = TelegramMessage(chat_id=-1001234567890, media_items=[media_item])
 
             result = await mock_adapter._send_single_media(message)
 
@@ -363,15 +329,9 @@ class TestSingleMediaSending:
     @pytest.mark.asyncio
     async def test_send_unsupported_media_type(self, mock_adapter):
         """Test sending unsupported media type."""
-        media_item = TelegramMediaItem(
-            file_path="/test/file.unknown",
-            media_type="unsupported"  # Invalid enum value
-        )
+        media_item = TelegramMediaItem(file_path="/test/file.unknown", media_type="unsupported")  # Invalid enum value
 
-        message = TelegramMessage(
-            chat_id=-1001234567890,
-            media_items=[media_item]
-        )
+        message = TelegramMessage(chat_id=-1001234567890, media_items=[media_item])
 
         # This should be caught during MediaType enum validation
         # But if it somehow gets through, it should raise validation error
@@ -385,7 +345,7 @@ class TestMediaGroupSending:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -401,33 +361,21 @@ class TestMediaGroupSending:
                     "message_id": 800,
                     "chat": {"id": -1001234567890},
                     "photo": [{"file_id": "photo1"}],
-                    "caption": "Group caption"
+                    "caption": "Group caption",
                 },
-                {
-                    "message_id": 801,
-                    "chat": {"id": -1001234567890},
-                    "photo": [{"file_id": "photo2"}]
-                }
-            ]
+                {"message_id": 801, "chat": {"id": -1001234567890}, "photo": [{"file_id": "photo2"}]},
+            ],
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response) as mock_api:
+        with patch.object(mock_adapter, "_make_api_request", return_value=api_response) as mock_api:
             media_items = [
                 TelegramMediaItem(
-                    file_path="https://example.com/photo1.jpg",
-                    media_type=MediaType.PHOTO,
-                    caption="Group caption"
+                    file_path="https://example.com/photo1.jpg", media_type=MediaType.PHOTO, caption="Group caption"
                 ),
-                TelegramMediaItem(
-                    file_path="https://example.com/photo2.jpg",
-                    media_type=MediaType.PHOTO
-                )
+                TelegramMediaItem(file_path="https://example.com/photo2.jpg", media_type=MediaType.PHOTO),
             ]
 
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                media_items=media_items
-            )
+            message = TelegramMessage(chat_id=-1001234567890, media_items=media_items)
 
             result = await mock_adapter._send_media_group(message, "test_correlation_id")
 
@@ -440,21 +388,16 @@ class TestMediaGroupSending:
                 "sendMediaGroup",
                 params={
                     "chat_id": -1001234567890,
-                    "media": json.dumps([
-                        {
-                            "type": "photo",
-                            "media": "https://example.com/photo1.jpg",
-                            "caption": "Group caption"
-                        },
-                        {
-                            "type": "photo",
-                            "media": "https://example.com/photo2.jpg"
-                        }
-                    ]),
+                    "media": json.dumps(
+                        [
+                            {"type": "photo", "media": "https://example.com/photo1.jpg", "caption": "Group caption"},
+                            {"type": "photo", "media": "https://example.com/photo2.jpg"},
+                        ]
+                    ),
                     "disable_notification": False,
-                    "protect_content": False
+                    "protect_content": False,
                 },
-                files=None
+                files=None,
             )
 
     @pytest.mark.asyncio
@@ -464,34 +407,25 @@ class TestMediaGroupSending:
             "ok": True,
             "result": [
                 {"message_id": 802, "chat": {"id": -1001234567890}},
-                {"message_id": 803, "chat": {"id": -1001234567890}}
-            ]
+                {"message_id": 803, "chat": {"id": -1001234567890}},
+            ],
         }
 
         mock_file_contents = [b"fake_photo1_data", b"fake_video_data"]
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response) as mock_api, \
-             patch.object(mock_adapter, '_read_file', side_effect=mock_file_contents):
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=api_response) as mock_api,
+            patch.object(mock_adapter, "_read_file", side_effect=mock_file_contents),
+        ):
 
             media_items = [
+                TelegramMediaItem(file_path="/local/photo.jpg", media_type=MediaType.PHOTO),
                 TelegramMediaItem(
-                    file_path="/local/photo.jpg",
-                    media_type=MediaType.PHOTO
+                    file_path="/local/video.mp4", media_type=MediaType.VIDEO, width=1280, height=720, duration=30
                 ),
-                TelegramMediaItem(
-                    file_path="/local/video.mp4",
-                    media_type=MediaType.VIDEO,
-                    width=1280,
-                    height=720,
-                    duration=30
-                )
             ]
 
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                media_items=media_items,
-                text="Media group caption"
-            )
+            message = TelegramMessage(chat_id=-1001234567890, media_items=media_items, text="Media group caption")
 
             result = await mock_adapter._send_media_group(message)
 
@@ -518,28 +452,22 @@ class TestMediaGroupSending:
     @pytest.mark.asyncio
     async def test_send_media_group_with_video_thumbnail(self, mock_adapter):
         """Test sending media group with video thumbnail."""
-        api_response = {
-            "ok": True,
-            "result": [{"message_id": 804, "chat": {"id": -1001234567890}}]
-        }
+        api_response = {"ok": True, "result": [{"message_id": 804, "chat": {"id": -1001234567890}}]}
 
         mock_contents = [b"video_data", b"thumb_data"]
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=api_response) as mock_api, \
-             patch.object(mock_adapter, '_read_file', side_effect=mock_contents):
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=api_response) as mock_api,
+            patch.object(mock_adapter, "_read_file", side_effect=mock_contents),
+        ):
 
             media_items = [
                 TelegramMediaItem(
-                    file_path="/local/video.mp4",
-                    media_type=MediaType.VIDEO,
-                    thumbnail="/local/thumb.jpg"
+                    file_path="/local/video.mp4", media_type=MediaType.VIDEO, thumbnail="/local/thumb.jpg"
                 )
             ]
 
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                media_items=media_items
-            )
+            message = TelegramMessage(chat_id=-1001234567890, media_items=media_items)
 
             await mock_adapter._send_media_group(message)
 
@@ -561,7 +489,7 @@ class TestFileHandling:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -572,8 +500,10 @@ class TestFileHandling:
         """Test reading local file successfully."""
         mock_content = b"file_content"
 
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch('pathlib.Path.read_bytes', return_value=mock_content):
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.read_bytes", return_value=mock_content),
+        ):
 
             content = await mock_adapter._read_file("/local/file.jpg")
             assert content == mock_content
@@ -581,7 +511,7 @@ class TestFileHandling:
     @pytest.mark.asyncio
     async def test_read_local_file_not_found(self, mock_adapter):
         """Test reading non-existent local file."""
-        with patch('pathlib.Path.exists', return_value=False):
+        with patch("pathlib.Path.exists", return_value=False):
             with pytest.raises(TelegramFileError) as exc_info:
                 await mock_adapter._read_file("/nonexistent/file.jpg")
 
@@ -596,14 +526,14 @@ class TestFileHandling:
         mock_response.raise_for_status.return_value = None
         mock_response.content = mock_content
 
-        with patch.object(mock_adapter.http_client, 'get', return_value=mock_response):
+        with patch.object(mock_adapter.http_client, "get", return_value=mock_response):
             content = await mock_adapter._read_file("https://example.com/file.jpg")
             assert content == mock_content
 
     @pytest.mark.asyncio
     async def test_read_file_from_url_error(self, mock_adapter):
         """Test reading file from URL with error."""
-        with patch.object(mock_adapter.http_client, 'get', side_effect=httpx.RequestError("Network error")):
+        with patch.object(mock_adapter.http_client, "get", side_effect=httpx.RequestError("Network error")):
             with pytest.raises(httpx.RequestError):
                 await mock_adapter._read_file("https://example.com/file.jpg")
 
@@ -614,7 +544,7 @@ class TestRateLimiting:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -636,7 +566,7 @@ class TestRateLimiting:
         current_time = time.time()
         mock_adapter.last_request_times = [current_time] * 30
 
-        with patch('asyncio.sleep') as mock_sleep:
+        with patch("asyncio.sleep") as mock_sleep:
             await mock_adapter._check_rate_limits(-1001234567890)
 
             # Should wait before making request
@@ -651,7 +581,7 @@ class TestRateLimiting:
         # Fill up the per-chat rate limit
         mock_adapter.chat_request_times[str(chat_id)] = [current_time] * 20
 
-        with patch('asyncio.sleep') as mock_sleep:
+        with patch("asyncio.sleep") as mock_sleep:
             await mock_adapter._check_rate_limits(chat_id)
 
             # Should wait before making request
@@ -678,7 +608,7 @@ class TestAPIErrorHandling:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -687,11 +617,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_bad_request_error(self, mock_adapter):
         """Test handling of bad request errors."""
-        error_response = {
-            "ok": False,
-            "error_code": 400,
-            "description": "Bad Request: chat not found"
-        }
+        error_response = {"ok": False, "error_code": 400, "description": "Bad Request: chat not found"}
 
         with pytest.raises(TelegramValidationError) as exc_info:
             await mock_adapter._handle_api_error(error_response)
@@ -701,11 +627,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_unauthorized_error(self, mock_adapter):
         """Test handling of unauthorized errors."""
-        error_response = {
-            "ok": False,
-            "error_code": 401,
-            "description": "Unauthorized"
-        }
+        error_response = {"ok": False, "error_code": 401, "description": "Unauthorized"}
 
         with pytest.raises(TelegramAuthError) as exc_info:
             await mock_adapter._handle_api_error(error_response)
@@ -715,11 +637,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_forbidden_error(self, mock_adapter):
         """Test handling of forbidden errors."""
-        error_response = {
-            "ok": False,
-            "error_code": 403,
-            "description": "Forbidden: bot was blocked by the user"
-        }
+        error_response = {"ok": False, "error_code": 403, "description": "Forbidden: bot was blocked by the user"}
 
         with pytest.raises(TelegramAuthError) as exc_info:
             await mock_adapter._handle_api_error(error_response)
@@ -729,11 +647,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_not_found_error(self, mock_adapter):
         """Test handling of not found errors."""
-        error_response = {
-            "ok": False,
-            "error_code": 404,
-            "description": "Not Found"
-        }
+        error_response = {"ok": False, "error_code": 404, "description": "Not Found"}
 
         with pytest.raises(TelegramError) as exc_info:
             await mock_adapter._handle_api_error(error_response)
@@ -743,11 +657,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_file_too_large_error(self, mock_adapter):
         """Test handling of file too large errors."""
-        error_response = {
-            "ok": False,
-            "error_code": 413,
-            "description": "Request Entity Too Large: file too large"
-        }
+        error_response = {"ok": False, "error_code": 413, "description": "Request Entity Too Large: file too large"}
 
         with pytest.raises(TelegramFileError) as exc_info:
             await mock_adapter._handle_api_error(error_response)
@@ -761,9 +671,7 @@ class TestAPIErrorHandling:
             "ok": False,
             "error_code": 429,
             "description": "Too Many Requests: retry after 60",
-            "parameters": {
-                "retry_after": 60
-            }
+            "parameters": {"retry_after": 60},
         }
 
         with pytest.raises(TelegramRateLimitError) as exc_info:
@@ -775,11 +683,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_server_error(self, mock_adapter):
         """Test handling of server errors."""
-        error_response = {
-            "ok": False,
-            "error_code": 500,
-            "description": "Internal Server Error"
-        }
+        error_response = {"ok": False, "error_code": 500, "description": "Internal Server Error"}
 
         with pytest.raises(TelegramError) as exc_info:
             await mock_adapter._handle_api_error(error_response)
@@ -789,11 +693,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_unknown_error(self, mock_adapter):
         """Test handling of unknown errors."""
-        error_response = {
-            "ok": False,
-            "error_code": 999,
-            "description": "Unknown error"
-        }
+        error_response = {"ok": False, "error_code": 999, "description": "Unknown error"}
 
         with pytest.raises(TelegramError) as exc_info:
             await mock_adapter._handle_api_error(error_response)
@@ -807,7 +707,7 @@ class TestAPIRequests:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -816,44 +716,37 @@ class TestAPIRequests:
     @pytest.mark.asyncio
     async def test_make_api_request_json_success(self, mock_adapter):
         """Test successful JSON API request."""
-        mock_response_data = {
-            "ok": True,
-            "result": {"message_id": 123}
-        }
+        mock_response_data = {"ok": True, "result": {"message_id": 123}}
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = mock_response_data
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+        ):
 
-            result = await mock_adapter._make_api_request(
-                "sendMessage",
-                params={"chat_id": 123, "text": "test"}
-            )
+            result = await mock_adapter._make_api_request("sendMessage", params={"chat_id": 123, "text": "test"})
 
             assert result == mock_response_data
 
     @pytest.mark.asyncio
     async def test_make_api_request_with_files(self, mock_adapter):
         """Test API request with file upload."""
-        mock_response_data = {
-            "ok": True,
-            "result": {"message_id": 124}
-        }
+        mock_response_data = {"ok": True, "result": {"message_id": 124}}
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = mock_response_data
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+        ):
 
             result = await mock_adapter._make_api_request(
-                "sendPhoto",
-                params={"chat_id": 123},
-                files={"photo": ("test.jpg", b"data", "image/jpeg")}
+                "sendPhoto", params={"chat_id": 123}, files={"photo": ("test.jpg", b"data", "image/jpeg")}
             )
 
             assert result == mock_response_data
@@ -861,19 +754,17 @@ class TestAPIRequests:
     @pytest.mark.asyncio
     async def test_make_api_request_with_error_response(self, mock_adapter):
         """Test API request with error in response."""
-        error_response = {
-            "ok": False,
-            "error_code": 400,
-            "description": "Bad Request"
-        }
+        error_response = {"ok": False, "error_code": 400, "description": "Bad Request"}
 
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_response.json.return_value = error_response
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None), \
-             patch.object(mock_adapter, '_handle_api_error', side_effect=TelegramValidationError("Bad Request")):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+            patch.object(mock_adapter, "_handle_api_error", side_effect=TelegramValidationError("Bad Request")),
+        ):
 
             with pytest.raises(TelegramValidationError):
                 await mock_adapter._make_api_request("sendMessage")
@@ -881,8 +772,10 @@ class TestAPIRequests:
     @pytest.mark.asyncio
     async def test_make_api_request_network_error(self, mock_adapter):
         """Test API request with network error."""
-        with patch.object(mock_adapter.http_client, 'post', side_effect=httpx.RequestError("Network error")), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", side_effect=httpx.RequestError("Network error")),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+        ):
 
             with pytest.raises(httpx.RequestError):
                 await mock_adapter._make_api_request("sendMessage")
@@ -894,7 +787,7 @@ class TestUtilityMethods:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -918,15 +811,10 @@ class TestUtilityMethods:
         """Test getting bot information."""
         bot_info = {
             "ok": True,
-            "result": {
-                "id": 123456,
-                "is_bot": True,
-                "first_name": "TestBot",
-                "username": "testbot"
-            }
+            "result": {"id": 123456, "is_bot": True, "first_name": "TestBot", "username": "testbot"},
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=bot_info):
+        with patch.object(mock_adapter, "_make_api_request", return_value=bot_info):
             result = await mock_adapter.get_me()
 
             assert result["id"] == 123456
@@ -935,7 +823,7 @@ class TestUtilityMethods:
     @pytest.mark.asyncio
     async def test_get_me_error(self, mock_adapter):
         """Test getting bot information with error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=TelegramError("API Error")):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=TelegramError("API Error")):
             result = await mock_adapter.get_me()
 
             assert result == {}
@@ -943,16 +831,9 @@ class TestUtilityMethods:
     @pytest.mark.asyncio
     async def test_get_chat_success(self, mock_adapter):
         """Test getting chat information."""
-        chat_info = {
-            "ok": True,
-            "result": {
-                "id": -1001234567890,
-                "title": "Test Chat",
-                "type": "supergroup"
-            }
-        }
+        chat_info = {"ok": True, "result": {"id": -1001234567890, "title": "Test Chat", "type": "supergroup"}}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=chat_info):
+        with patch.object(mock_adapter, "_make_api_request", return_value=chat_info):
             result = await mock_adapter.get_chat(-1001234567890)
 
             assert result["title"] == "Test Chat"
@@ -961,12 +842,9 @@ class TestUtilityMethods:
     @pytest.mark.asyncio
     async def test_delete_message_success(self, mock_adapter):
         """Test successful message deletion."""
-        delete_response = {
-            "ok": True,
-            "result": True
-        }
+        delete_response = {"ok": True, "result": True}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=delete_response):
+        with patch.object(mock_adapter, "_make_api_request", return_value=delete_response):
             result = await mock_adapter.delete_message(-1001234567890, 123)
 
             assert result is True
@@ -974,7 +852,7 @@ class TestUtilityMethods:
     @pytest.mark.asyncio
     async def test_delete_message_error(self, mock_adapter):
         """Test message deletion with error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=TelegramError("Can't delete")):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=TelegramError("Can't delete")):
             result = await mock_adapter.delete_message(-1001234567890, 123)
 
             assert result is False
@@ -982,18 +860,10 @@ class TestUtilityMethods:
     @pytest.mark.asyncio
     async def test_edit_message_text_success(self, mock_adapter):
         """Test successful message text editing."""
-        edit_response = {
-            "ok": True,
-            "result": {
-                "message_id": 123,
-                "text": "Edited message"
-            }
-        }
+        edit_response = {"ok": True, "result": {"message_id": 123, "text": "Edited message"}}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=edit_response):
-            result = await mock_adapter.edit_message_text(
-                -1001234567890, 123, "Edited message", ParseMode.HTML
-            )
+        with patch.object(mock_adapter, "_make_api_request", return_value=edit_response):
+            result = await mock_adapter.edit_message_text(-1001234567890, 123, "Edited message", ParseMode.HTML)
 
             assert result is True
 
@@ -1004,7 +874,7 @@ class TestFullSendWorkflow:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.telegram.settings.telegram') as mock_settings:
+        with patch("app.adapters.telegram.settings.telegram") as mock_settings:
             mock_settings.bot_token.get_secret_value.return_value = "123456:test_token"
 
             adapter = TelegramAdapter()
@@ -1018,14 +888,11 @@ class TestFullSendWorkflow:
             status=SendStatus.SENT,
             message="Message sent successfully",
             chat_id=-1001234567890,
-            sent_at=datetime.now(timezone.utc)
+            sent_at=datetime.now(timezone.utc),
         )
 
-        with patch.object(mock_adapter, '_send_text_message', return_value=text_result) as mock_text:
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                text="Hello, World!"
-            )
+        with patch.object(mock_adapter, "_send_text_message", return_value=text_result) as mock_text:
+            message = TelegramMessage(chat_id=-1001234567890, text="Hello, World!")
 
             result = await mock_adapter.send_message(message, "test_correlation_id")
 
@@ -1038,22 +905,13 @@ class TestFullSendWorkflow:
     async def test_send_message_single_media(self, mock_adapter):
         """Test sending single media message."""
         media_result = TelegramSendResult(
-            message_id=456,
-            status=SendStatus.SENT,
-            message="Media sent successfully",
-            chat_id=-1001234567890
+            message_id=456, status=SendStatus.SENT, message="Media sent successfully", chat_id=-1001234567890
         )
 
-        with patch.object(mock_adapter, '_send_single_media', return_value=media_result) as mock_media:
-            media_item = TelegramMediaItem(
-                file_path="/test/photo.jpg",
-                media_type=MediaType.PHOTO
-            )
+        with patch.object(mock_adapter, "_send_single_media", return_value=media_result) as mock_media:
+            media_item = TelegramMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
 
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                media_items=[media_item]
-            )
+            message = TelegramMessage(chat_id=-1001234567890, media_items=[media_item])
 
             result = await mock_adapter.send_message(message)
 
@@ -1068,19 +926,16 @@ class TestFullSendWorkflow:
             message_id=789,
             status=SendStatus.SENT,
             message="Media group with 2 items sent successfully",
-            chat_id=-1001234567890
+            chat_id=-1001234567890,
         )
 
-        with patch.object(mock_adapter, '_send_media_group', return_value=group_result) as mock_group:
+        with patch.object(mock_adapter, "_send_media_group", return_value=group_result) as mock_group:
             media_items = [
                 TelegramMediaItem(file_path="/test/photo1.jpg", media_type=MediaType.PHOTO),
-                TelegramMediaItem(file_path="/test/photo2.jpg", media_type=MediaType.PHOTO)
+                TelegramMediaItem(file_path="/test/photo2.jpg", media_type=MediaType.PHOTO),
             ]
 
-            message = TelegramMessage(
-                chat_id=-1001234567890,
-                media_items=media_items
-            )
+            message = TelegramMessage(chat_id=-1001234567890, media_items=media_items)
 
             result = await mock_adapter.send_message(message)
 
@@ -1110,20 +965,17 @@ class TestConvenienceFunctions:
     async def test_send_telegram_message_text_only(self):
         """Test send_telegram_message convenience function for text."""
         mock_result = TelegramSendResult(
-            message_id=123,
-            status=SendStatus.SENT,
-            message="Sent successfully",
-            chat_id=-1001234567890
+            message_id=123, status=SendStatus.SENT, message="Sent successfully", chat_id=-1001234567890
         )
 
-        with patch('app.adapters.telegram.telegram_adapter') as mock_adapter:
+        with patch("app.adapters.telegram.telegram_adapter") as mock_adapter:
             mock_adapter.send_message.return_value = mock_result
 
             result = await send_telegram_message(
                 chat_id=-1001234567890,
                 text="Hello, World!",
                 parse_mode=ParseMode.HTML,
-                correlation_id="test_correlation"
+                correlation_id="test_correlation",
             )
 
             assert result.message_id == 123
@@ -1140,19 +992,16 @@ class TestConvenienceFunctions:
     async def test_send_telegram_message_with_media(self):
         """Test send_telegram_message convenience function with media."""
         mock_result = TelegramSendResult(
-            message_id=456,
-            status=SendStatus.SENT,
-            message="Media sent",
-            chat_id=-1001234567890
+            message_id=456, status=SendStatus.SENT, message="Media sent", chat_id=-1001234567890
         )
 
-        with patch('app.adapters.telegram.telegram_adapter') as mock_adapter:
+        with patch("app.adapters.telegram.telegram_adapter") as mock_adapter:
             mock_adapter.send_message.return_value = mock_result
 
             result = await send_telegram_message(
                 chat_id=-1001234567890,
                 text="Media message",
-                media_files=["/path/to/photo.jpg", "/path/to/video.mp4", "/path/to/audio.mp3"]
+                media_files=["/path/to/photo.jpg", "/path/to/video.mp4", "/path/to/audio.mp3"],
             )
 
             assert result.message_id == 456
@@ -1169,20 +1018,17 @@ class TestConvenienceFunctions:
     async def test_send_telegram_photo(self):
         """Test send_telegram_photo convenience function."""
         mock_result = TelegramSendResult(
-            message_id=789,
-            status=SendStatus.SENT,
-            message="Photo sent",
-            chat_id=-1001234567890
+            message_id=789, status=SendStatus.SENT, message="Photo sent", chat_id=-1001234567890
         )
 
-        with patch('app.adapters.telegram.telegram_adapter') as mock_adapter:
+        with patch("app.adapters.telegram.telegram_adapter") as mock_adapter:
             mock_adapter.send_message.return_value = mock_result
 
             result = await send_telegram_photo(
                 chat_id=-1001234567890,
                 photo_path="https://example.com/photo.jpg",
                 caption="Test photo",
-                parse_mode=ParseMode.MARKDOWN
+                parse_mode=ParseMode.MARKDOWN,
             )
 
             assert result.message_id == 789
@@ -1201,13 +1047,10 @@ class TestConvenienceFunctions:
     async def test_send_telegram_video(self):
         """Test send_telegram_video convenience function."""
         mock_result = TelegramSendResult(
-            message_id=999,
-            status=SendStatus.SENT,
-            message="Video sent",
-            chat_id=-1001234567890
+            message_id=999, status=SendStatus.SENT, message="Video sent", chat_id=-1001234567890
         )
 
-        with patch('app.adapters.telegram.telegram_adapter') as mock_adapter:
+        with patch("app.adapters.telegram.telegram_adapter") as mock_adapter:
             mock_adapter.send_message.return_value = mock_result
 
             result = await send_telegram_video(
@@ -1217,7 +1060,7 @@ class TestConvenienceFunctions:
                 thumbnail="/local/thumb.jpg",
                 width=1920,
                 height=1080,
-                duration=60
+                duration=60,
             )
 
             assert result.message_id == 999
@@ -1236,20 +1079,17 @@ class TestConvenienceFunctions:
     async def test_send_telegram_media_group(self):
         """Test send_telegram_media_group convenience function."""
         mock_result = TelegramSendResult(
-            message_id=111,
-            status=SendStatus.SENT,
-            message="Media group sent",
-            chat_id=-1001234567890
+            message_id=111, status=SendStatus.SENT, message="Media group sent", chat_id=-1001234567890
         )
 
-        with patch('app.adapters.telegram.telegram_adapter') as mock_adapter:
+        with patch("app.adapters.telegram.telegram_adapter") as mock_adapter:
             mock_adapter.send_message.return_value = mock_result
 
             result = await send_telegram_media_group(
                 chat_id=-1001234567890,
                 media_files=["/path/photo1.jpg", "/path/photo2.jpg", "/path/video.mp4"],
                 caption="Media group caption",
-                parse_mode=ParseMode.HTML
+                parse_mode=ParseMode.HTML,
             )
 
             assert result.message_id == 111
@@ -1267,10 +1107,7 @@ class TestDataclassValidation:
 
     def test_telegram_media_item_creation(self):
         """Test TelegramMediaItem creation and defaults."""
-        media_item = TelegramMediaItem(
-            file_path="/test/photo.jpg",
-            media_type=MediaType.PHOTO
-        )
+        media_item = TelegramMediaItem(file_path="/test/photo.jpg", media_type=MediaType.PHOTO)
 
         assert media_item.file_path == "/test/photo.jpg"
         assert media_item.media_type == MediaType.PHOTO
@@ -1284,10 +1121,7 @@ class TestDataclassValidation:
 
     def test_telegram_message_creation(self):
         """Test TelegramMessage creation and defaults."""
-        message = TelegramMessage(
-            chat_id=-1001234567890,
-            text="Test message"
-        )
+        message = TelegramMessage(chat_id=-1001234567890, text="Test message")
 
         assert message.chat_id == -1001234567890
         assert message.text == "Test message"

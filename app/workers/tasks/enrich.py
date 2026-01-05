@@ -31,29 +31,29 @@ def enrich_post_content(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                 "original_text": stage_data.get("text_content", ""),
                 "brand_context": {"brand": "SalesWhisper", "voice": "elegant"},
                 "hashtags": ["#SalesWhisper", "#Style"],
-                "platform_adaptations": {
-                    "instagram": {"text": "Adapted for IG"},
-                    "vk": {"text": "Adapted for VK"}
-                }
+                "platform_adaptations": {"instagram": {"text": "Adapted for IG"}, "vk": {"text": "Adapted for VK"}},
             }
 
             processing_time = time.time() - task_start_time
 
             # Trigger next stage
             from .captionize import generate_captions
+
             next_task = generate_captions.delay({**stage_data, **enriched_data})
 
-            logger.info("Content enrichment completed",
-                       post_id=post_id,
-                       processing_time=processing_time,
-                       next_task_id=next_task.id)
+            logger.info(
+                "Content enrichment completed",
+                post_id=post_id,
+                processing_time=processing_time,
+                next_task_id=next_task.id,
+            )
 
             return {
                 "success": True,
                 "post_id": post_id,
                 "processing_time": processing_time,
                 "next_stage": "captionize",
-                "next_task_id": next_task.id
+                "next_task_id": next_task.id,
             }
 
         except Exception as e:

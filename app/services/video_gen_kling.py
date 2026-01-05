@@ -21,26 +21,31 @@ logger = get_logger("services.video_gen_kling")
 
 class KlingError(Exception):
     """Base exception for Kling API errors."""
+
     pass
 
 
 class KlingRateLimitError(KlingError):
     """Rate limit exceeded."""
+
     pass
 
 
 class KlingGenerationError(KlingError):
     """Video generation failed."""
+
     pass
 
 
 class KlingAuthError(KlingError):
     """Authentication failed."""
+
     pass
 
 
 class VideoStatus(str, Enum):
     """Kling video generation status."""
+
     PENDING = "submitted"
     PROCESSING = "processing"
     COMPLETED = "succeed"
@@ -49,6 +54,7 @@ class VideoStatus(str, Enum):
 
 class KlingModel(str, Enum):
     """Kling video models."""
+
     KLING_V1 = "kling-v1"
     KLING_V1_5 = "kling-v1-5"
     KLING_V2 = "kling-v2"
@@ -56,6 +62,7 @@ class KlingModel(str, Enum):
 
 class AspectRatio(str, Enum):
     """Video aspect ratios."""
+
     LANDSCAPE = "16:9"
     PORTRAIT = "9:16"
     SQUARE = "1:1"
@@ -63,13 +70,15 @@ class AspectRatio(str, Enum):
 
 class VideoDuration(str, Enum):
     """Video duration options."""
-    SHORT = "5"   # 5 seconds
-    LONG = "10"   # 10 seconds
+
+    SHORT = "5"  # 5 seconds
+    LONG = "10"  # 10 seconds
 
 
 @dataclass
 class KlingVideoResult:
     """Result of Kling video generation."""
+
     success: bool
     video_url: str | None = None
     thumbnail_url: str | None = None
@@ -98,20 +107,16 @@ class KlingService:
 
     def _get_access_key(self) -> str:
         """Get Kling access key from settings or environment."""
-        return os.getenv('KLING_ACCESS_KEY', '')
+        return os.getenv("KLING_ACCESS_KEY", "")
 
     def _get_secret_key(self) -> str:
         """Get Kling secret key from settings or environment."""
-        return os.getenv('KLING_SECRET_KEY', '')
+        return os.getenv("KLING_SECRET_KEY", "")
 
     def _generate_jwt_token(self) -> str:
         """Generate JWT token for Kling API authentication."""
         now = int(time.time())
-        payload = {
-            "iss": self.access_key,
-            "exp": now + 1800,  # 30 minutes
-            "nbf": now - 5
-        }
+        payload = {"iss": self.access_key, "exp": now + 1800, "nbf": now - 5}  # 30 minutes
         return jwt.encode(payload, self.secret_key, algorithm="HS256")
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -119,16 +124,13 @@ class KlingService:
         token = self._generate_jwt_token()
         return httpx.AsyncClient(
             timeout=httpx.Timeout(300.0),
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            }
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((httpx.TimeoutException, KlingRateLimitError))
+        retry=retry_if_exception_type((httpx.TimeoutException, KlingRateLimitError)),
     )
     async def generate_from_text(
         self,
@@ -137,7 +139,7 @@ class KlingService:
         model: KlingModel = KlingModel.KLING_V2,
         duration: VideoDuration = VideoDuration.SHORT,
         aspect_ratio: AspectRatio = AspectRatio.LANDSCAPE,
-        cfg_scale: float = 0.5
+        cfg_scale: float = 0.5,
     ) -> KlingVideoResult:
         """Generate video from text prompt."""
         logger.info("Starting Kling text-to-video generation", prompt=prompt[:50])
@@ -149,14 +151,11 @@ class KlingService:
                 "negative_prompt": negative_prompt,
                 "cfg_scale": cfg_scale,
                 "duration": duration.value,
-                "aspect_ratio": aspect_ratio.value
+                "aspect_ratio": aspect_ratio.value,
             }
 
             try:
-                response = await client.post(
-                    f"{self.API_BASE}/videos/text2video",
-                    json=payload
-                )
+                response = await client.post(f"{self.API_BASE}/videos/text2video", json=payload)
 
                 if response.status_code == 401:
                     raise KlingAuthError("Invalid API credentials")
@@ -185,7 +184,7 @@ class KlingService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((httpx.TimeoutException, KlingRateLimitError))
+        retry=retry_if_exception_type((httpx.TimeoutException, KlingRateLimitError)),
     )
     async def generate_from_image(
         self,
@@ -194,7 +193,7 @@ class KlingService:
         negative_prompt: str = "",
         model: KlingModel = KlingModel.KLING_V2,
         duration: VideoDuration = VideoDuration.SHORT,
-        cfg_scale: float = 0.5
+        cfg_scale: float = 0.5,
     ) -> KlingVideoResult:
         """Generate video from image."""
         logger.info("Starting Kling image-to-video generation")
@@ -206,14 +205,11 @@ class KlingService:
                 "prompt": prompt,
                 "negative_prompt": negative_prompt,
                 "cfg_scale": cfg_scale,
-                "duration": duration.value
+                "duration": duration.value,
             }
 
             try:
-                response = await client.post(
-                    f"{self.API_BASE}/videos/image2video",
-                    json=payload
-                )
+                response = await client.post(f"{self.API_BASE}/videos/image2video", json=payload)
 
                 if response.status_code == 401:
                     raise KlingAuthError("Invalid API credentials")
@@ -239,20 +235,14 @@ class KlingService:
                 raise
 
     async def _poll_for_result(
-        self,
-        task_id: str,
-        duration: int,
-        max_attempts: int = 120,
-        poll_interval: int = 5
+        self, task_id: str, duration: int, max_attempts: int = 120, poll_interval: int = 5
     ) -> KlingVideoResult:
         """Poll for video generation result."""
         logger.info("Polling for Kling result", task_id=task_id)
 
         for _attempt in range(max_attempts):
             async with await self._get_client() as client:
-                response = await client.get(
-                    f"{self.API_BASE}/videos/text2video/{task_id}"
-                )
+                response = await client.get(f"{self.API_BASE}/videos/text2video/{task_id}")
 
                 if response.status_code != 200:
                     logger.warning(f"Poll request failed: {response.status_code}")
@@ -274,31 +264,21 @@ class KlingService:
                             thumbnail_url=video.get("cover_url"),
                             task_id=task_id,
                             duration_seconds=video.get("duration", duration),
-                            cost_estimate=cost
+                            cost_estimate=cost,
                         )
 
                 elif status == VideoStatus.FAILED.value:
                     error_msg = task_data.get("task_status_msg", "Generation failed")
-                    return KlingVideoResult(
-                        success=False,
-                        task_id=task_id,
-                        error=error_msg
-                    )
+                    return KlingVideoResult(success=False, task_id=task_id, error=error_msg)
 
                 await asyncio.sleep(poll_interval)
 
-        return KlingVideoResult(
-            success=False,
-            task_id=task_id,
-            error="Timeout waiting for video generation"
-        )
+        return KlingVideoResult(success=False, task_id=task_id, error="Timeout waiting for video generation")
 
     async def get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get status of a video generation task."""
         async with await self._get_client() as client:
-            response = await client.get(
-                f"{self.API_BASE}/videos/text2video/{task_id}"
-            )
+            response = await client.get(f"{self.API_BASE}/videos/text2video/{task_id}")
             return response.json()
 
     async def close(self):

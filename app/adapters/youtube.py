@@ -33,36 +33,43 @@ YOUTUBE_SCOPES = [
 
 class YouTubeError(Exception):
     """Base exception for YouTube API errors."""
+
     pass
 
 
 class YouTubeAuthError(YouTubeError):
     """Raised when YouTube API authentication fails."""
+
     pass
 
 
 class YouTubeRateLimitError(YouTubeError):
     """Raised when YouTube API rate limit is exceeded."""
+
     pass
 
 
 class YouTubeQuotaError(YouTubeError):
     """Raised when YouTube API quota is exceeded."""
+
     pass
 
 
 class YouTubeUploadError(YouTubeError):
     """Raised when YouTube video upload fails."""
+
     pass
 
 
 class YouTubeValidationError(YouTubeError):
     """Raised when YouTube API validation fails."""
+
     pass
 
 
 class PrivacyStatus(Enum):
     """YouTube video privacy status."""
+
     PUBLIC = "public"
     UNLISTED = "unlisted"
     PRIVATE = "private"
@@ -70,6 +77,7 @@ class PrivacyStatus(Enum):
 
 class VideoCategory(Enum):
     """YouTube video categories."""
+
     FILM_ANIMATION = "1"
     AUTOS_VEHICLES = "2"
     MUSIC = "10"
@@ -89,6 +97,7 @@ class VideoCategory(Enum):
 
 class UploadStatus(Enum):
     """YouTube upload status."""
+
     PENDING = "pending"
     UPLOADING = "uploading"
     PROCESSING = "processing"
@@ -99,6 +108,7 @@ class UploadStatus(Enum):
 @dataclass
 class YouTubeCredentials:
     """YouTube OAuth credentials."""
+
     access_token: str
     refresh_token: str | None = None
     token_expires_at: datetime | None = None
@@ -115,6 +125,7 @@ class YouTubeCredentials:
 @dataclass
 class YouTubeVideo:
     """Represents a YouTube video for upload."""
+
     file_path: str
     title: str
     description: str = ""
@@ -143,6 +154,7 @@ class YouTubeVideo:
 @dataclass
 class YouTubeUploadResult:
     """Result of YouTube video upload."""
+
     video_id: str | None
     status: UploadStatus
     message: str
@@ -170,6 +182,7 @@ class YouTubeUploadResult:
 @dataclass
 class YouTubeChannel:
     """YouTube channel information."""
+
     channel_id: str
     title: str
     description: str = ""
@@ -189,9 +202,7 @@ class YouTubeAdapter:
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(300.0),  # 5 minutes for uploads
             limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
-            headers={
-                "User-Agent": "SalesWhisper-Crosspost/1.0"
-            }
+            headers={"User-Agent": "SalesWhisper-Crosspost/1.0"},
         )
 
         # Rate limiting - YouTube allows ~10,000 quota units per day
@@ -217,10 +228,7 @@ class YouTubeAdapter:
             return YouTubeCredentials(access_token="")
 
         return YouTubeCredentials(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            client_id=client_id,
-            client_secret=client_secret
+            access_token=access_token, refresh_token=refresh_token, client_id=client_id, client_secret=client_secret
         )
 
     async def _ensure_valid_token(self):
@@ -248,8 +256,8 @@ class YouTubeAdapter:
                     "client_id": self.credentials.client_id,
                     "client_secret": self.credentials.client_secret,
                     "refresh_token": self.credentials.refresh_token,
-                    "grant_type": "refresh_token"
-                }
+                    "grant_type": "refresh_token",
+                },
             )
 
             if response.status_code != 200:
@@ -268,10 +276,7 @@ class YouTubeAdapter:
 
     def _get_auth_headers(self) -> dict[str, str]:
         """Get authorization headers."""
-        return {
-            "Authorization": f"Bearer {self.credentials.access_token}",
-            "Accept": "application/json"
-        }
+        return {"Authorization": f"Bearer {self.credentials.access_token}", "Accept": "application/json"}
 
     async def _check_quota(self):
         """Check if we have enough quota for an upload."""
@@ -280,27 +285,20 @@ class YouTubeAdapter:
         # Reset quota if day has passed
         if now >= self.quota_reset_time:
             self.daily_quota_used = 0
-            self.quota_reset_time = now.replace(
-                hour=0, minute=0, second=0, microsecond=0
-            ) + timedelta(days=1)
+            self.quota_reset_time = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
 
         # Check if we have enough quota (assuming 10,000 daily limit)
         if self.daily_quota_used + self.upload_quota_cost > 10000:
             raise YouTubeQuotaError(
-                f"Daily quota exceeded. Used: {self.daily_quota_used}, "
-                f"Resets at: {self.quota_reset_time}"
+                f"Daily quota exceeded. Used: {self.daily_quota_used}, " f"Resets at: {self.quota_reset_time}"
             )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
-        retry=retry_if_exception_type((httpx.RequestError, YouTubeRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, YouTubeRateLimitError)),
     )
-    async def upload_video(
-        self,
-        video: YouTubeVideo,
-        correlation_id: str = None
-    ) -> YouTubeUploadResult:
+    async def upload_video(self, video: YouTubeVideo, correlation_id: str = None) -> YouTubeUploadResult:
         """Upload a video to YouTube."""
         start_time = time.time()
 
@@ -310,7 +308,7 @@ class YouTubeAdapter:
                 title=video.title,
                 file_path=video.file_path,
                 privacy=video.privacy_status.value,
-                is_shorts=video.is_shorts
+                is_shorts=video.is_shorts,
             )
 
             try:
@@ -346,25 +344,18 @@ class YouTubeAdapter:
 
                 # Track metrics
                 metrics.track_external_api_call(
-                    service="youtube",
-                    endpoint="upload",
-                    status_code=200,
-                    duration=processing_time
+                    service="youtube", endpoint="upload", status_code=200, duration=processing_time
                 )
                 metrics.track_post_published("youtube")
 
-                logger.info(
-                    "YouTube video uploaded successfully",
-                    video_id=video_id,
-                    processing_time=processing_time
-                )
+                logger.info("YouTube video uploaded successfully", video_id=video_id, processing_time=processing_time)
 
                 return YouTubeUploadResult(
                     video_id=video_id,
                     status=UploadStatus.COMPLETED,
                     message="Video uploaded successfully",
                     video_url=f"https://www.youtube.com/watch?v={video_id}",
-                    upload_time=processing_time
+                    upload_time=processing_time,
                 )
 
             except YouTubeError as e:
@@ -375,7 +366,7 @@ class YouTubeAdapter:
                     status=UploadStatus.FAILED,
                     message=str(e),
                     error_code=type(e).__name__,
-                    upload_time=time.time() - start_time
+                    upload_time=time.time() - start_time,
                 )
             except Exception as e:
                 logger.error("Unexpected error during YouTube upload", error=str(e), exc_info=True)
@@ -384,7 +375,7 @@ class YouTubeAdapter:
                     status=UploadStatus.FAILED,
                     message=f"Unexpected error: {str(e)}",
                     error_code="UnexpectedError",
-                    upload_time=time.time() - start_time
+                    upload_time=time.time() - start_time,
                 )
 
     def _build_video_metadata(self, video: YouTubeVideo) -> dict[str, Any]:
@@ -396,14 +387,14 @@ class YouTubeAdapter:
                 "tags": video.tags,
                 "categoryId": video.category_id,
                 "defaultLanguage": "ru",
-                "defaultAudioLanguage": "ru"
+                "defaultAudioLanguage": "ru",
             },
             "status": {
                 "privacyStatus": video.privacy_status.value,
                 "selfDeclaredMadeForKids": False,
                 "embeddable": True,
-                "publicStatsViewable": True
-            }
+                "publicStatsViewable": True,
+            },
         }
 
         # Add scheduled publish time
@@ -421,23 +412,17 @@ class YouTubeAdapter:
     async def _init_resumable_upload(self, metadata: dict[str, Any], file_size: int) -> str:
         """Initialize a resumable upload session."""
         headers = self._get_auth_headers()
-        headers.update({
-            "Content-Type": "application/json; charset=UTF-8",
-            "X-Upload-Content-Length": str(file_size),
-            "X-Upload-Content-Type": "video/*"
-        })
-
-        params = {
-            "uploadType": "resumable",
-            "part": "snippet,status"
-        }
-
-        response = await self.http_client.post(
-            YOUTUBE_UPLOAD_BASE,
-            params=params,
-            headers=headers,
-            json=metadata
+        headers.update(
+            {
+                "Content-Type": "application/json; charset=UTF-8",
+                "X-Upload-Content-Length": str(file_size),
+                "X-Upload-Content-Type": "video/*",
+            }
         )
+
+        params = {"uploadType": "resumable", "part": "snippet,status"}
+
+        response = await self.http_client.post(YOUTUBE_UPLOAD_BASE, params=params, headers=headers, json=metadata)
 
         if response.status_code == 401:
             raise YouTubeAuthError("Authentication failed")
@@ -455,12 +440,7 @@ class YouTubeAdapter:
 
         return upload_url
 
-    async def _upload_video_file(
-        self,
-        upload_url: str,
-        file_path: Path,
-        file_size: int
-    ) -> str:
+    async def _upload_video_file(self, upload_url: str, file_path: Path, file_size: int) -> str:
         """Upload video file using resumable upload."""
         chunk_size = 10 * 1024 * 1024  # 10MB chunks
 
@@ -477,14 +457,10 @@ class YouTubeAdapter:
 
                 headers = {
                     "Content-Length": str(len(chunk)),
-                    "Content-Range": f"bytes {uploaded}-{chunk_end - 1}/{file_size}"
+                    "Content-Range": f"bytes {uploaded}-{chunk_end - 1}/{file_size}",
                 }
 
-                response = await self.http_client.put(
-                    upload_url,
-                    headers=headers,
-                    content=chunk
-                )
+                response = await self.http_client.put(upload_url, headers=headers, content=chunk)
 
                 if response.status_code == 308:
                     # Upload in progress
@@ -522,7 +498,7 @@ class YouTubeAdapter:
             params={"videoId": video_id},
             headers=headers,
             content=thumbnail_data,
-            headers_update={"Content-Type": "image/png"}
+            headers_update={"Content-Type": "image/png"},
         )
 
         if response.status_code not in (200, 201):
@@ -535,21 +511,10 @@ class YouTubeAdapter:
         headers = self._get_auth_headers()
         headers["Content-Type"] = "application/json"
 
-        body = {
-            "snippet": {
-                "playlistId": playlist_id,
-                "resourceId": {
-                    "kind": "youtube#video",
-                    "videoId": video_id
-                }
-            }
-        }
+        body = {"snippet": {"playlistId": playlist_id, "resourceId": {"kind": "youtube#video", "videoId": video_id}}}
 
         response = await self.http_client.post(
-            f"{YOUTUBE_API_BASE}/playlistItems",
-            params={"part": "snippet"},
-            headers=headers,
-            json=body
+            f"{YOUTUBE_API_BASE}/playlistItems", params={"part": "snippet"}, headers=headers, json=body
         )
 
         if response.status_code not in (200, 201):
@@ -561,11 +526,8 @@ class YouTubeAdapter:
 
         response = await self.http_client.get(
             f"{YOUTUBE_API_BASE}/channels",
-            params={
-                "part": "snippet,statistics",
-                "mine": "true"
-            },
-            headers=self._get_auth_headers()
+            params={"part": "snippet,statistics", "mine": "true"},
+            headers=self._get_auth_headers(),
         )
 
         if response.status_code != 200:
@@ -588,7 +550,7 @@ class YouTubeAdapter:
             description=snippet.get("description", ""),
             subscriber_count=int(stats.get("subscriberCount", 0)),
             video_count=int(stats.get("videoCount", 0)),
-            thumbnail_url=snippet.get("thumbnails", {}).get("default", {}).get("url")
+            thumbnail_url=snippet.get("thumbnails", {}).get("default", {}).get("url"),
         )
 
     async def get_video_status(self, video_id: str) -> dict[str, Any]:
@@ -597,11 +559,8 @@ class YouTubeAdapter:
 
         response = await self.http_client.get(
             f"{YOUTUBE_API_BASE}/videos",
-            params={
-                "part": "status,processingDetails",
-                "id": video_id
-            },
-            headers=self._get_auth_headers()
+            params={"part": "status,processingDetails", "id": video_id},
+            headers=self._get_auth_headers(),
         )
 
         if response.status_code != 200:
@@ -618,7 +577,7 @@ class YouTubeAdapter:
             "upload_status": video.get("status", {}).get("uploadStatus"),
             "privacy_status": video.get("status", {}).get("privacyStatus"),
             "processing_status": video.get("processingDetails", {}).get("processingStatus"),
-            "processing_progress": video.get("processingDetails", {}).get("processingProgress", {})
+            "processing_progress": video.get("processingDetails", {}).get("processingProgress", {}),
         }
 
     async def delete_video(self, video_id: str) -> bool:
@@ -626,9 +585,7 @@ class YouTubeAdapter:
         await self._ensure_valid_token()
 
         response = await self.http_client.delete(
-            f"{YOUTUBE_API_BASE}/videos",
-            params={"id": video_id},
-            headers=self._get_auth_headers()
+            f"{YOUTUBE_API_BASE}/videos", params={"id": video_id}, headers=self._get_auth_headers()
         )
 
         if response.status_code == 204:
@@ -648,17 +605,13 @@ class YouTubeAdapter:
             "scope": " ".join(YOUTUBE_SCOPES),
             "access_type": "offline",
             "prompt": "consent",
-            "state": state
+            "state": state,
         }
         query = "&".join(f"{k}={v}" for k, v in params.items())
         return f"{YOUTUBE_AUTH_URL}?{query}"
 
     async def exchange_code_for_tokens(
-        self,
-        code: str,
-        client_id: str,
-        client_secret: str,
-        redirect_uri: str
+        self, code: str, client_id: str, client_secret: str, redirect_uri: str
     ) -> YouTubeCredentials:
         """Exchange authorization code for access tokens."""
         response = await self.http_client.post(
@@ -668,8 +621,8 @@ class YouTubeAdapter:
                 "client_id": client_id,
                 "client_secret": client_secret,
                 "redirect_uri": redirect_uri,
-                "grant_type": "authorization_code"
-            }
+                "grant_type": "authorization_code",
+            },
         )
 
         if response.status_code != 200:
@@ -685,7 +638,7 @@ class YouTubeAdapter:
             refresh_token=data.get("refresh_token"),
             token_expires_at=expires_at,
             client_id=client_id,
-            client_secret=client_secret
+            client_secret=client_secret,
         )
 
     async def close(self):

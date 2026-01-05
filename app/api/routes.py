@@ -26,6 +26,7 @@ logger = get_logger("api")
 
 class HealthResponse(BaseModel):
     """Health check response schema."""
+
     status: str = Field(description="Application status")
     timestamp: datetime = Field(description="Response timestamp")
     version: str = Field(description="Application version")
@@ -35,6 +36,7 @@ class HealthResponse(BaseModel):
 
 class TelegramWebhookRequest(BaseModel):
     """Telegram webhook request schema."""
+
     update_id: int = Field(description="Telegram update ID")
     message: dict[str, Any] | None = Field(default=None, description="Message object")
     channel_post: dict[str, Any] | None = Field(default=None, description="Channel post object")
@@ -46,6 +48,7 @@ class TelegramWebhookRequest(BaseModel):
 
 class TelegramWebhookResponse(BaseModel):
     """Telegram webhook response schema."""
+
     success: bool = Field(description="Processing success status")
     message: str = Field(description="Response message")
     post_id: str | None = Field(default=None, description="Created post ID")
@@ -54,6 +57,7 @@ class TelegramWebhookResponse(BaseModel):
 
 class DebugPublishRequest(BaseModel):
     """Debug publish request schema."""
+
     post_id: str = Field(description="Post ID to publish")
     platforms: list[str] = Field(description="Target platforms")
     force: bool = Field(default=False, description="Force republish")
@@ -61,6 +65,7 @@ class DebugPublishRequest(BaseModel):
 
 class DebugPublishResponse(BaseModel):
     """Debug publish response schema."""
+
     success: bool = Field(description="Publishing success status")
     message: str = Field(description="Response message")
     results: dict[str, dict[str, Any]] = Field(description="Per-platform results")
@@ -68,6 +73,7 @@ class DebugPublishResponse(BaseModel):
 
 class QueueInfo(BaseModel):
     """Queue information schema."""
+
     name: str = Field(description="Queue name")
     size: int = Field(description="Number of pending tasks")
     active_tasks: int = Field(description="Number of active tasks")
@@ -77,6 +83,7 @@ class QueueInfo(BaseModel):
 
 class QueuesResponse(BaseModel):
     """Queues status response schema."""
+
     queues: list[QueueInfo] = Field(description="Queue information list")
     total_pending: int = Field(description="Total pending tasks")
     total_active: int = Field(description="Total active tasks")
@@ -85,15 +92,14 @@ class QueuesResponse(BaseModel):
 
 class ReadyResponse(BaseModel):
     """Readiness check response schema."""
+
     ready: bool = Field(description="Application readiness status")
     timestamp: datetime = Field(description="Response timestamp")
     checks: dict[str, bool] = Field(description="Individual readiness checks")
 
 
 @router.get("/ready", response_model=ReadyResponse, tags=["Health"])
-async def readiness_check(
-    redis=Depends(get_redis_client)
-):
+async def readiness_check(redis=Depends(get_redis_client)):
     """
     Readiness probe endpoint for Kubernetes.
 
@@ -112,25 +118,18 @@ async def readiness_check(
     # Check database (critical for data operations)
     try:
         from ..models.db import db_manager
+
         checks["database"] = db_manager.health_check()
     except Exception:
         checks["database"] = False
 
     ready = all(checks.values())
 
-    return ReadyResponse(
-        ready=ready,
-        timestamp=datetime.now(),
-        checks=checks
-    )
+    return ReadyResponse(ready=ready, timestamp=datetime.now(), checks=checks)
 
 
 @router.get("/health", response_model=HealthResponse, tags=["Health"])
-async def health_check(
-    db=Depends(get_db_session),
-    redis=Depends(get_redis_client),
-    settings=Depends(get_settings)
-):
+async def health_check(db=Depends(get_db_session), redis=Depends(get_redis_client), settings=Depends(get_settings)):
     """
     Health check endpoint.
 
@@ -147,6 +146,7 @@ async def health_check(
     try:
         # Simple query to test database connectivity
         from ..models.db import db_manager
+
         db_healthy = db_manager.health_check()
         services["database"] = "healthy" if db_healthy else "unhealthy"
     except Exception as e:
@@ -177,19 +177,14 @@ async def health_check(
     metrics.track_request("GET", "/health", 200, processing_time)
 
     # Log health check result
-    logger.info(
-        "Health check completed",
-        status=overall_status,
-        services=services,
-        processing_time=processing_time
-    )
+    logger.info("Health check completed", status=overall_status, services=services, processing_time=processing_time)
 
     return HealthResponse(
         status=overall_status,
         timestamp=datetime.now(),
         version=settings.app.version,
         environment=settings.app.environment,
-        services=services
+        services=services,
     )
 
 
@@ -199,7 +194,7 @@ async def telegram_webhook(
     webhook_data: TelegramWebhookRequest,
     db=Depends(get_db_session),
     redis=Depends(get_redis_client),
-    settings=Depends(get_settings)
+    settings=Depends(get_settings),
 ):
     """
     Telegram webhook endpoint.
@@ -208,12 +203,12 @@ async def telegram_webhook(
     """
     start_time = datetime.now()
 
-    with with_logging_context(request_id=getattr(request.state, 'request_id', None)):
+    with with_logging_context(request_id=getattr(request.state, "request_id", None)):
         logger.info(
             "Telegram webhook received",
             update_id=webhook_data.update_id,
             has_message=webhook_data.message is not None,
-            has_channel_post=webhook_data.channel_post is not None
+            has_channel_post=webhook_data.channel_post is not None,
         )
 
         try:
@@ -230,13 +225,11 @@ async def telegram_webhook(
                 content = webhook_data.edited_message
 
             if not content:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="No processable content in webhook"
-                )
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No processable content in webhook")
 
             # Generate post ID (placeholder)
             import uuid
+
             post_id = str(uuid.uuid4())
 
             # Store in database (placeholder)
@@ -247,7 +240,7 @@ async def telegram_webhook(
                 "post_id": post_id,
                 "content": content,
                 "update_id": webhook_data.update_id,
-                "created_at": datetime.now().isoformat()
+                "created_at": datetime.now().isoformat(),
             }
 
             # Add to Redis queue (placeholder)
@@ -264,20 +257,13 @@ async def telegram_webhook(
                 platform="telegram",
                 user_id=str(content.get("from", {}).get("id", "unknown")),
                 product_id="webhook_intake",
-                update_id=webhook_data.update_id
+                update_id=webhook_data.update_id,
             )
 
-            logger.info(
-                "Telegram webhook processed successfully",
-                post_id=post_id,
-                processing_time=processing_time
-            )
+            logger.info("Telegram webhook processed successfully", post_id=post_id, processing_time=processing_time)
 
             return TelegramWebhookResponse(
-                success=True,
-                message="Webhook processed successfully",
-                post_id=post_id,
-                processing_time=processing_time
+                success=True, message="Webhook processed successfully", post_id=post_id, processing_time=processing_time
             )
 
         except HTTPException:
@@ -286,19 +272,13 @@ async def telegram_webhook(
             processing_time = (datetime.now() - start_time).total_seconds()
 
             logger.error(
-                "Telegram webhook processing failed",
-                error=str(e),
-                processing_time=processing_time,
-                exc_info=True
+                "Telegram webhook processing failed", error=str(e), processing_time=processing_time, exc_info=True
             )
 
             # Track error metrics
             metrics.track_request("POST", "/intake/telegram", 500, processing_time)
 
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to process webhook"
-            )
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to process webhook")
 
 
 @router.post("/debug/publish", response_model=DebugPublishResponse, tags=["Debug"])
@@ -307,7 +287,7 @@ async def debug_publish(
     publish_request: DebugPublishRequest,
     db=Depends(get_db_session),
     redis=Depends(get_redis_client),
-    settings=Depends(get_settings)
+    settings=Depends(get_settings),
 ):
     """
     Debug publish endpoint.
@@ -319,17 +299,14 @@ async def debug_publish(
 
     # Security check - only allow in non-production
     if settings.app.is_production:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Debug endpoints not available in production"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Debug endpoints not available in production")
 
-    with with_logging_context(request_id=getattr(request.state, 'request_id', None)):
+    with with_logging_context(request_id=getattr(request.state, "request_id", None)):
         logger.info(
             "Debug publish requested",
             post_id=publish_request.post_id,
             platforms=publish_request.platforms,
-            force=publish_request.force
+            force=publish_request.force,
         )
 
         try:
@@ -338,8 +315,7 @@ async def debug_publish(
 
             if not post_exists:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Post {publish_request.post_id} not found"
+                    status_code=status.HTTP_404_NOT_FOUND, detail=f"Post {publish_request.post_id} not found"
                 )
 
             # Validate platforms
@@ -348,8 +324,7 @@ async def debug_publish(
 
             if invalid_platforms:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unsupported platforms: {invalid_platforms}"
+                    status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported platforms: {invalid_platforms}"
                 )
 
             # Queue publishing tasks
@@ -362,7 +337,7 @@ async def debug_publish(
                         "platform": platform,
                         "force": publish_request.force,
                         "debug": True,
-                        "created_at": datetime.now().isoformat()
+                        "created_at": datetime.now().isoformat(),
                     }
 
                     # Add to platform-specific queue
@@ -372,7 +347,7 @@ async def debug_publish(
                     results[platform] = {
                         "status": "queued",
                         "message": f"Publishing task queued for {platform}",
-                        "queue": queue_name
+                        "queue": queue_name,
                     }
 
                     logger.info(f"Queued publishing task for {platform}", post_id=publish_request.post_id)
@@ -381,7 +356,7 @@ async def debug_publish(
                     results[platform] = {
                         "status": "error",
                         "message": f"Failed to queue task: {str(e)}",
-                        "error": str(e)
+                        "error": str(e),
                     }
 
                     logger.error(f"Failed to queue {platform} task", error=str(e))
@@ -397,7 +372,7 @@ async def debug_publish(
                 status_code=200,
                 response_time=processing_time,
                 post_id=publish_request.post_id,
-                platforms=publish_request.platforms
+                platforms=publish_request.platforms,
             )
 
             success = all(r["status"] == "queued" for r in results.values())
@@ -406,13 +381,13 @@ async def debug_publish(
                 "Debug publish completed",
                 post_id=publish_request.post_id,
                 success=success,
-                processing_time=processing_time
+                processing_time=processing_time,
             )
 
             return DebugPublishResponse(
                 success=success,
                 message="Publishing tasks queued" if success else "Some tasks failed to queue",
-                results=results
+                results=results,
             )
 
         except HTTPException:
@@ -425,23 +400,18 @@ async def debug_publish(
                 post_id=publish_request.post_id,
                 error=str(e),
                 processing_time=processing_time,
-                exc_info=True
+                exc_info=True,
             )
 
             metrics.track_request("POST", "/debug/publish", 500, processing_time)
 
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to process publish request"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to process publish request"
             )
 
 
 @router.get("/admin/queues", response_model=QueuesResponse, tags=["Admin"])
-async def get_queue_status(
-    request: Request,
-    redis=Depends(get_redis_client),
-    settings=Depends(get_settings)
-):
+async def get_queue_status(request: Request, redis=Depends(get_redis_client), settings=Depends(get_settings)):
     """
     Queue monitoring endpoint.
 
@@ -449,15 +419,12 @@ async def get_queue_status(
     """
     start_time = datetime.now()
 
-    with with_logging_context(request_id=getattr(request.state, 'request_id', None)):
+    with with_logging_context(request_id=getattr(request.state, "request_id", None)):
         logger.info("Queue status requested")
 
         try:
             # Define queue names
-            queue_names = [
-                "ingest", "enrich", "captionize", "transcode",
-                "preflight", "publish", "finalize"
-            ]
+            queue_names = ["ingest", "enrich", "captionize", "transcode", "preflight", "publish", "finalize"]
 
             queues = []
             total_pending = 0
@@ -477,13 +444,15 @@ async def get_queue_status(
                     # Get last task timestamp (placeholder)
                     last_task_timestamp = None
 
-                    queues.append(QueueInfo(
-                        name=queue_name,
-                        size=queue_size,
-                        active_tasks=active_tasks,
-                        failed_tasks=failed_tasks,
-                        last_task_timestamp=last_task_timestamp
-                    ))
+                    queues.append(
+                        QueueInfo(
+                            name=queue_name,
+                            size=queue_size,
+                            active_tasks=active_tasks,
+                            failed_tasks=failed_tasks,
+                            last_task_timestamp=last_task_timestamp,
+                        )
+                    )
 
                     total_pending += queue_size
                     total_active += active_tasks
@@ -495,13 +464,15 @@ async def get_queue_status(
                 except Exception as e:
                     logger.warning(f"Failed to get status for queue {queue_name}", error=str(e))
 
-                    queues.append(QueueInfo(
-                        name=queue_name,
-                        size=-1,  # Indicates error
-                        active_tasks=-1,
-                        failed_tasks=-1,
-                        last_task_timestamp=None
-                    ))
+                    queues.append(
+                        QueueInfo(
+                            name=queue_name,
+                            size=-1,  # Indicates error
+                            active_tasks=-1,
+                            failed_tasks=-1,
+                            last_task_timestamp=None,
+                        )
+                    )
 
             # Determine system health
             if any(q.size == -1 for q in queues):
@@ -520,29 +491,20 @@ async def get_queue_status(
                 total_pending=total_pending,
                 total_active=total_active,
                 system_health=system_health,
-                processing_time=processing_time
+                processing_time=processing_time,
             )
 
             return QueuesResponse(
-                queues=queues,
-                total_pending=total_pending,
-                total_active=total_active,
-                system_health=system_health
+                queues=queues, total_pending=total_pending, total_active=total_active, system_health=system_health
             )
 
         except Exception as e:
             processing_time = (datetime.now() - start_time).total_seconds()
 
-            logger.error(
-                "Queue status retrieval failed",
-                error=str(e),
-                processing_time=processing_time,
-                exc_info=True
-            )
+            logger.error("Queue status retrieval failed", error=str(e), processing_time=processing_time, exc_info=True)
 
             metrics.track_request("GET", "/admin/queues", 500, processing_time)
 
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to retrieve queue status"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to retrieve queue status"
             )

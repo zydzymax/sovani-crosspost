@@ -30,6 +30,7 @@ logger = get_logger("services.content_planner")
 
 class Tone(str, Enum):
     """Content tone options."""
+
     PROFESSIONAL = "professional"
     CASUAL = "casual"
     HUMOROUS = "humorous"
@@ -39,6 +40,7 @@ class Tone(str, Enum):
 
 class MediaType(str, Enum):
     """Media type for posts."""
+
     IMAGE = "image"
     VIDEO = "video"
     CAROUSEL = "carousel"
@@ -48,6 +50,7 @@ class MediaType(str, Enum):
 @dataclass
 class PlannedPost:
     """A single planned post."""
+
     date: str  # ISO format YYYY-MM-DD
     day_of_week: str
     time: str  # HH:MM
@@ -66,6 +69,7 @@ class PlannedPost:
 @dataclass
 class ContentPlanResult:
     """Result of content plan generation."""
+
     success: bool
     plan_id: str
     niche: str
@@ -245,21 +249,21 @@ class ContentPlannerService:
 
     def _get_openai_key(self) -> str:
         """Get OpenAI API key."""
-        if hasattr(settings, 'openai') and hasattr(settings.openai, 'api_key'):
+        if hasattr(settings, "openai") and hasattr(settings.openai, "api_key"):
             key = settings.openai.api_key
-            if hasattr(key, 'get_secret_value'):
+            if hasattr(key, "get_secret_value"):
                 return key.get_secret_value()
             return str(key)
-        return os.getenv('OPENAI_API_KEY', '')
+        return os.getenv("OPENAI_API_KEY", "")
 
     def _get_anthropic_key(self) -> str:
         """Get Anthropic API key."""
-        if hasattr(settings, 'anthropic') and hasattr(settings.anthropic, 'api_key'):
+        if hasattr(settings, "anthropic") and hasattr(settings.anthropic, "api_key"):
             key = settings.anthropic.api_key
-            if hasattr(key, 'get_secret_value'):
+            if hasattr(key, "get_secret_value"):
                 return key.get_secret_value()
             return str(key)
-        return os.getenv('ANTHROPIC_API_KEY', '')
+        return os.getenv("ANTHROPIC_API_KEY", "")
 
     async def generate_plan(
         self,
@@ -271,7 +275,7 @@ class ContentPlannerService:
         target_audience: str = None,
         brand_guidelines: str = None,
         exclude_topics: list[str] = None,
-        preferred_posting_times: list[str] = None
+        preferred_posting_times: list[str] = None,
     ) -> ContentPlanResult:
         """
         Generate content plan using two-stage AI pipeline.
@@ -300,7 +304,7 @@ class ContentPlannerService:
             plan_id=plan_id,
             niche=niche,
             duration_days=duration_days,
-            posts_per_day=posts_per_day
+            posts_per_day=posts_per_day,
         )
 
         if platforms is None:
@@ -321,16 +325,13 @@ class ContentPlannerService:
                 target_audience=target_audience,
                 brand_guidelines=brand_guidelines,
                 exclude_topics=exclude_topics,
-                preferred_posting_times=preferred_posting_times
+                preferred_posting_times=preferred_posting_times,
             )
 
             # Stage 2: Review with Claude
             logger.info("Stage 2: Reviewing with Claude", plan_id=plan_id)
             reviewed_plan = await self._stage2_review_with_claude(
-                raw_plan=raw_plan,
-                niche=niche,
-                tone=tone,
-                platforms=platforms
+                raw_plan=raw_plan, niche=niche, tone=tone, platforms=platforms
             )
 
             # Parse final posts
@@ -340,10 +341,7 @@ class ContentPlannerService:
             generation_cost = CONTENT_PLAN_COSTS["base_cost_usd"]
 
             logger.info(
-                "Content plan generated successfully",
-                plan_id=plan_id,
-                total_posts=len(posts),
-                cost_usd=generation_cost
+                "Content plan generated successfully", plan_id=plan_id, total_posts=len(posts), cost_usd=generation_cost
             )
 
             return ContentPlanResult(
@@ -356,7 +354,7 @@ class ContentPlannerService:
                 platforms=platforms,
                 posts=posts,
                 total_posts=len(posts),
-                generation_cost_usd=generation_cost
+                generation_cost_usd=generation_cost,
             )
 
         except Exception as e:
@@ -371,13 +369,10 @@ class ContentPlannerService:
                 platforms=platforms,
                 posts=[],
                 total_posts=0,
-                error=str(e)
+                error=str(e),
             )
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def _stage1_generate_with_o1(
         self,
         niche: str,
@@ -388,7 +383,7 @@ class ContentPlannerService:
         target_audience: str,
         brand_guidelines: str,
         exclude_topics: list[str],
-        preferred_posting_times: list[str]
+        preferred_posting_times: list[str],
     ) -> dict[str, Any]:
         """Stage 1: Generate initial plan using o1-mini (GPT-5 reasoning)."""
         total_posts = duration_days * posts_per_day
@@ -400,20 +395,22 @@ class ContentPlannerService:
             Tone.CASUAL: "Дружелюбный, как разговор с другом. Используй разговорные выражения, эмодзи уместны.",
             Tone.HUMOROUS: "С юмором и иронией. Шутки, мемы, актуальные тренды. Но не переборщи - юмор должен быть уместным.",
             Tone.EDUCATIONAL: "Обучающий, познавательный. Пошаговые инструкции, объяснения, разбор сложных тем простым языком.",
-            Tone.INSPIRATIONAL: "Вдохновляющий, мотивирующий. Истории успеха, цитаты, позитивные установки."
+            Tone.INSPIRATIONAL: "Вдохновляющий, мотивирующий. Истории успеха, цитаты, позитивные установки.",
         }
 
         # Platform-specific limits
-        platform_limits_text = "\n".join([
-            "Лимиты платформ:",
-            "- Telegram: до 4096 символов, до 10 хэштегов, поддержка Markdown",
-            "- Instagram: до 2200 символов, до 30 хэштегов, хэштеги в конце",
-            "- VK: до 15000 символов, до 10 хэштегов",
-            "- Facebook: до 63206 символов, до 30 хэштегов",
-            "- TikTok: до 150 символов (!), до 5 хэштегов, очень короткий текст",
-            "- YouTube: до 5000 символов описания, до 15 хэштегов",
-            "- RuTube: до 5000 символов, до 20 хэштегов"
-        ])
+        platform_limits_text = "\n".join(
+            [
+                "Лимиты платформ:",
+                "- Telegram: до 4096 символов, до 10 хэштегов, поддержка Markdown",
+                "- Instagram: до 2200 символов, до 30 хэштегов, хэштеги в конце",
+                "- VK: до 15000 символов, до 10 хэштегов",
+                "- Facebook: до 63206 символов, до 30 хэштегов",
+                "- TikTok: до 150 символов (!), до 5 хэштегов, очень короткий текст",
+                "- YouTube: до 5000 символов описания, до 15 хэштегов",
+                "- RuTube: до 5000 символов, до 20 хэштегов",
+            ]
+        )
 
         # Build prompt
         prompt = self.O1_GENERATION_PROMPT.format(
@@ -425,7 +422,7 @@ class ContentPlannerService:
             platforms=", ".join(platforms),
             platform_limits=platform_limits_text,
             tone=tone.value,
-            tone_description=tone_descriptions.get(tone, tone.value)
+            tone_description=tone_descriptions.get(tone, tone.value),
         )
 
         # Add optional context
@@ -441,46 +438,35 @@ class ContentPlannerService:
         try:
             response = await self.openai_client.chat.completions.create(
                 model="o1-mini",  # GPT-5 reasoning model
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
+                messages=[{"role": "user", "content": prompt}],
                 # o1 models don't support temperature, max_tokens works differently
-                max_completion_tokens=16000
+                max_completion_tokens=16000,
             )
         except Exception as e:
             # Fallback to gpt-4-turbo if o1 not available
             logger.warning(f"o1-mini not available, falling back to gpt-4-turbo: {e}")
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4-turbo-preview",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
                 max_tokens=8000,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
             )
 
         content = response.choices[0].message.content
 
         # Extract JSON from response (o1 might include reasoning text)
-        json_start = content.find('{')
-        json_end = content.rfind('}') + 1
+        json_start = content.find("{")
+        json_end = content.rfind("}") + 1
         if json_start != -1 and json_end > json_start:
             json_str = content[json_start:json_end]
             return json.loads(json_str)
 
         return json.loads(content)
 
-    @retry(
-        stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=2, max=10)
-    )
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def _stage2_review_with_claude(
-        self,
-        raw_plan: dict[str, Any],
-        niche: str,
-        tone: Tone,
-        platforms: list[str]
+        self, raw_plan: dict[str, Any], niche: str, tone: Tone, platforms: list[str]
     ) -> dict[str, Any]:
         """Stage 2: Review and improve plan using Claude."""
 
@@ -492,7 +478,7 @@ class ContentPlannerService:
             niche=niche,
             tone=tone.value,
             platforms=", ".join(platforms),
-            plan_json=json.dumps(raw_plan, ensure_ascii=False, indent=2)
+            plan_json=json.dumps(raw_plan, ensure_ascii=False, indent=2),
         )
 
         try:
@@ -502,15 +488,13 @@ class ContentPlannerService:
                     headers={
                         "x-api-key": self.anthropic_key,
                         "anthropic-version": "2023-06-01",
-                        "content-type": "application/json"
+                        "content-type": "application/json",
                     },
                     json={
                         "model": "claude-sonnet-4-20250514",  # Claude Sonnet 4
                         "max_tokens": 8000,
-                        "messages": [
-                            {"role": "user", "content": prompt}
-                        ]
-                    }
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
                 )
 
                 if response.status_code != 200:
@@ -521,8 +505,8 @@ class ContentPlannerService:
                 content = result["content"][0]["text"]
 
                 # Extract JSON
-                json_start = content.find('{')
-                json_end = content.rfind('}') + 1
+                json_start = content.find("{")
+                json_end = content.rfind("}") + 1
                 if json_start != -1 and json_end > json_start:
                     json_str = content[json_start:json_end]
                     reviewed = json.loads(json_str)
@@ -533,7 +517,7 @@ class ContentPlannerService:
                         logger.info(
                             "Claude review completed",
                             posts_improved=summary.get("posts_improved", 0),
-                            quality=summary.get("overall_quality", "unknown")
+                            quality=summary.get("overall_quality", "unknown"),
                         )
 
                     return reviewed
@@ -545,10 +529,7 @@ class ContentPlannerService:
             return raw_plan
 
     def _parse_posts(
-        self,
-        plan_data: dict[str, Any],
-        platforms: list[str],
-        preferred_posting_times: list[str]
+        self, plan_data: dict[str, Any], platforms: list[str], preferred_posting_times: list[str]
     ) -> list[PlannedPost]:
         """Parse plan data into PlannedPost objects."""
         posts_data = plan_data.get("posts", plan_data.get("plan", []))
@@ -597,7 +578,7 @@ class ContentPlannerService:
                     video_prompt=post_data.get("video_prompt"),
                     call_to_action=post_data.get("call_to_action"),
                     content_pillar=post_data.get("content_pillar"),
-                    engagement_hook=post_data.get("engagement_hook")
+                    engagement_hook=post_data.get("engagement_hook"),
                 )
                 posts.append(post)
 
@@ -607,12 +588,7 @@ class ContentPlannerService:
 
         return posts
 
-    async def regenerate_post(
-        self,
-        post: PlannedPost,
-        feedback: str = None,
-        niche: str = ""
-    ) -> PlannedPost:
+    async def regenerate_post(self, post: PlannedPost, feedback: str = None, niche: str = "") -> PlannedPost:
         """Regenerate a single post with optional feedback."""
         prompt = f"""Перегенерируй этот пост для ниши "{niche}".
 
@@ -642,7 +618,7 @@ class ContentPlannerService:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.8,
             max_tokens=1500,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
         )
 
         data = json.loads(response.choices[0].message.content)
@@ -660,15 +636,10 @@ class ContentPlannerService:
             video_prompt=data.get("video_prompt", post.video_prompt),
             call_to_action=data.get("call_to_action", post.call_to_action),
             content_pillar=data.get("content_pillar", post.content_pillar),
-            engagement_hook=data.get("engagement_hook", post.engagement_hook)
+            engagement_hook=data.get("engagement_hook", post.engagement_hook),
         )
 
-    async def adapt_for_platform(
-        self,
-        caption: str,
-        source_platform: str,
-        target_platform: str
-    ) -> str:
+    async def adapt_for_platform(self, caption: str, source_platform: str, target_platform: str) -> str:
         """Adapt caption from one platform to another."""
         platform_instructions = {
             "telegram": "Длинный текст OK, используй **bold** и _italic_ Markdown. Можно добавить разбиение на абзацы.",
@@ -677,7 +648,7 @@ class ContentPlannerService:
             "facebook": "Развернутый текст, призыв к обсуждению в комментариях. Вопрос в конце.",
             "tiktok": "МАКСИМУМ 150 символов! Очень короткий, цепляющий текст. Только суть.",
             "youtube": "Описание для видео с таймкодами. Ключевые слова для поиска.",
-            "rutube": "Описание для видео, ключевые слова на русском."
+            "rutube": "Описание для видео, ключевые слова на русском.",
         }
 
         prompt = f"""Адаптируй этот текст с {source_platform} для {target_platform}.
@@ -690,10 +661,7 @@ class ContentPlannerService:
 Верни ТОЛЬКО адаптированный текст без пояснений."""
 
         response = await self.openai_client.chat.completions.create(
-            model="gpt-4-turbo-preview",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500
+            model="gpt-4-turbo-preview", messages=[{"role": "user", "content": prompt}], temperature=0.7, max_tokens=500
         )
 
         return response.choices[0].message.content.strip()
@@ -705,20 +673,12 @@ content_planner = ContentPlannerService()
 
 # Convenience function
 async def generate_content_plan(
-    niche: str,
-    duration_days: int = 7,
-    posts_per_day: int = 1,
-    platforms: list[str] = None,
-    tone: str = "professional"
+    niche: str, duration_days: int = 7, posts_per_day: int = 1, platforms: list[str] = None, tone: str = "professional"
 ) -> ContentPlanResult:
     """Generate content plan using two-stage AI pipeline."""
     tone_enum = Tone(tone) if tone in [t.value for t in Tone] else Tone.PROFESSIONAL
     return await content_planner.generate_plan(
-        niche=niche,
-        duration_days=duration_days,
-        posts_per_day=posts_per_day,
-        platforms=platforms,
-        tone=tone_enum
+        niche=niche, duration_days=duration_days, posts_per_day=posts_per_day, platforms=platforms, tone=tone_enum
     )
 
 
@@ -748,5 +708,5 @@ def get_content_plan_price(duration_days: int = 7, posts_per_day: int = 1) -> di
         "price_usd": round(total_usd, 2),
         "price_rub": round(total_rub, 0),
         "cost_per_post_usd": round(total_usd / total_posts, 3),
-        "market_comparison": "60-80% дешевле конкурентов"
+        "market_comparison": "60-80% дешевле конкурентов",
     }

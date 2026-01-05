@@ -37,8 +37,10 @@ router = APIRouter(prefix="/cloud-storage", tags=["Cloud Storage"])
 
 # ==================== SCHEMAS ====================
 
+
 class ConnectCloudRequest(BaseModel):
     """Request to connect cloud storage."""
+
     provider: str = Field(..., description="Provider: google_drive or yandex_disk")
     folder_url: str = Field(..., description="Sharing URL or folder path")
     is_public: bool = Field(default=False, description="Is public folder (no OAuth needed)")
@@ -46,6 +48,7 @@ class ConnectCloudRequest(BaseModel):
 
 class ConnectCloudResponse(BaseModel):
     """Response for cloud connection."""
+
     success: bool
     connection_id: str | None = None
     oauth_url: str | None = None
@@ -55,12 +58,14 @@ class ConnectCloudResponse(BaseModel):
 
 class OAuthCallbackRequest(BaseModel):
     """OAuth callback request."""
+
     code: str = Field(..., description="OAuth authorization code")
     state: str = Field(..., description="State parameter with connection ID")
 
 
 class CloudConnectionResponse(BaseModel):
     """Cloud connection details."""
+
     id: str
     provider: str
     folder_name: str | None
@@ -76,12 +81,14 @@ class CloudConnectionResponse(BaseModel):
 
 class CloudConnectionsListResponse(BaseModel):
     """List of cloud connections."""
+
     connections: list[CloudConnectionResponse]
     total: int
 
 
 class SyncTriggerResponse(BaseModel):
     """Sync trigger response."""
+
     success: bool
     message: str
     task_id: str | None = None
@@ -89,6 +96,7 @@ class SyncTriggerResponse(BaseModel):
 
 class CloudFileResponse(BaseModel):
     """Synced file info."""
+
     id: str
     cloud_file_name: str
     cloud_file_path: str | None
@@ -100,6 +108,7 @@ class CloudFileResponse(BaseModel):
 
 class CloudFilesListResponse(BaseModel):
     """List of synced files."""
+
     files: list[CloudFileResponse]
     total: int
     page: int
@@ -108,6 +117,7 @@ class CloudFilesListResponse(BaseModel):
 
 class FolderStructureResponse(BaseModel):
     """Expected folder structure guide."""
+
     description: str
     structure: dict
     supported_video_formats: list[str]
@@ -117,6 +127,7 @@ class FolderStructureResponse(BaseModel):
 
 class UpdateConnectionRequest(BaseModel):
     """Update connection settings."""
+
     sync_enabled: bool | None = None
     sync_videos: bool | None = None
     sync_photos: bool | None = None
@@ -124,6 +135,7 @@ class UpdateConnectionRequest(BaseModel):
 
 
 # ==================== ROUTES ====================
+
 
 @router.get("/folder-structure", response_model=FolderStructureResponse)
 async def get_folder_structure():
@@ -139,7 +151,7 @@ async def get_folder_structure():
 async def connect_cloud_storage(
     request: ConnectCloudRequest,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
     Connect a cloud storage folder.
@@ -152,31 +164,24 @@ async def connect_cloud_storage(
         provider = CloudProvider(request.provider)
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid provider. Supported: google_drive, yandex_disk"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid provider. Supported: google_drive, yandex_disk"
         )
 
     # Extract folder ID from URL
     folder_id = cloud_storage_service.extract_folder_id(provider, request.folder_url)
     if not folder_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not extract folder ID from URL"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not extract folder ID from URL")
 
     # Check for existing connection to same folder
     existing = await db.execute(
         select(CloudStorageConnection).where(
             CloudStorageConnection.user_id == current_user.id,
             CloudStorageConnection.provider == provider,
-            CloudStorageConnection.folder_id == folder_id
+            CloudStorageConnection.folder_id == folder_id,
         )
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This folder is already connected"
-        )
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This folder is already connected")
 
     # Create connection record
     connection = CloudStorageConnection(
@@ -198,16 +203,14 @@ async def connect_cloud_storage(
         user_id=str(current_user.id),
         provider=provider.value,
         connection_id=str(connection.id),
-        is_public=request.is_public
+        is_public=request.is_public,
     )
 
     # For public folders, validate and return immediately
     if request.is_public:
         # Validate connection
         is_valid, error = await cloud_storage_service.validate_connection(
-            provider=provider,
-            folder_id=folder_id,
-            public_url=request.folder_url
+            provider=provider, folder_id=folder_id, public_url=request.folder_url
         )
 
         if not is_valid:
@@ -216,16 +219,12 @@ async def connect_cloud_storage(
             await db.commit()
 
             return ConnectCloudResponse(
-                success=False,
-                connection_id=str(connection.id),
-                message=f"Failed to access folder: {error}"
+                success=False, connection_id=str(connection.id), message=f"Failed to access folder: {error}"
             )
 
         # Get folder info
         folder_info = await cloud_storage_service.get_folder_info(
-            provider=provider,
-            folder_id=folder_id,
-            public_url=request.folder_url
+            provider=provider, folder_id=folder_id, public_url=request.folder_url
         )
 
         if folder_info:
@@ -236,24 +235,20 @@ async def connect_cloud_storage(
             success=True,
             connection_id=str(connection.id),
             message="Public folder connected successfully",
-            folder_info=folder_info.__dict__ if folder_info else None
+            folder_info=folder_info.__dict__ if folder_info else None,
         )
 
     # For private folders, generate OAuth URL
     redirect_uri = f"{settings.API_BASE_URL}/api/v1/cloud-storage/oauth/callback"
     state = str(connection.id)  # Pass connection ID in state
 
-    oauth_url = cloud_storage_service.get_oauth_url(
-        provider=provider,
-        redirect_uri=redirect_uri,
-        state=state
-    )
+    oauth_url = cloud_storage_service.get_oauth_url(provider=provider, redirect_uri=redirect_uri, state=state)
 
     return ConnectCloudResponse(
         success=True,
         connection_id=str(connection.id),
         oauth_url=oauth_url,
-        message="Please authorize access via the OAuth URL"
+        message="Please authorize access via the OAuth URL",
     )
 
 
@@ -261,7 +256,7 @@ async def connect_cloud_storage(
 async def oauth_callback(
     code: str = Query(..., description="OAuth authorization code"),
     state: str = Query(..., description="Connection ID"),
-    db: AsyncSession = Depends(get_db_session)
+    db: AsyncSession = Depends(get_db_session),
 ):
     """
     OAuth callback handler.
@@ -271,31 +266,19 @@ async def oauth_callback(
     try:
         connection_id = UUID(state)
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid state parameter"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid state parameter")
 
-    result = await db.execute(
-        select(CloudStorageConnection).where(
-            CloudStorageConnection.id == connection_id
-        )
-    )
+    result = await db.execute(select(CloudStorageConnection).where(CloudStorageConnection.id == connection_id))
     connection = result.scalar_one_or_none()
 
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connection not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
 
     # Exchange code for tokens
     redirect_uri = f"{settings.API_BASE_URL}/api/v1/cloud-storage/oauth/callback"
 
     tokens = await cloud_storage_service.exchange_oauth_code(
-        provider=connection.provider,
-        code=code,
-        redirect_uri=redirect_uri
+        provider=connection.provider, code=code, redirect_uri=redirect_uri
     )
 
     if not tokens:
@@ -303,31 +286,24 @@ async def oauth_callback(
         connection.error_message = "Failed to exchange OAuth code"
         await db.commit()
 
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Failed to exchange OAuth code for tokens"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange OAuth code for tokens")
 
     # Store tokens and activate connection
-    connection.access_token = tokens.get('access_token')
-    connection.refresh_token = tokens.get('refresh_token')
-    if tokens.get('expires_in'):
+    connection.access_token = tokens.get("access_token")
+    connection.refresh_token = tokens.get("refresh_token")
+    if tokens.get("expires_in"):
         from datetime import timedelta
-        connection.token_expires_at = datetime.utcnow() + timedelta(seconds=tokens['expires_in'])
+
+        connection.token_expires_at = datetime.utcnow() + timedelta(seconds=tokens["expires_in"])
 
     connection.status = CloudConnectionStatus.ACTIVE
     connection.error_message = None
 
     # Validate connection and get folder info
-    credentials = {
-        'access_token': connection.access_token,
-        'refresh_token': connection.refresh_token
-    }
+    credentials = {"access_token": connection.access_token, "refresh_token": connection.refresh_token}
 
     folder_info = await cloud_storage_service.get_folder_info(
-        provider=connection.provider,
-        folder_id=connection.folder_id,
-        credentials=credentials
+        provider=connection.provider, folder_id=connection.folder_id, credentials=credentials
     )
 
     if folder_info:
@@ -335,28 +311,22 @@ async def oauth_callback(
 
     await db.commit()
 
-    logger.info(
-        "OAuth callback successful",
-        connection_id=str(connection.id),
-        provider=connection.provider.value
-    )
+    logger.info("OAuth callback successful", connection_id=str(connection.id), provider=connection.provider.value)
 
     # Redirect to frontend with success
     frontend_url = f"{settings.FRONTEND_URL}/dashboard/cloud-storage?connected={connection.id}"
     from fastapi.responses import RedirectResponse
+
     return RedirectResponse(url=frontend_url)
 
 
 @router.get("/connections", response_model=CloudConnectionsListResponse)
-async def list_connections(
-    db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
-):
+async def list_connections(db: AsyncSession = Depends(get_db_session), current_user: User = Depends(get_current_user)):
     """List all cloud storage connections for current user."""
     result = await db.execute(
-        select(CloudStorageConnection).where(
-            CloudStorageConnection.user_id == current_user.id
-        ).order_by(CloudStorageConnection.created_at.desc())
+        select(CloudStorageConnection)
+        .where(CloudStorageConnection.user_id == current_user.id)
+        .order_by(CloudStorageConnection.created_at.desc())
     )
     connections = result.scalars().all()
 
@@ -373,34 +343,28 @@ async def list_connections(
                 last_sync_at=c.last_sync_at,
                 files_synced_total=c.files_synced_total,
                 error_message=c.error_message,
-                created_at=c.created_at
+                created_at=c.created_at,
             )
             for c in connections
         ],
-        total=len(connections)
+        total=len(connections),
     )
 
 
 @router.get("/connections/{connection_id}", response_model=CloudConnectionResponse)
 async def get_connection(
-    connection_id: UUID,
-    db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
+    connection_id: UUID, db: AsyncSession = Depends(get_db_session), current_user: User = Depends(get_current_user)
 ):
     """Get details of a specific cloud connection."""
     result = await db.execute(
         select(CloudStorageConnection).where(
-            CloudStorageConnection.id == connection_id,
-            CloudStorageConnection.user_id == current_user.id
+            CloudStorageConnection.id == connection_id, CloudStorageConnection.user_id == current_user.id
         )
     )
     connection = result.scalar_one_or_none()
 
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connection not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
 
     return CloudConnectionResponse(
         id=str(connection.id),
@@ -413,7 +377,7 @@ async def get_connection(
         last_sync_at=connection.last_sync_at,
         files_synced_total=connection.files_synced_total,
         error_message=connection.error_message,
-        created_at=connection.created_at
+        created_at=connection.created_at,
     )
 
 
@@ -422,22 +386,18 @@ async def update_connection(
     connection_id: UUID,
     request: UpdateConnectionRequest,
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Update connection settings."""
     result = await db.execute(
         select(CloudStorageConnection).where(
-            CloudStorageConnection.id == connection_id,
-            CloudStorageConnection.user_id == current_user.id
+            CloudStorageConnection.id == connection_id, CloudStorageConnection.user_id == current_user.id
         )
     )
     connection = result.scalar_one_or_none()
 
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connection not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
 
     # Update fields
     if request.sync_enabled is not None:
@@ -464,92 +424,65 @@ async def update_connection(
         last_sync_at=connection.last_sync_at,
         files_synced_total=connection.files_synced_total,
         error_message=connection.error_message,
-        created_at=connection.created_at
+        created_at=connection.created_at,
     )
 
 
 @router.delete("/connections/{connection_id}")
 async def delete_connection(
-    connection_id: UUID,
-    db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
+    connection_id: UUID, db: AsyncSession = Depends(get_db_session), current_user: User = Depends(get_current_user)
 ):
     """Delete a cloud connection."""
     result = await db.execute(
         select(CloudStorageConnection).where(
-            CloudStorageConnection.id == connection_id,
-            CloudStorageConnection.user_id == current_user.id
+            CloudStorageConnection.id == connection_id, CloudStorageConnection.user_id == current_user.id
         )
     )
     connection = result.scalar_one_or_none()
 
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connection not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
 
     await db.delete(connection)
     await db.commit()
 
-    logger.info(
-        "Cloud connection deleted",
-        connection_id=str(connection_id),
-        user_id=str(current_user.id)
-    )
+    logger.info("Cloud connection deleted", connection_id=str(connection_id), user_id=str(current_user.id))
 
     return {"success": True, "message": "Connection deleted"}
 
 
 @router.post("/connections/{connection_id}/sync", response_model=SyncTriggerResponse)
 async def trigger_sync(
-    connection_id: UUID,
-    db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
+    connection_id: UUID, db: AsyncSession = Depends(get_db_session), current_user: User = Depends(get_current_user)
 ):
     """Manually trigger sync for a cloud connection."""
     result = await db.execute(
         select(CloudStorageConnection).where(
-            CloudStorageConnection.id == connection_id,
-            CloudStorageConnection.user_id == current_user.id
+            CloudStorageConnection.id == connection_id, CloudStorageConnection.user_id == current_user.id
         )
     )
     connection = result.scalar_one_or_none()
 
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connection not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
 
     if connection.status != CloudConnectionStatus.ACTIVE:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Connection is not active: {connection.status.value}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Connection is not active: {connection.status.value}"
         )
 
     # Queue sync task
     try:
         from ..workers.tasks.cloud_sync import sync_cloud_connection
+
         task = sync_cloud_connection.delay(str(connection_id))
 
-        logger.info(
-            "Sync task queued",
-            connection_id=str(connection_id),
-            task_id=task.id
-        )
+        logger.info("Sync task queued", connection_id=str(connection_id), task_id=task.id)
 
-        return SyncTriggerResponse(
-            success=True,
-            message="Sync task queued",
-            task_id=task.id
-        )
+        return SyncTriggerResponse(success=True, message="Sync task queued", task_id=task.id)
     except Exception as e:
         logger.error(f"Failed to queue sync task: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to queue sync task"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to queue sync task")
 
 
 @router.get("/connections/{connection_id}/files", response_model=CloudFilesListResponse)
@@ -559,28 +492,22 @@ async def list_synced_files(
     page_size: int = Query(20, ge=1, le=100),
     media_type: str | None = Query(None, description="Filter by media type: video or image"),
     db: AsyncSession = Depends(get_db_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """List files synced from a cloud connection."""
     # Verify connection belongs to user
     result = await db.execute(
         select(CloudStorageConnection).where(
-            CloudStorageConnection.id == connection_id,
-            CloudStorageConnection.user_id == current_user.id
+            CloudStorageConnection.id == connection_id, CloudStorageConnection.user_id == current_user.id
         )
     )
     connection = result.scalar_one_or_none()
 
     if not connection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Connection not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
 
     # Build query
-    query = select(CloudSyncedFile).where(
-        CloudSyncedFile.connection_id == connection_id
-    )
+    query = select(CloudSyncedFile).where(CloudSyncedFile.connection_id == connection_id)
 
     if media_type:
         try:
@@ -591,9 +518,8 @@ async def list_synced_files(
 
     # Count total
     from sqlalchemy import func
-    count_result = await db.execute(
-        select(func.count()).select_from(query.subquery())
-    )
+
+    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
     total = count_result.scalar()
 
     # Get page
@@ -612,13 +538,13 @@ async def list_synced_files(
                 media_type=f.media_type.value,
                 cloud_file_size=f.cloud_file_size,
                 is_synced=f.is_synced,
-                last_synced_at=f.last_synced_at
+                last_synced_at=f.last_synced_at,
             )
             for f in files
         ],
         total=total,
         page=page,
-        page_size=page_size
+        page_size=page_size,
     )
 
 
@@ -633,7 +559,7 @@ async def list_providers():
                 "icon": "google-drive",
                 "supports_public": False,
                 "requires_oauth": True,
-                "description": "Connect your Google Drive folder"
+                "description": "Connect your Google Drive folder",
             },
             {
                 "id": "yandex_disk",
@@ -641,7 +567,7 @@ async def list_providers():
                 "icon": "yandex-disk",
                 "supports_public": True,
                 "requires_oauth": True,
-                "description": "Connect your Yandex Disk folder (supports public links)"
-            }
+                "description": "Connect your Yandex Disk folder (supports public links)",
+            },
         ]
     }

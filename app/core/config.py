@@ -17,16 +17,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class DatabaseConfig(BaseSettings):
     """Database configuration settings."""
-    model_config = SettingsConfigDict(
-        env_prefix="DB_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="DB_", case_sensitive=False, extra="ignore")
 
     database_url: str = Field(
         default="postgresql://saleswhisper:saleswhisper_pass@localhost:5432/saleswhisper_crosspost",
         validation_alias="DATABASE_URL",
-        description="PostgreSQL database connection URL"
+        description="PostgreSQL database connection URL",
     )
 
     # Connection pool settings
@@ -42,16 +39,11 @@ class DatabaseConfig(BaseSettings):
 
 class RedisConfig(BaseSettings):
     """Redis configuration settings."""
-    model_config = SettingsConfigDict(
-        env_prefix="REDIS_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="REDIS_", case_sensitive=False, extra="ignore")
 
     redis_url: str = Field(
-        default="redis://localhost:6379/0",
-        validation_alias="REDIS_URL",
-        description="Redis connection URL"
+        default="redis://localhost:6379/0", validation_alias="REDIS_URL", description="Redis connection URL"
     )
 
     # Connection settings
@@ -66,11 +58,8 @@ class RedisConfig(BaseSettings):
 
 class S3Config(BaseSettings):
     """S3/MinIO storage configuration."""
-    model_config = SettingsConfigDict(
-        env_prefix="S3_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="S3_", case_sensitive=False, extra="ignore")
 
     endpoint: str = Field(default="http://localhost:9000")
     access_key: str = Field(default="minioadmin")
@@ -83,36 +72,29 @@ class S3Config(BaseSettings):
     max_concurrency: int = Field(default=10)
     use_ssl: bool = Field(default=False)
 
-    @field_validator('endpoint')
+    @field_validator("endpoint")
     @classmethod
     def validate_endpoint(cls, v: str) -> str:
-        if not v.startswith(('http://', 'https://')):
-            raise ValueError('S3 endpoint must start with http:// or https://')
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("S3 endpoint must start with http:// or https://")
         return v
 
 
 class SecurityConfig(BaseSettings):
     """Security and encryption configuration."""
-    model_config = SettingsConfigDict(
-        env_prefix="SECURITY_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="SECURITY_", case_sensitive=False, extra="ignore")
 
     # Encryption keys
     aes_key: SecretStr = Field(
         default="01234567890123456789012345678901",
         validation_alias="AES_KEY",
-        description="256-bit AES key for data encryption"
+        description="256-bit AES key for data encryption",
     )
     token_encryption_key: SecretStr = Field(
-        default="01234567890123456789012345678901",
-        validation_alias="TOKEN_ENCRYPTION_KEY"
+        default="01234567890123456789012345678901", validation_alias="TOKEN_ENCRYPTION_KEY"
     )
-    jwt_secret_key: SecretStr = Field(
-        default="your-jwt-secret-key-here",
-        validation_alias="JWT_SECRET_KEY"
-    )
+    jwt_secret_key: SecretStr = Field(default="your-jwt-secret-key-here", validation_alias="JWT_SECRET_KEY")
 
     # JWT settings
     jwt_algorithm: str = Field(default="HS256")
@@ -122,22 +104,19 @@ class SecurityConfig(BaseSettings):
     api_key_header: str = Field(default="X-API-Key")
     webhook_secret: SecretStr = Field(default="webhook-secret")
 
-    @field_validator('aes_key')
+    @field_validator("aes_key")
     @classmethod
     def validate_aes_key(cls, v: SecretStr) -> SecretStr:
         key_str = v.get_secret_value() if isinstance(v, SecretStr) else v
         if len(key_str.encode()) != 32:
-            raise ValueError('AES key must be exactly 32 bytes')
+            raise ValueError("AES key must be exactly 32 bytes")
         return v
 
 
 class TelegramConfig(BaseSettings):
     """Telegram bot configuration."""
-    model_config = SettingsConfigDict(
-        env_prefix="TG_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="TG_", case_sensitive=False, extra="ignore")
 
     bot_token: SecretStr = Field(default="")
     publishing_bot_token: SecretStr = Field(default="")
@@ -147,18 +126,13 @@ class TelegramConfig(BaseSettings):
     # Bot settings
     webhook_path: str = Field(default="/api/webhooks/telegram")
     max_connections: int = Field(default=100)
-    allowed_updates: list[str] = Field(
-        default=["message", "channel_post", "edited_message"]
-    )
+    allowed_updates: list[str] = Field(default=["message", "channel_post", "edited_message"])
 
 
 class SocialMediaConfig(BaseSettings):
     """Social media platforms configuration."""
-    model_config = SettingsConfigDict(
-        env_prefix="SOCIAL_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="SOCIAL_", case_sensitive=False, extra="ignore")
 
     # VK
     vk_service_token: SecretStr = Field(default="", validation_alias="VK_SERVICE_TOKEN")
@@ -186,20 +160,13 @@ class SocialMediaConfig(BaseSettings):
 
 class MediaConfig(BaseSettings):
     """Media processing configuration."""
-    model_config = SettingsConfigDict(
-        env_prefix="MEDIA_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="MEDIA_", case_sensitive=False, extra="ignore")
 
     # File limits
     max_file_size_mb: int = Field(default=500, validation_alias="MAX_FILE_SIZE_MB")
-    supported_video_formats: list[str] = Field(
-        default=["mp4", "mov", "avi", "mkv"]
-    )
-    supported_image_formats: list[str] = Field(
-        default=["jpg", "jpeg", "png", "webp"]
-    )
+    supported_video_formats: list[str] = Field(default=["mp4", "mov", "avi", "mkv"])
+    supported_image_formats: list[str] = Field(default=["jpg", "jpeg", "png", "webp"])
 
     # FFmpeg settings
     ffmpeg_binary: str = Field(default="ffmpeg")
@@ -213,11 +180,8 @@ class MediaConfig(BaseSettings):
 
 class CeleryConfig(BaseSettings):
     """Celery worker configuration."""
-    model_config = SettingsConfigDict(
-        env_prefix="CELERY_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="CELERY_", case_sensitive=False, extra="ignore")
 
     # Worker settings
     worker_concurrency: int = Field(default=4)
@@ -235,25 +199,14 @@ class CeleryConfig(BaseSettings):
 
     # Queue priorities
     queue_priorities: dict[str, int] = Field(
-        default={
-            "ingest": 9,
-            "enrich": 8,
-            "captionize": 7,
-            "transcode": 6,
-            "preflight": 5,
-            "publish": 4,
-            "finalize": 3
-        }
+        default={"ingest": 9, "enrich": 8, "captionize": 7, "transcode": 6, "preflight": 5, "publish": 4, "finalize": 3}
     )
 
 
 class AppConfig(BaseSettings):
     """Main application configuration."""
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
 
     # App metadata
     app_name: str = Field(default="SalesWhisper Crosspost", validation_alias="APP_NAME")
@@ -278,47 +231,41 @@ class AppConfig(BaseSettings):
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     log_format: str = Field(default="json", validation_alias="LOG_FORMAT")
 
-    @field_validator('environment')
+    @field_validator("environment")
     @classmethod
     def validate_environment(cls, v: str) -> str:
-        allowed = ['development', 'testing', 'staging', 'production']
+        allowed = ["development", "testing", "staging", "production"]
         if v not in allowed:
-            raise ValueError(f'Environment must be one of: {allowed}')
+            raise ValueError(f"Environment must be one of: {allowed}")
         return v
 
-    @field_validator('log_level')
+    @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
-        allowed = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        allowed = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in allowed:
-            raise ValueError(f'Log level must be one of: {allowed}')
+            raise ValueError(f"Log level must be one of: {allowed}")
         return v.upper()
 
     @property
     def is_development(self) -> bool:
-        return self.environment == 'development'
+        return self.environment == "development"
 
     @property
     def is_production(self) -> bool:
-        return self.environment == 'production'
+        return self.environment == "production"
 
 
 class EmailConfig(BaseSettings):
     """Email/SMTP configuration for notifications and auth codes."""
-    model_config = SettingsConfigDict(
-        env_prefix="SMTP_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="SMTP_", case_sensitive=False, extra="ignore")
 
     host: str = Field(default="smtp.yandex.ru", validation_alias="SMTP_HOST")
     port: int = Field(default=465, validation_alias="SMTP_PORT")
     user: str = Field(default="", validation_alias="SMTP_USER")
     password: SecretStr = Field(default="", validation_alias="SMTP_PASSWORD")
-    from_email: str = Field(
-        default="SalesWhisper <auth@saleswhisper.pro>",
-        validation_alias="SMTP_FROM"
-    )
+    from_email: str = Field(default="SalesWhisper <auth@saleswhisper.pro>", validation_alias="SMTP_FROM")
     use_ssl: bool = Field(default=True, validation_alias="SMTP_USE_SSL")
     timeout: int = Field(default=30, validation_alias="SMTP_TIMEOUT")
 
@@ -329,31 +276,19 @@ class EmailConfig(BaseSettings):
 
 class PaymentConfig(BaseSettings):
     """Payment provider configuration (Tochka Bank)."""
-    model_config = SettingsConfigDict(
-        env_prefix="PAYMENT_",
-        case_sensitive=False,
-        extra="ignore"
-    )
+
+    model_config = SettingsConfigDict(env_prefix="PAYMENT_", case_sensitive=False, extra="ignore")
 
     provider: str = Field(default="tochka", validation_alias="PAYMENT_PROVIDER")
     merchant_id: str = Field(default="", validation_alias="TOCHKA_MERCHANT_ID")
     secret_key: SecretStr = Field(default="", validation_alias="TOCHKA_SECRET_KEY")
-    api_url: str = Field(
-        default="https://api.tochka.com",
-        validation_alias="TOCHKA_API_URL"
-    )
+    api_url: str = Field(default="https://api.tochka.com", validation_alias="TOCHKA_API_URL")
     callback_url: str = Field(
         default="https://crosspost.saleswhisper.pro/api/v1/checkout/webhook/tochka",
-        validation_alias="TOCHKA_CALLBACK_URL"
+        validation_alias="TOCHKA_CALLBACK_URL",
     )
-    success_url: str = Field(
-        default="https://saleswhisper.pro/payment/success",
-        validation_alias="PAYMENT_SUCCESS_URL"
-    )
-    fail_url: str = Field(
-        default="https://saleswhisper.pro/payment/fail",
-        validation_alias="PAYMENT_FAIL_URL"
-    )
+    success_url: str = Field(default="https://saleswhisper.pro/payment/success", validation_alias="PAYMENT_SUCCESS_URL")
+    fail_url: str = Field(default="https://saleswhisper.pro/payment/fail", validation_alias="PAYMENT_FAIL_URL")
 
 
 class Settings:
@@ -384,17 +319,17 @@ class Settings:
         url = str(self.redis.redis_url)
         if db is not None:
             # Replace database number in URL
-            url = url.rsplit('/', 1)[0] + f'/{db}'
+            url = url.rsplit("/", 1)[0] + f"/{db}"
         return url
 
     def get_s3_config(self) -> dict[str, Any]:
         """Get S3 configuration as dictionary."""
         return {
-            'endpoint_url': self.s3.endpoint,
-            'aws_access_key_id': self.s3.access_key,
-            'aws_secret_access_key': self.s3.secret_key.get_secret_value(),
-            'region_name': self.s3.region,
-            'use_ssl': self.s3.use_ssl
+            "endpoint_url": self.s3.endpoint,
+            "aws_access_key_id": self.s3.access_key,
+            "aws_secret_access_key": self.s3.secret_key.get_secret_value(),
+            "region_name": self.s3.region,
+            "use_ssl": self.s3.use_ssl,
         }
 
 
@@ -434,12 +369,14 @@ def get_test_settings() -> Settings:
     """Get test-specific settings with overrides."""
 
     # Override with test values
-    os.environ.update({
-        'ENVIRONMENT': 'testing',
-        'DEBUG': 'true',
-        'DATABASE_URL': 'postgresql://test:test@localhost:5432/test_db',
-        'REDIS_URL': 'redis://localhost:6379/15',  # Use DB 15 for tests
-        'S3_BUCKET_NAME': 'test-bucket'
-    })
+    os.environ.update(
+        {
+            "ENVIRONMENT": "testing",
+            "DEBUG": "true",
+            "DATABASE_URL": "postgresql://test:test@localhost:5432/test_db",
+            "REDIS_URL": "redis://localhost:6379/15",  # Use DB 15 for tests
+            "S3_BUCKET_NAME": "test-bucket",
+        }
+    )
 
     return Settings()

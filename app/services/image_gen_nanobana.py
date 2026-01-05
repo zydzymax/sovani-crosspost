@@ -22,27 +22,32 @@ logger = get_logger("services.image_gen_nanobana")
 
 class NanobanaError(Exception):
     """Base exception for Nanobana API errors."""
+
     pass
 
 
 class NanobanaRateLimitError(NanobanaError):
     """Rate limit exceeded."""
+
     pass
 
 
 class NanobanaGenerationError(NanobanaError):
     """Image generation failed."""
+
     pass
 
 
 class ModelType(str, Enum):
     """Nanobana model types."""
+
     FLASH = "flash"  # Nano Banana (Gemini 2.5 Flash) - fast & cheap
-    PRO = "pro"      # Nano Banana Pro (Gemini 3 Pro) - high quality
+    PRO = "pro"  # Nano Banana Pro (Gemini 3 Pro) - high quality
 
 
 class Resolution(str, Enum):
     """Nanobana Pro resolutions."""
+
     RES_1K = "1K"
     RES_2K = "2K"
     RES_4K = "4K"
@@ -50,6 +55,7 @@ class Resolution(str, Enum):
 
 class AspectRatio(str, Enum):
     """Nanobana aspect ratios."""
+
     SQUARE = "1:1"
     LANDSCAPE = "16:9"
     PORTRAIT = "9:16"
@@ -66,6 +72,7 @@ class AspectRatio(str, Enum):
 @dataclass
 class NanobanaResult:
     """Result of Nanobana image generation."""
+
     success: bool
     image_url: str | None = None
     image_base64: str | None = None
@@ -81,7 +88,7 @@ class NanobanaService:
     API_BASE = "https://api.nanobananaapi.ai"
 
     # Cost per image
-    COST_FLASH = 0.02   # ~$0.02 per image
+    COST_FLASH = 0.02  # ~$0.02 per image
     COST_PRO_1K = 0.12  # ~$0.12 per 1K/2K image
     COST_PRO_4K = 0.24  # ~$0.24 per 4K image
 
@@ -91,24 +98,22 @@ class NanobanaService:
 
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(180.0),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
         )
 
         logger.info("Nanobana service initialized (api.nanobananaapi.ai)")
 
     def _get_api_key(self) -> str:
         """Get API key from settings or environment."""
-        if hasattr(settings, 'nanobana') and hasattr(settings.nanobana, 'api_key'):
+        if hasattr(settings, "nanobana") and hasattr(settings.nanobana, "api_key"):
             key = settings.nanobana.api_key
-            if hasattr(key, 'get_secret_value'):
+            if hasattr(key, "get_secret_value"):
                 return key.get_secret_value()
             return str(key)
 
         import os
-        key = os.getenv('NANOBANA_API_KEY')
+
+        key = os.getenv("NANOBANA_API_KEY")
         if key:
             return key
 
@@ -120,7 +125,7 @@ class NanobanaService:
         model: ModelType = ModelType.PRO,
         resolution: Resolution = Resolution.RES_1K,
         aspect_ratio: AspectRatio = AspectRatio.SQUARE,
-        reference_image_urls: list[str] = None
+        reference_image_urls: list[str] = None,
     ) -> NanobanaResult:
         """
         Generate image using Nanobana.
@@ -138,10 +143,7 @@ class NanobanaService:
         start_time = time.time()
 
         logger.info(
-            "Starting Nanobana generation",
-            prompt_length=len(prompt),
-            model=model.value,
-            resolution=resolution.value
+            "Starting Nanobana generation", prompt_length=len(prompt), model=model.value, resolution=resolution.value
         )
 
         try:
@@ -156,24 +158,17 @@ class NanobanaService:
                 "Nanobana generation completed",
                 processing_time=processing_time,
                 success=result.success,
-                model=model.value
+                model=model.value,
             )
 
             return result
 
         except Exception as e:
             logger.error(f"Nanobana generation failed: {e}", exc_info=True)
-            return NanobanaResult(
-                success=False,
-                error=str(e)
-            )
+            return NanobanaResult(success=False, error=str(e))
 
     async def _generate_pro(
-        self,
-        prompt: str,
-        resolution: Resolution,
-        aspect_ratio: AspectRatio,
-        reference_image_urls: list[str] = None
+        self, prompt: str, resolution: Resolution, aspect_ratio: AspectRatio, reference_image_urls: list[str] = None
     ) -> NanobanaResult:
         """Generate using Nano Banana Pro (Gemini 3 Pro Image)."""
         endpoint = f"{self.API_BASE}/api/v1/nanobanana/generate-pro"
@@ -181,22 +176,14 @@ class NanobanaService:
         # Calculate cost
         cost = self.COST_PRO_4K if resolution == Resolution.RES_4K else self.COST_PRO_1K
 
-        request_data = {
-            "prompt": prompt,
-            "resolution": resolution.value,
-            "aspectRatio": aspect_ratio.value
-        }
+        request_data = {"prompt": prompt, "resolution": resolution.value, "aspectRatio": aspect_ratio.value}
 
         if reference_image_urls:
             request_data["imageUrls"] = reference_image_urls[:8]
 
         return await self._make_request(endpoint, request_data, cost)
 
-    async def _generate_flash(
-        self,
-        prompt: str,
-        aspect_ratio: AspectRatio
-    ) -> NanobanaResult:
+    async def _generate_flash(self, prompt: str, aspect_ratio: AspectRatio) -> NanobanaResult:
         """Generate using Nano Banana Flash (Gemini 2.5 Flash Image)."""
         endpoint = f"{self.API_BASE}/api/v1/nanobanana/generate"
 
@@ -205,7 +192,7 @@ class NanobanaService:
             "prompt": prompt,
             "type": "TEXTTOIMAGE",
             "image_size": aspect_ratio.value,
-            "callBackUrl": "https://crosspost.saleswhisper.pro/webhooks/nanobana"
+            "callBackUrl": "https://crosspost.saleswhisper.pro/webhooks/nanobana",
         }
 
         return await self._make_request(endpoint, request_data, self.COST_FLASH)
@@ -213,7 +200,7 @@ class NanobanaService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, NanobanaRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, NanobanaRateLimitError)),
     )
     async def _make_request(self, endpoint: str, request_data: dict[str, Any], cost: float) -> NanobanaResult:
         """Make generation request to Nanobana API."""
@@ -263,40 +250,26 @@ class NanobanaService:
                 image_url = response_data.get("resultImageUrl")
 
                 if image_url:
-                    return NanobanaResult(
-                        success=True,
-                        image_url=image_url,
-                        task_id=task_id,
-                        cost_estimate=cost
-                    )
+                    return NanobanaResult(success=True, image_url=image_url, task_id=task_id, cost_estimate=cost)
 
             if success_flag == 0 or task_data.get("errorCode"):
                 error_msg = task_data.get("errorMessage") or "Generation failed"
-                return NanobanaResult(
-                    success=False,
-                    task_id=task_id,
-                    error=error_msg
-                )
+                return NanobanaResult(success=False, task_id=task_id, error=error_msg)
 
             # Still processing, continue polling
             poll_interval = min(poll_interval + 1, 10)
 
-        return NanobanaResult(
-            success=False,
-            task_id=task_id,
-            error=f"Generation timed out after {max_wait} seconds"
-        )
+        return NanobanaResult(success=False, task_id=task_id, error=f"Generation timed out after {max_wait} seconds")
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=5),
-        retry=retry_if_exception_type(httpx.RequestError)
+        retry=retry_if_exception_type(httpx.RequestError),
     )
     async def _get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get task status from API."""
         response = await self.http_client.get(
-            f"{self.API_BASE}/api/v1/nanobanana/record-info",
-            params={"taskId": task_id}
+            f"{self.API_BASE}/api/v1/nanobanana/record-info", params={"taskId": task_id}
         )
 
         return response.json()
@@ -323,11 +296,7 @@ class NanobanaService:
 
 # Convenience function
 async def generate_nanobana_image(
-    prompt: str,
-    model: str = "pro",
-    resolution: str = "1K",
-    aspect_ratio: str = "1:1",
-    api_key: str = None
+    prompt: str, model: str = "pro", resolution: str = "1K", aspect_ratio: str = "1:1", api_key: str = None
 ) -> NanobanaResult:
     """Generate image using Nanobana.
 

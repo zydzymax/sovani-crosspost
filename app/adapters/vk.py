@@ -22,31 +22,37 @@ logger = get_logger("adapters.vk")
 
 class VKError(Exception):
     """Base exception for VK API errors."""
+
     pass
 
 
 class VKRateLimitError(VKError):
     """Raised when VK API rate limit is exceeded."""
+
     pass
 
 
 class VKAuthError(VKError):
     """Raised when VK API authentication fails."""
+
     pass
 
 
 class VKValidationError(VKError):
     """Raised when VK API validation fails."""
+
     pass
 
 
 class VKUploadError(VKError):
     """Raised when VK media upload fails."""
+
     pass
 
 
 class MediaType(Enum):
     """VK media types."""
+
     PHOTO = "photo"
     VIDEO = "video"
     DOCUMENT = "doc"
@@ -54,6 +60,7 @@ class MediaType(Enum):
 
 class PostStatus(Enum):
     """VK post status."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     PUBLISHED = "published"
@@ -63,6 +70,7 @@ class PostStatus(Enum):
 @dataclass
 class VKMediaItem:
     """Represents a media item for VK."""
+
     file_path: str
     media_type: MediaType
     title: str | None = None
@@ -77,6 +85,7 @@ class VKMediaItem:
 @dataclass
 class VKPost:
     """Represents a VK wall post."""
+
     message: str
     media_items: list[VKMediaItem]
     owner_id: int | None = None
@@ -94,6 +103,7 @@ class VKPost:
 @dataclass
 class VKUploadResult:
     """Result of media upload to VK."""
+
     media_type: MediaType
     attachment_string: str
     upload_time: float
@@ -105,6 +115,7 @@ class VKUploadResult:
 @dataclass
 class VKPublishResult:
     """Result of VK wall post publishing."""
+
     post_id: int | None
     status: PostStatus
     message: str
@@ -120,7 +131,7 @@ class VKAdapter:
     def __init__(self):
         """Initialize VK adapter."""
         self.access_token = self._get_access_token()
-        self.group_id = settings.vk.group_id if hasattr(settings.vk, 'group_id') else None
+        self.group_id = settings.vk.group_id if hasattr(settings.vk, "group_id") else None
         self.api_version = "5.131"
         self.api_base = "https://api.vk.com/method"
 
@@ -128,9 +139,7 @@ class VKAdapter:
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(60.0),  # VK uploads can be slow
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
-            headers={
-                "User-Agent": "SalesWhisper-Crosspost/1.0"
-            }
+            headers={"User-Agent": "SalesWhisper-Crosspost/1.0"},
         )
 
         # Rate limiting - VK allows 3 requests per second
@@ -143,15 +152,16 @@ class VKAdapter:
     def _get_access_token(self) -> str:
         """Get VK access token from settings."""
         # First try direct settings access
-        if hasattr(settings, 'vk') and hasattr(settings.vk, 'service_token'):
+        if hasattr(settings, "vk") and hasattr(settings.vk, "service_token"):
             token = settings.vk.service_token
-            if hasattr(token, 'get_secret_value'):
+            if hasattr(token, "get_secret_value"):
                 return token.get_secret_value()
             return str(token)
 
         # Fallback to environment variable
         import os
-        token = os.getenv('VK_SERVICE_TOKEN')
+
+        token = os.getenv("VK_SERVICE_TOKEN")
         if token:
             return token
 
@@ -167,7 +177,7 @@ class VKAdapter:
                 message_length=len(post.message),
                 media_count=len(post.media_items),
                 owner_id=post.owner_id,
-                is_scheduled=bool(post.publish_date)
+                is_scheduled=bool(post.publish_date),
             )
 
             try:
@@ -193,10 +203,7 @@ class VKAdapter:
 
                 # Track metrics
                 metrics.track_external_api_call(
-                    service="vk",
-                    endpoint="wall_post",
-                    status_code=200,
-                    duration=processing_time
+                    service="vk", endpoint="wall_post", status_code=200, duration=processing_time
                 )
 
                 logger.info(
@@ -204,7 +211,7 @@ class VKAdapter:
                     post_id=wall_result.post_id,
                     attachments_count=len(attachments),
                     processing_time=processing_time,
-                    post_url=wall_result.post_url
+                    post_url=wall_result.post_url,
                 )
 
                 return wall_result
@@ -216,30 +223,25 @@ class VKAdapter:
                 metrics.track_external_api_call(
                     service="vk",
                     endpoint="wall_post",
-                    status_code=getattr(e, 'error_code', 500),
+                    status_code=getattr(e, "error_code", 500),
                     duration=processing_time,
-                    error=str(e)
+                    error=str(e),
                 )
 
-                logger.error(
-                    "Failed to publish VK post",
-                    error=str(e),
-                    processing_time=processing_time,
-                    exc_info=True
-                )
+                logger.error("Failed to publish VK post", error=str(e), processing_time=processing_time, exc_info=True)
 
                 return VKPublishResult(
                     post_id=None,
                     status=PostStatus.ERROR,
                     message=str(e),
-                    error_code=getattr(e, 'error_code', None),
-                    retry_after=getattr(e, 'retry_after', None)
+                    error_code=getattr(e, "error_code", None),
+                    retry_after=getattr(e, "retry_after", None),
                 )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, VKRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, VKRateLimitError)),
     )
     async def _upload_photo(self, media_item: VKMediaItem, correlation_id: str = None) -> VKUploadResult:
         """Upload photo to VK using getWallUploadServer � saveWallPhoto workflow."""
@@ -251,20 +253,13 @@ class VKAdapter:
             try:
                 # Step 1: Get upload server URL
                 upload_server_response = await self._make_api_request(
-                    "photos.getWallUploadServer",
-                    params={
-                        "group_id": self.group_id
-                    }
+                    "photos.getWallUploadServer", params={"group_id": self.group_id}
                 )
 
                 upload_url = upload_server_response["response"]["upload_url"]
 
                 # Step 2: Upload photo to server
-                upload_response = await self._upload_file_to_server(
-                    upload_url,
-                    media_item.file_path,
-                    "photo"
-                )
+                upload_response = await self._upload_file_to_server(upload_url, media_item.file_path, "photo")
 
                 # Step 3: Save uploaded photo
                 save_response = await self._make_api_request(
@@ -273,8 +268,8 @@ class VKAdapter:
                         "group_id": self.group_id,
                         "photo": upload_response.get("photo"),
                         "server": upload_response.get("server"),
-                        "hash": upload_response.get("hash")
-                    }
+                        "hash": upload_response.get("hash"),
+                    },
                 )
 
                 photo_data = save_response["response"][0]
@@ -289,15 +284,16 @@ class VKAdapter:
                     "VK photo uploaded successfully",
                     attachment_string=attachment_string,
                     upload_time=upload_time,
-                    photo_id=photo_data.get('id')
+                    photo_id=photo_data.get("id"),
                 )
 
                 return VKUploadResult(
                     media_type=MediaType.PHOTO,
                     attachment_string=attachment_string,
                     upload_time=upload_time,
-                    file_size=photo_data.get('sizes', [{}])[-1].get('height', 0) * photo_data.get('sizes', [{}])[-1].get('width', 0),
-                    vk_id=str(photo_data.get('id'))
+                    file_size=photo_data.get("sizes", [{}])[-1].get("height", 0)
+                    * photo_data.get("sizes", [{}])[-1].get("width", 0),
+                    vk_id=str(photo_data.get("id")),
                 )
 
             except Exception as e:
@@ -308,7 +304,7 @@ class VKAdapter:
                     file_path=media_item.file_path,
                     error=str(e),
                     upload_time=upload_time,
-                    exc_info=True
+                    exc_info=True,
                 )
 
                 return VKUploadResult(
@@ -316,13 +312,13 @@ class VKAdapter:
                     attachment_string="",
                     upload_time=upload_time,
                     file_size=0,
-                    error_message=str(e)
+                    error_message=str(e),
                 )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=12),
-        retry=retry_if_exception_type((httpx.RequestError, VKRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, VKRateLimitError)),
     )
     async def _upload_video(self, media_item: VKMediaItem, correlation_id: str = None) -> VKUploadResult:
         """Upload video to VK using video.save workflow."""
@@ -344,8 +340,8 @@ class VKAdapter:
                         "name": media_item.title or file_path.stem,
                         "description": media_item.description or "",
                         "is_private": 0,
-                        "wallpost": 1
-                    }
+                        "wallpost": 1,
+                    },
                 )
 
                 video_data = video_save_response["response"]
@@ -354,11 +350,7 @@ class VKAdapter:
                 owner_id = video_data["owner_id"]
 
                 # Step 2: Upload video file
-                upload_response = await self._upload_file_to_server(
-                    upload_url,
-                    media_item.file_path,
-                    "video_file"
-                )
+                upload_response = await self._upload_file_to_server(upload_url, media_item.file_path, "video_file")
 
                 # VK video upload returns different structure
                 if "error" in upload_response:
@@ -377,7 +369,7 @@ class VKAdapter:
                     attachment_string=attachment_string,
                     upload_time=upload_time,
                     video_id=video_id,
-                    file_size=file_size
+                    file_size=file_size,
                 )
 
                 return VKUploadResult(
@@ -385,7 +377,7 @@ class VKAdapter:
                     attachment_string=attachment_string,
                     upload_time=upload_time,
                     file_size=file_size,
-                    vk_id=str(video_id)
+                    vk_id=str(video_id),
                 )
 
             except Exception as e:
@@ -396,7 +388,7 @@ class VKAdapter:
                     file_path=media_item.file_path,
                     error=str(e),
                     upload_time=upload_time,
-                    exc_info=True
+                    exc_info=True,
                 )
 
                 return VKUploadResult(
@@ -404,11 +396,10 @@ class VKAdapter:
                     attachment_string="",
                     upload_time=upload_time,
                     file_size=file_size,
-                    error_message=str(e)
+                    error_message=str(e),
                 )
 
-    async def _post_to_wall(self, post: VKPost, attachments: list[str],
-                          correlation_id: str = None) -> VKPublishResult:
+    async def _post_to_wall(self, post: VKPost, attachments: list[str], correlation_id: str = None) -> VKPublishResult:
         """Post to VK wall with attachments using wall.post."""
         with with_logging_context(correlation_id=correlation_id):
             try:
@@ -419,7 +410,7 @@ class VKAdapter:
                     "attachments": ",".join(attachments) if attachments else None,
                     "signed": 1 if post.signed else 0,
                     "mark_as_ads": 1 if post.mark_as_ads else 0,
-                    "guid": post.guid
+                    "guid": post.guid,
                 }
 
                 # Remove None values
@@ -444,24 +435,20 @@ class VKAdapter:
                     status=PostStatus.PUBLISHED if not post.publish_date else PostStatus.PENDING,
                     message="Post published successfully",
                     post_url=post_url,
-                    published_at=datetime.now(timezone.utc) if not post.publish_date else post.publish_date
+                    published_at=datetime.now(timezone.utc) if not post.publish_date else post.publish_date,
                 )
 
             except Exception as e:
                 logger.error(
-                    "Failed to post to VK wall",
-                    error=str(e),
-                    attachments_count=len(attachments),
-                    exc_info=True
+                    "Failed to post to VK wall", error=str(e), attachments_count=len(attachments), exc_info=True
                 )
                 raise
 
-    async def _upload_file_to_server(self, upload_url: str, file_path: str,
-                                   field_name: str) -> dict[str, Any]:
+    async def _upload_file_to_server(self, upload_url: str, file_path: str, field_name: str) -> dict[str, Any]:
         """Upload file to VK upload server."""
         try:
             # Handle both URL and local file paths
-            if file_path.startswith(('http://', 'https://')):
+            if file_path.startswith(("http://", "https://")):
                 # Download file from URL first
                 async with self.http_client.get(file_path) as response:
                     response.raise_for_status()
@@ -481,9 +468,7 @@ class VKAdapter:
             mime_type = mime_type or "application/octet-stream"
 
             # Upload file
-            files = {
-                field_name: (file_name, file_content, mime_type)
-            }
+            files = {field_name: (file_name, file_content, mime_type)}
 
             async with self.http_client.post(upload_url, files=files) as response:
                 response.raise_for_status()
@@ -492,9 +477,11 @@ class VKAdapter:
 
                 # VK returns JSON response
                 try:
-                    return json.loads(result.decode('utf-8'))
+                    return json.loads(result.decode("utf-8"))
                 except json.JSONDecodeError as e:
-                    logger.error("Failed to parse upload response", response_text=result.decode('utf-8', errors='ignore'))
+                    logger.error(
+                        "Failed to parse upload response", response_text=result.decode("utf-8", errors="ignore")
+                    )
                     raise VKUploadError(f"Invalid upload response: {e}")
 
         except Exception as e:
@@ -507,10 +494,7 @@ class VKAdapter:
             current_time = time.time()
 
             # Remove requests older than 1 second
-            self.last_request_times = [
-                t for t in self.last_request_times
-                if current_time - t < 1.0
-            ]
+            self.last_request_times = [t for t in self.last_request_times if current_time - t < 1.0]
 
             # Check if we can make a request
             if len(self.last_request_times) >= self.rate_limit_per_second:
@@ -528,17 +512,14 @@ class VKAdapter:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, VKRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, VKRateLimitError)),
     )
     async def _make_api_request(self, method: str, params: dict[str, Any] = None) -> dict[str, Any]:
         """Make authenticated API request to VK."""
         await self._check_rate_limits()
 
         # Prepare parameters
-        request_params = {
-            "access_token": self.access_token,
-            "v": self.api_version
-        }
+        request_params = {"access_token": self.access_token, "v": self.api_version}
 
         if params:
             request_params.update(params)
@@ -574,7 +555,7 @@ class VKAdapter:
             "VK API error",
             error_code=error_code,
             error_message=error_msg,
-            request_params=error_data.get("request_params", {})
+            request_params=error_data.get("request_params", {}),
         )
 
         # Handle specific error codes
@@ -611,8 +592,8 @@ class VKAdapter:
                 params={
                     "posts": f"{owner_id}_{post_id}",
                     "extended": 1,
-                    "fields": "id,date,text,attachments,post_type"
-                }
+                    "fields": "id,date,text,attachments,post_type",
+                },
             )
 
             posts = response.get("response", {}).get("items", [])
@@ -627,7 +608,7 @@ class VKAdapter:
                 "text": post.get("text"),
                 "attachments": post.get("attachments", []),
                 "post_type": post.get("post_type"),
-                "url": f"https://vk.com/wall{post.get('owner_id')}_{post.get('id')}"
+                "url": f"https://vk.com/wall{post.get('owner_id')}_{post.get('id')}",
             }
 
         except Exception as e:
@@ -637,13 +618,7 @@ class VKAdapter:
     async def delete_post(self, owner_id: int, post_id: int) -> bool:
         """Delete a VK post."""
         try:
-            await self._make_api_request(
-                "wall.delete",
-                params={
-                    "owner_id": owner_id,
-                    "post_id": post_id
-                }
-            )
+            await self._make_api_request("wall.delete", params={"owner_id": owner_id, "post_id": post_id})
 
             logger.info("VK post deleted successfully", owner_id=owner_id, post_id=post_id)
             return True
@@ -654,12 +629,7 @@ class VKAdapter:
 
     async def update_post_status(self, post_id: str, status: str, result_data: dict[str, Any] = None):
         """Update post status in database."""
-        logger.info(
-            "Updating VK post status",
-            post_id=post_id,
-            status=status,
-            result_data=result_data
-        )
+        logger.info("Updating VK post status", post_id=post_id, status=status, result_data=result_data)
 
     async def close(self):
         """Close HTTP client and cleanup resources."""
@@ -672,10 +642,14 @@ vk_adapter = VKAdapter()
 
 
 # Convenience functions
-async def publish_vk_post(message: str, media_files: list[str] = None,
-                         owner_id: int = None, from_group: bool = True,
-                         publish_date: datetime = None,
-                         correlation_id: str = None) -> VKPublishResult:
+async def publish_vk_post(
+    message: str,
+    media_files: list[str] = None,
+    owner_id: int = None,
+    from_group: bool = True,
+    publish_date: datetime = None,
+    correlation_id: str = None,
+) -> VKPublishResult:
     """Publish post to VK."""
     # Convert file paths to VKMediaItem objects
     media_items = []
@@ -683,26 +657,18 @@ async def publish_vk_post(message: str, media_files: list[str] = None,
         for file_path in media_files:
             # Detect media type based on file extension
             file_ext = Path(file_path).suffix.lower()
-            if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+            if file_ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
                 media_type = MediaType.PHOTO
-            elif file_ext in ['.mp4', '.mov', '.avi', '.wmv', '.mkv']:
+            elif file_ext in [".mp4", ".mov", ".avi", ".wmv", ".mkv"]:
                 media_type = MediaType.VIDEO
             else:
                 # Default to photo for unknown extensions
                 media_type = MediaType.PHOTO
 
-            media_items.append(VKMediaItem(
-                file_path=file_path,
-                media_type=media_type,
-                title=Path(file_path).stem
-            ))
+            media_items.append(VKMediaItem(file_path=file_path, media_type=media_type, title=Path(file_path).stem))
 
     post = VKPost(
-        message=message,
-        media_items=media_items,
-        owner_id=owner_id,
-        from_group=from_group,
-        publish_date=publish_date
+        message=message, media_items=media_items, owner_id=owner_id, from_group=from_group, publish_date=publish_date
     )
 
     return await vk_adapter.publish_post(post, correlation_id)

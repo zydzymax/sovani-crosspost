@@ -42,7 +42,7 @@ class TestInstagramAdapterInitialization:
 
     def test_adapter_initialization_success(self):
         """Test successful adapter initialization."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -56,9 +56,9 @@ class TestInstagramAdapterInitialization:
 
     def test_adapter_initialization_missing_token(self):
         """Test adapter initialization with missing access token."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             # Remove access_token attribute
-            delattr(mock_settings, 'access_token')
+            delattr(mock_settings, "access_token")
 
             with pytest.raises(InstagramAuthError) as exc_info:
                 InstagramAdapter()
@@ -70,7 +70,7 @@ class TestInstagramAdapterInitialization:
         adapter = InstagramAdapter.__new__(InstagramAdapter)  # Create without __init__
 
         # Test with SecretStr-like object
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_token = MagicMock()
             mock_token.get_secret_value.return_value = "secret_token"
             mock_settings.access_token = mock_token
@@ -79,7 +79,7 @@ class TestInstagramAdapterInitialization:
             assert token == "secret_token"
 
         # Test with string token
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.access_token = "plain_string_token"
 
             token = adapter._get_access_token()
@@ -92,7 +92,7 @@ class TestContainerCreation:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -103,19 +103,11 @@ class TestContainerCreation:
     async def test_create_single_image_container_success(self, mock_adapter):
         """Test successful single image container creation."""
         # Mock API response
-        mock_response = {
-            "id": "container_123"
-        }
+        mock_response = {"id": "container_123"}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=mock_response) as mock_api:
-            media_item = MediaItem(
-                file_path="https://example.com/image.jpg",
-                media_type=ContainerType.IMAGE
-            )
-            post = InstagramPost(
-                caption="Test post",
-                media_items=[media_item]
-            )
+        with patch.object(mock_adapter, "_make_api_request", return_value=mock_response) as mock_api:
+            media_item = MediaItem(file_path="https://example.com/image.jpg", media_type=ContainerType.IMAGE)
+            post = InstagramPost(caption="Test post", media_items=[media_item])
 
             result = await mock_adapter.create_container(post, "test_correlation_id")
 
@@ -139,16 +131,13 @@ class TestContainerCreation:
         """Test single video container creation with thumbnail."""
         mock_response = {"id": "video_container_456"}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=mock_response):
+        with patch.object(mock_adapter, "_make_api_request", return_value=mock_response):
             media_item = MediaItem(
                 file_path="https://example.com/video.mp4",
                 media_type=ContainerType.VIDEO,
-                thumbnail_url="https://example.com/thumb.jpg"
+                thumbnail_url="https://example.com/thumb.jpg",
             )
-            post = InstagramPost(
-                caption="Video post",
-                media_items=[media_item]
-            )
+            post = InstagramPost(caption="Video post", media_items=[media_item])
 
             result = await mock_adapter.create_container(post)
 
@@ -158,25 +147,18 @@ class TestContainerCreation:
     async def test_create_carousel_container_success(self, mock_adapter):
         """Test successful carousel container creation."""
         # Mock responses for individual items and carousel
-        individual_responses = [
-            {"id": "item_1"},
-            {"id": "item_2"},
-            {"id": "item_3"}
-        ]
+        individual_responses = [{"id": "item_1"}, {"id": "item_2"}, {"id": "item_3"}]
         carousel_response = {"id": "carousel_789"}
 
         responses = individual_responses + [carousel_response]
 
-        with patch.object(mock_adapter, '_make_api_request', side_effect=responses):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=responses):
             media_items = [
                 MediaItem(file_path="https://example.com/img1.jpg", media_type=ContainerType.IMAGE),
                 MediaItem(file_path="https://example.com/img2.jpg", media_type=ContainerType.IMAGE),
-                MediaItem(file_path="https://example.com/img3.jpg", media_type=ContainerType.IMAGE)
+                MediaItem(file_path="https://example.com/img3.jpg", media_type=ContainerType.IMAGE),
             ]
-            post = InstagramPost(
-                caption="Carousel post",
-                media_items=media_items
-            )
+            post = InstagramPost(caption="Carousel post", media_items=media_items)
 
             result = await mock_adapter.create_container(post)
 
@@ -188,17 +170,13 @@ class TestContainerCreation:
         """Test container creation with local file upload."""
         mock_response = {"id": "local_container_123"}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=mock_response), \
-             patch.object(mock_adapter, '_upload_media_file', return_value="https://cdn.example.com/uploaded.jpg"):
+        with (
+            patch.object(mock_adapter, "_make_api_request", return_value=mock_response),
+            patch.object(mock_adapter, "_upload_media_file", return_value="https://cdn.example.com/uploaded.jpg"),
+        ):
 
-            media_item = MediaItem(
-                file_path="/local/path/image.jpg",
-                media_type=ContainerType.IMAGE
-            )
-            post = InstagramPost(
-                caption="Local file post",
-                media_items=[media_item]
-            )
+            media_item = MediaItem(file_path="/local/path/image.jpg", media_type=ContainerType.IMAGE)
+            post = InstagramPost(caption="Local file post", media_items=[media_item])
 
             result = await mock_adapter.create_container(post)
 
@@ -207,10 +185,7 @@ class TestContainerCreation:
     @pytest.mark.asyncio
     async def test_create_container_no_media_error(self, mock_adapter):
         """Test container creation with no media items."""
-        post = InstagramPost(
-            caption="No media post",
-            media_items=[]
-        )
+        post = InstagramPost(caption="No media post", media_items=[])
 
         with pytest.raises(InstagramValidationError) as exc_info:
             await mock_adapter.create_container(post)
@@ -220,15 +195,9 @@ class TestContainerCreation:
     @pytest.mark.asyncio
     async def test_create_container_api_error(self, mock_adapter):
         """Test container creation with API error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=InstagramError("API Error")):
-            media_item = MediaItem(
-                file_path="https://example.com/image.jpg",
-                media_type=ContainerType.IMAGE
-            )
-            post = InstagramPost(
-                caption="Test post",
-                media_items=[media_item]
-            )
+        with patch.object(mock_adapter, "_make_api_request", side_effect=InstagramError("API Error")):
+            media_item = MediaItem(file_path="https://example.com/image.jpg", media_type=ContainerType.IMAGE)
+            post = InstagramPost(caption="Test post", media_items=[media_item])
 
             with pytest.raises(InstagramError):
                 await mock_adapter.create_container(post)
@@ -240,7 +209,7 @@ class TestContainerPublishing:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -254,11 +223,13 @@ class TestContainerPublishing:
         post_details = {
             "permalink": "https://instagram.com/p/ABC123/",
             "media_type": "IMAGE",
-            "timestamp": "2024-01-15T10:00:00+0000"
+            "timestamp": "2024-01-15T10:00:00+0000",
         }
 
-        with patch.object(mock_adapter, '_make_api_request', side_effect=[publish_response, post_details]) as mock_api, \
-             patch.object(mock_adapter, '_get_post_details', return_value=post_details):
+        with (
+            patch.object(mock_adapter, "_make_api_request", side_effect=[publish_response, post_details]) as mock_api,
+            patch.object(mock_adapter, "_get_post_details", return_value=post_details),
+        ):
 
             result = await mock_adapter.publish_container("container_123", "test_correlation_id")
 
@@ -284,7 +255,7 @@ class TestContainerPublishing:
         error.error_code = "CONTENT_NOT_READY"
         error.retry_after = 300
 
-        with patch.object(mock_adapter, '_make_api_request', side_effect=error):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=error):
             result = await mock_adapter.publish_container("container_123")
 
             assert isinstance(result, PublishResult)
@@ -298,7 +269,7 @@ class TestContainerPublishing:
     @pytest.mark.asyncio
     async def test_publish_container_auth_error(self, mock_adapter):
         """Test container publishing with authentication error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=InstagramAuthError("Invalid token")):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=InstagramAuthError("Invalid token")):
             result = await mock_adapter.publish_container("container_123")
 
             assert result.status == PublishStatus.ERROR
@@ -312,7 +283,7 @@ class TestScheduledPosting:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -326,13 +297,12 @@ class TestScheduledPosting:
             post_id="immediate_post_123",
             status=PublishStatus.FINISHED,
             message="Published immediately",
-            container_id="container_123"
+            container_id="container_123",
         )
 
-        with patch.object(mock_adapter, 'publish_container', return_value=publish_result):
+        with patch.object(mock_adapter, "publish_container", return_value=publish_result):
             post = InstagramPost(
-                caption="Immediate post",
-                media_items=[MediaItem(file_path="test.jpg", media_type=ContainerType.IMAGE)]
+                caption="Immediate post", media_items=[MediaItem(file_path="test.jpg", media_type=ContainerType.IMAGE)]
             )
 
             result = await mock_adapter.schedule_if_needed(post, "container_123")
@@ -345,11 +315,11 @@ class TestScheduledPosting:
         """Test scheduling post for future."""
         future_time = datetime.now(timezone.utc) + timedelta(hours=2)
 
-        with patch.object(mock_adapter, '_make_api_request', return_value={"config": "ok"}):
+        with patch.object(mock_adapter, "_make_api_request", return_value={"config": "ok"}):
             post = InstagramPost(
                 caption="Scheduled post",
                 media_items=[MediaItem(file_path="test.jpg", media_type=ContainerType.IMAGE)],
-                schedule_time=future_time
+                schedule_time=future_time,
             )
 
             result = await mock_adapter.schedule_if_needed(post, "container_123")
@@ -367,14 +337,14 @@ class TestScheduledPosting:
             post_id="past_time_post_123",
             status=PublishStatus.FINISHED,
             message="Published immediately",
-            container_id="container_123"
+            container_id="container_123",
         )
 
-        with patch.object(mock_adapter, 'publish_container', return_value=publish_result):
+        with patch.object(mock_adapter, "publish_container", return_value=publish_result):
             post = InstagramPost(
                 caption="Past time post",
                 media_items=[MediaItem(file_path="test.jpg", media_type=ContainerType.IMAGE)],
-                schedule_time=past_time
+                schedule_time=past_time,
             )
 
             result = await mock_adapter.schedule_if_needed(post, "container_123")
@@ -389,7 +359,7 @@ class TestScheduledPosting:
         post = InstagramPost(
             caption="Too far future post",
             media_items=[MediaItem(file_path="test.jpg", media_type=ContainerType.IMAGE)],
-            schedule_time=too_far_future
+            schedule_time=too_far_future,
         )
 
         with pytest.raises(InstagramValidationError) as exc_info:
@@ -404,7 +374,7 @@ class TestAPIRequestHandling:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -419,14 +389,14 @@ class TestAPIRequestHandling:
         mock_response.headers = {}
         mock_response.json.return_value = {"success": True, "id": "123"}
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None), \
-             patch.object(mock_adapter, '_update_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+            patch.object(mock_adapter, "_update_rate_limits", return_value=None),
+        ):
 
             result = await mock_adapter._make_api_request(
-                "POST",
-                "https://graph.facebook.com/v18.0/test",
-                data={"test": "data"}
+                "POST", "https://graph.facebook.com/v18.0/test", data={"test": "data"}
             )
 
             assert result == {"success": True, "id": "123"}
@@ -438,8 +408,10 @@ class TestAPIRequestHandling:
         mock_response.status_code = 429
         mock_response.headers = {"Retry-After": "60"}
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+        ):
 
             with pytest.raises(InstagramRateLimitError) as exc_info:
                 await mock_adapter._make_api_request("POST", "https://test.com")
@@ -454,8 +426,10 @@ class TestAPIRequestHandling:
         mock_response.status_code = 401
         mock_response.text = "Unauthorized access"
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+        ):
 
             with pytest.raises(InstagramAuthError) as exc_info:
                 await mock_adapter._make_api_request("POST", "https://test.com")
@@ -469,16 +443,14 @@ class TestAPIRequestHandling:
         mock_response.status_code = 200
         mock_response.headers = {}
         mock_response.json.return_value = {
-            "error": {
-                "code": 190,
-                "message": "Invalid access token",
-                "error_subcode": None
-            }
+            "error": {"code": 190, "message": "Invalid access token", "error_subcode": None}
         }
 
-        with patch.object(mock_adapter.http_client, 'post', return_value=mock_response), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None), \
-             patch.object(mock_adapter, '_handle_api_error', side_effect=InstagramAuthError("Invalid token")):
+        with (
+            patch.object(mock_adapter.http_client, "post", return_value=mock_response),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+            patch.object(mock_adapter, "_handle_api_error", side_effect=InstagramAuthError("Invalid token")),
+        ):
 
             with pytest.raises(InstagramAuthError):
                 await mock_adapter._make_api_request("POST", "https://test.com")
@@ -486,8 +458,10 @@ class TestAPIRequestHandling:
     @pytest.mark.asyncio
     async def test_make_api_request_network_error_retry(self, mock_adapter):
         """Test API request with network error and retry."""
-        with patch.object(mock_adapter.http_client, 'post', side_effect=httpx.RequestError("Network error")), \
-             patch.object(mock_adapter, '_check_rate_limits', return_value=None):
+        with (
+            patch.object(mock_adapter.http_client, "post", side_effect=httpx.RequestError("Network error")),
+            patch.object(mock_adapter, "_check_rate_limits", return_value=None),
+        ):
 
             with pytest.raises(httpx.RequestError):
                 await mock_adapter._make_api_request("POST", "https://test.com")
@@ -522,7 +496,7 @@ class TestAPIRequestHandling:
         mock_adapter.rate_limit_remaining = 3  # Below threshold of 5
         mock_adapter.rate_limit_reset_time = time.time() + 10  # 10 seconds in future
 
-        with patch('asyncio.sleep') as mock_sleep:
+        with patch("asyncio.sleep") as mock_sleep:
             await mock_adapter._check_rate_limits()
 
             mock_sleep.assert_called_once()
@@ -531,9 +505,7 @@ class TestAPIRequestHandling:
 
     def test_update_rate_limits_from_headers(self, mock_adapter):
         """Test rate limit update from response headers."""
-        headers = {
-            "X-Business-Use-Case-Usage": '{"123456": {"call_count": 50, "total_time": 300}}'
-        }
+        headers = {"X-Business-Use-Case-Usage": '{"123456": {"call_count": 50, "total_time": 300}}'}
 
         mock_adapter._update_rate_limits(headers)
 
@@ -564,7 +536,7 @@ class TestAPIErrorHandling:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -574,11 +546,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_invalid_access_token_error(self, mock_adapter):
         """Test handling of invalid access token error."""
-        error_data = {
-            "code": 190,
-            "message": "Invalid OAuth access token",
-            "error_subcode": None
-        }
+        error_data = {"code": 190, "message": "Invalid OAuth access token", "error_subcode": None}
 
         with pytest.raises(InstagramAuthError) as exc_info:
             await mock_adapter._handle_api_error(error_data)
@@ -588,11 +556,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_content_not_ready_error(self, mock_adapter):
         """Test handling of content not ready error."""
-        error_data = {
-            "code": 100,
-            "message": "Content is not ready for publishing",
-            "error_subcode": 2207006
-        }
+        error_data = {"code": 100, "message": "Content is not ready for publishing", "error_subcode": 2207006}
 
         with pytest.raises(InstagramValidationError) as exc_info:
             await mock_adapter._handle_api_error(error_data)
@@ -605,7 +569,7 @@ class TestAPIErrorHandling:
         error_data = {
             "code": 100,
             "message": "Media posted too frequently. Please try again later.",
-            "error_subcode": None
+            "error_subcode": None,
         }
 
         with pytest.raises(InstagramRateLimitError) as exc_info:
@@ -622,7 +586,7 @@ class TestAPIErrorHandling:
             error_data = {
                 "code": error_code,
                 "message": "You are temporarily blocked from performing this action",
-                "error_subcode": None
+                "error_subcode": None,
             }
 
             with pytest.raises(InstagramRateLimitError) as exc_info:
@@ -633,11 +597,7 @@ class TestAPIErrorHandling:
     @pytest.mark.asyncio
     async def test_handle_generic_api_error(self, mock_adapter):
         """Test handling of generic API errors."""
-        error_data = {
-            "code": 999,
-            "message": "Unknown error occurred",
-            "error_subcode": None
-        }
+        error_data = {"code": 999, "message": "Unknown error occurred", "error_subcode": None}
 
         with pytest.raises(InstagramError) as exc_info:
             await mock_adapter._handle_api_error(error_data)
@@ -663,7 +623,7 @@ class TestMediaHandling:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -688,11 +648,9 @@ class TestMediaHandling:
     @pytest.mark.asyncio
     async def test_upload_thumbnail_success(self, mock_adapter):
         """Test successful thumbnail upload."""
-        with patch.object(mock_adapter, '_upload_media_file', return_value="https://cdn.example.com/thumb.jpg"):
+        with patch.object(mock_adapter, "_upload_media_file", return_value="https://cdn.example.com/thumb.jpg"):
             thumbnail_url = await mock_adapter.upload_thumbnail(
-                "/path/to/video.mp4",
-                "/path/to/thumbnail.jpg",
-                "test_correlation_id"
+                "/path/to/video.mp4", "/path/to/thumbnail.jpg", "test_correlation_id"
             )
 
             assert thumbnail_url == "https://cdn.example.com/thumb.jpg"
@@ -700,12 +658,9 @@ class TestMediaHandling:
     @pytest.mark.asyncio
     async def test_upload_thumbnail_failure(self, mock_adapter):
         """Test thumbnail upload failure."""
-        with patch.object(mock_adapter, '_upload_media_file', side_effect=Exception("Upload failed")):
+        with patch.object(mock_adapter, "_upload_media_file", side_effect=Exception("Upload failed")):
             with pytest.raises(Exception) as exc_info:
-                await mock_adapter.upload_thumbnail(
-                    "/path/to/video.mp4",
-                    "/path/to/thumbnail.jpg"
-                )
+                await mock_adapter.upload_thumbnail("/path/to/video.mp4", "/path/to/thumbnail.jpg")
 
             assert "Upload failed" in str(exc_info.value)
 
@@ -716,7 +671,7 @@ class TestContainerStatus:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -726,14 +681,9 @@ class TestContainerStatus:
     @pytest.mark.asyncio
     async def test_get_container_status_finished(self, mock_adapter):
         """Test getting container status when finished."""
-        mock_response = {
-            "id": "container_123",
-            "media_type": "IMAGE",
-            "status_code": "FINISHED",
-            "status": "ready"
-        }
+        mock_response = {"id": "container_123", "media_type": "IMAGE", "status_code": "FINISHED", "status": "ready"}
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=mock_response):
+        with patch.object(mock_adapter, "_make_api_request", return_value=mock_response):
             status = await mock_adapter.get_container_status("container_123")
 
             assert status["container_id"] == "container_123"
@@ -749,10 +699,10 @@ class TestContainerStatus:
             "id": "container_123",
             "media_type": "VIDEO",
             "status_code": "IN_PROGRESS",
-            "status": "processing"
+            "status": "processing",
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=mock_response):
+        with patch.object(mock_adapter, "_make_api_request", return_value=mock_response):
             status = await mock_adapter.get_container_status("container_123")
 
             assert status["status_code"] == "IN_PROGRESS"
@@ -761,7 +711,7 @@ class TestContainerStatus:
     @pytest.mark.asyncio
     async def test_get_container_status_error(self, mock_adapter):
         """Test getting container status with error."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=InstagramError("API Error")):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=InstagramError("API Error")):
             status = await mock_adapter.get_container_status("container_123")
 
             assert status["container_id"] == "container_123"
@@ -777,10 +727,10 @@ class TestContainerStatus:
             "media_type": "IMAGE",
             "permalink": "https://instagram.com/p/ABC123/",
             "timestamp": "2024-01-15T10:00:00+0000",
-            "caption": "Test caption"
+            "caption": "Test caption",
         }
 
-        with patch.object(mock_adapter, '_make_api_request', return_value=mock_response):
+        with patch.object(mock_adapter, "_make_api_request", return_value=mock_response):
             details = await mock_adapter._get_post_details("post_123")
 
             assert details["permalink"] == "https://instagram.com/p/ABC123/"
@@ -789,7 +739,7 @@ class TestContainerStatus:
     @pytest.mark.asyncio
     async def test_get_post_details_failure(self, mock_adapter):
         """Test getting post details with failure."""
-        with patch.object(mock_adapter, '_make_api_request', side_effect=Exception("Network error")):
+        with patch.object(mock_adapter, "_make_api_request", side_effect=Exception("Network error")):
             details = await mock_adapter._get_post_details("post_123")
 
             assert details == {}  # Should return empty dict on failure
@@ -801,7 +751,7 @@ class TestUpdatePostStatus:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -813,9 +763,7 @@ class TestUpdatePostStatus:
         """Test successful post status update."""
         # This is currently a placeholder, but test that it doesn't raise
         await mock_adapter.update_post_status(
-            "post_123",
-            "published",
-            {"post_id": "instagram_456", "permalink": "https://instagram.com/p/ABC123/"}
+            "post_123", "published", {"post_id": "instagram_456", "permalink": "https://instagram.com/p/ABC123/"}
         )
 
         # Should complete without error
@@ -836,7 +784,7 @@ class TestCleanupAndUtilities:
     @pytest.fixture
     def mock_adapter(self):
         """Create mocked adapter for testing."""
-        with patch('app.adapters.instagram.settings.instagram') as mock_settings:
+        with patch("app.adapters.instagram.settings.instagram") as mock_settings:
             mock_settings.page_id = "test_page_id"
             mock_settings.access_token.get_secret_value.return_value = "test_token"
 
@@ -846,7 +794,7 @@ class TestCleanupAndUtilities:
     @pytest.mark.asyncio
     async def test_adapter_close(self, mock_adapter):
         """Test adapter cleanup."""
-        with patch.object(mock_adapter.http_client, 'aclose', new_callable=AsyncMock) as mock_close:
+        with patch.object(mock_adapter.http_client, "aclose", new_callable=AsyncMock) as mock_close:
             await mock_adapter.close()
             mock_close.assert_called_once()
 
@@ -858,26 +806,22 @@ class TestConvenienceFunctions:
     async def test_publish_instagram_post_single_image(self):
         """Test publish_instagram_post convenience function with single image."""
         mock_container_result = ContainerResult(
-            container_id="container_123",
-            status="created",
-            created_at=datetime.now(timezone.utc)
+            container_id="container_123", status="created", created_at=datetime.now(timezone.utc)
         )
 
         mock_publish_result = PublishResult(
             post_id="post_123",
             status=PublishStatus.FINISHED,
             message="Published successfully",
-            container_id="container_123"
+            container_id="container_123",
         )
 
-        with patch('app.adapters.instagram.instagram_adapter') as mock_adapter:
+        with patch("app.adapters.instagram.instagram_adapter") as mock_adapter:
             mock_adapter.create_container.return_value = mock_container_result
             mock_adapter.schedule_if_needed.return_value = mock_publish_result
 
             result = await publish_instagram_post(
-                caption="Test post",
-                media_files=["/path/to/image.jpg"],
-                correlation_id="test_correlation"
+                caption="Test post", media_files=["/path/to/image.jpg"], correlation_id="test_correlation"
             )
 
             assert result.post_id == "post_123"
@@ -887,25 +831,20 @@ class TestConvenienceFunctions:
     async def test_publish_instagram_post_multiple_images(self):
         """Test publish_instagram_post convenience function with multiple images."""
         mock_container_result = ContainerResult(
-            container_id="carousel_123",
-            status="created",
-            created_at=datetime.now(timezone.utc)
+            container_id="carousel_123", status="created", created_at=datetime.now(timezone.utc)
         )
 
         mock_publish_result = PublishResult(
-            post_id="post_456",
-            status=PublishStatus.FINISHED,
-            message="Carousel published",
-            container_id="carousel_123"
+            post_id="post_456", status=PublishStatus.FINISHED, message="Carousel published", container_id="carousel_123"
         )
 
-        with patch('app.adapters.instagram.instagram_adapter') as mock_adapter:
+        with patch("app.adapters.instagram.instagram_adapter") as mock_adapter:
             mock_adapter.create_container.return_value = mock_container_result
             mock_adapter.schedule_if_needed.return_value = mock_publish_result
 
             result = await publish_instagram_post(
                 caption="Carousel post",
-                media_files=["/path/to/image1.jpg", "/path/to/image2.jpg", "/path/to/video.mp4"]
+                media_files=["/path/to/image1.jpg", "/path/to/image2.jpg", "/path/to/video.mp4"],
             )
 
             assert result.post_id == "post_456"
@@ -915,8 +854,7 @@ class TestConvenienceFunctions:
         """Test publish_instagram_post with unsupported file format."""
         with pytest.raises(InstagramValidationError) as exc_info:
             await publish_instagram_post(
-                caption="Test post",
-                media_files=["/path/to/document.pdf"]  # Unsupported format
+                caption="Test post", media_files=["/path/to/document.pdf"]  # Unsupported format
             )
 
         assert "Unsupported file type" in str(exc_info.value)
@@ -927,26 +865,22 @@ class TestConvenienceFunctions:
         schedule_time = datetime.now(timezone.utc) + timedelta(hours=2)
 
         mock_container_result = ContainerResult(
-            container_id="scheduled_123",
-            status="created",
-            created_at=datetime.now(timezone.utc)
+            container_id="scheduled_123", status="created", created_at=datetime.now(timezone.utc)
         )
 
         mock_publish_result = PublishResult(
             post_id=None,
             status=PublishStatus.PENDING,
             message=f"Scheduled for {schedule_time.isoformat()}",
-            container_id="scheduled_123"
+            container_id="scheduled_123",
         )
 
-        with patch('app.adapters.instagram.instagram_adapter') as mock_adapter:
+        with patch("app.adapters.instagram.instagram_adapter") as mock_adapter:
             mock_adapter.create_container.return_value = mock_container_result
             mock_adapter.schedule_if_needed.return_value = mock_publish_result
 
             result = await publish_instagram_post(
-                caption="Scheduled post",
-                media_files=["/path/to/image.jpg"],
-                schedule_time=schedule_time
+                caption="Scheduled post", media_files=["/path/to/image.jpg"], schedule_time=schedule_time
             )
 
             assert result.status == PublishStatus.PENDING
@@ -954,13 +888,9 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_get_instagram_container_status(self):
         """Test get_instagram_container_status convenience function."""
-        expected_status = {
-            "container_id": "container_123",
-            "status": "finished",
-            "is_ready": True
-        }
+        expected_status = {"container_id": "container_123", "status": "finished", "is_ready": True}
 
-        with patch('app.adapters.instagram.instagram_adapter') as mock_adapter:
+        with patch("app.adapters.instagram.instagram_adapter") as mock_adapter:
             mock_adapter.get_container_status.return_value = expected_status
 
             result = await get_instagram_container_status("container_123")
@@ -970,7 +900,7 @@ class TestConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_cleanup_instagram_adapter(self):
         """Test cleanup_instagram_adapter convenience function."""
-        with patch('app.adapters.instagram.instagram_adapter') as mock_adapter:
+        with patch("app.adapters.instagram.instagram_adapter") as mock_adapter:
             mock_adapter.close = AsyncMock()
 
             await cleanup_instagram_adapter()
@@ -983,10 +913,7 @@ class TestDataclassValidation:
 
     def test_media_item_creation(self):
         """Test MediaItem creation and defaults."""
-        media_item = MediaItem(
-            file_path="/test/image.jpg",
-            media_type=ContainerType.IMAGE
-        )
+        media_item = MediaItem(file_path="/test/image.jpg", media_type=ContainerType.IMAGE)
 
         assert media_item.file_path == "/test/image.jpg"
         assert media_item.media_type == ContainerType.IMAGE
@@ -1003,7 +930,7 @@ class TestDataclassValidation:
             caption="Video caption",
             thumbnail_url="https://example.com/thumb.jpg",
             aspect_ratio="16:9",
-            duration=30.5
+            duration=30.5,
         )
 
         assert media_item.caption == "Video caption"
@@ -1013,14 +940,9 @@ class TestDataclassValidation:
 
     def test_instagram_post_creation(self):
         """Test InstagramPost creation and defaults."""
-        media_items = [
-            MediaItem(file_path="/test/image.jpg", media_type=ContainerType.IMAGE)
-        ]
+        media_items = [MediaItem(file_path="/test/image.jpg", media_type=ContainerType.IMAGE)]
 
-        post = InstagramPost(
-            caption="Test caption",
-            media_items=media_items
-        )
+        post = InstagramPost(caption="Test caption", media_items=media_items)
 
         assert post.caption == "Test caption"
         assert len(post.media_items) == 1
@@ -1039,7 +961,7 @@ class TestDataclassValidation:
             media_items=media_items,
             schedule_time=schedule_time,
             location_id="123456789",
-            user_tags=user_tags
+            user_tags=user_tags,
         )
 
         assert post.schedule_time == schedule_time
@@ -1050,11 +972,7 @@ class TestDataclassValidation:
         """Test ContainerResult creation."""
         created_at = datetime.now(timezone.utc)
 
-        result = ContainerResult(
-            container_id="container_123",
-            status="created",
-            created_at=created_at
-        )
+        result = ContainerResult(container_id="container_123", status="created", created_at=created_at)
 
         assert result.container_id == "container_123"
         assert result.status == "created"
@@ -1071,7 +989,7 @@ class TestDataclassValidation:
             message="Success",
             container_id="container_123",
             published_at=published_at,
-            permalink="https://instagram.com/p/ABC123/"
+            permalink="https://instagram.com/p/ABC123/",
         )
 
         assert result.post_id == "post_123"
@@ -1089,7 +1007,7 @@ class TestDataclassValidation:
             status=PublishStatus.ERROR,
             message="Publishing failed",
             error_code="CONTENT_NOT_READY",
-            retry_after=300
+            retry_after=300,
         )
 
         assert result.post_id is None

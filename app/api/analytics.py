@@ -1,6 +1,7 @@
 """
 Analytics API - Content performance tracking and AI recommendations.
 """
+
 import uuid
 from datetime import datetime, timedelta
 
@@ -24,6 +25,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
 # === Request/Response Models ===
+
 
 class MetricsInput(BaseModel):
     publish_result_id: str
@@ -102,20 +104,15 @@ class DashboardStats(BaseModel):
 
 # === Endpoints ===
 
+
 @router.post("/metrics", response_model=MetricsResponse)
 async def submit_metrics(
-    data: MetricsInput,
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    data: MetricsInput, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Submit metrics for a published post."""
     try:
         service = get_analytics_service()
-        metrics = await service.collect_metrics_for_post(
-            db,
-            uuid.UUID(data.publish_result_id),
-            data.dict()
-        )
+        metrics = await service.collect_metrics_for_post(db, uuid.UUID(data.publish_result_id), data.dict())
         return MetricsResponse(
             id=str(metrics.id),
             post_id=str(metrics.post_id),
@@ -126,7 +123,7 @@ async def submit_metrics(
             shares=metrics.shares,
             engagement_rate=metrics.engagement_rate,
             followers_gained=metrics.followers_gained,
-            measured_at=metrics.measured_at.isoformat()
+            measured_at=metrics.measured_at.isoformat(),
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -134,15 +131,11 @@ async def submit_metrics(
 
 @router.get("/metrics/{post_id}", response_model=list[MetricsResponse])
 async def get_post_metrics(
-    post_id: str,
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    post_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Get all metrics snapshots for a post."""
     result = await db.execute(
-        select(PostMetrics)
-        .where(PostMetrics.post_id == uuid.UUID(post_id))
-        .order_by(desc(PostMetrics.measured_at))
+        select(PostMetrics).where(PostMetrics.post_id == uuid.UUID(post_id)).order_by(desc(PostMetrics.measured_at))
     )
     metrics_list = result.scalars().all()
 
@@ -157,7 +150,7 @@ async def get_post_metrics(
             shares=m.shares,
             engagement_rate=m.engagement_rate or 0,
             followers_gained=m.followers_gained or 0,
-            measured_at=m.measured_at.isoformat() if m.measured_at else ""
+            measured_at=m.measured_at.isoformat() if m.measured_at else "",
         )
         for m in metrics_list
     ]
@@ -165,17 +158,11 @@ async def get_post_metrics(
 
 @router.post("/analyze/{post_id}", response_model=InsightResponse)
 async def analyze_post(
-    post_id: str,
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    post_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Trigger AI analysis for a specific post."""
     service = get_analytics_service()
-    insight = await service.analyze_post_performance(
-        db,
-        uuid.UUID(post_id),
-        current_user.id
-    )
+    insight = await service.analyze_post_performance(db, uuid.UUID(post_id), current_user.id)
 
     if not insight:
         raise HTTPException(status_code=404, detail="No metrics found for post")
@@ -193,7 +180,7 @@ async def analyze_post(
         recommendations=insight.recommendations or [],
         confidence_score=insight.confidence_score or 0.8,
         created_at=insight.created_at.isoformat() if insight.created_at else "",
-        expires_at=insight.expires_at.isoformat() if insight.expires_at else None
+        expires_at=insight.expires_at.isoformat() if insight.expires_at else None,
     )
 
 
@@ -203,7 +190,7 @@ async def get_insights(
     platform: str | None = Query(None, description="Filter by platform"),
     limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get all insights for current user."""
     query = select(ContentInsight).where(ContentInsight.user_id == current_user.id)
@@ -213,10 +200,7 @@ async def get_insights(
     if platform:
         query = query.where(ContentInsight.platform == platform)
 
-    query = query.order_by(
-        desc(ContentInsight.priority),
-        desc(ContentInsight.created_at)
-    ).limit(limit)
+    query = query.order_by(desc(ContentInsight.priority), desc(ContentInsight.created_at)).limit(limit)
 
     result = await db.execute(query)
     insights = result.scalars().all()
@@ -235,7 +219,7 @@ async def get_insights(
             recommendations=i.recommendations or [],
             confidence_score=i.confidence_score or 0.8,
             created_at=i.created_at.isoformat() if i.created_at else "",
-            expires_at=i.expires_at.isoformat() if i.expires_at else None
+            expires_at=i.expires_at.isoformat() if i.expires_at else None,
         )
         for i in insights
     ]
@@ -243,26 +227,17 @@ async def get_insights(
 
 @router.post("/insights/{insight_id}/apply")
 async def apply_insight(
-    insight_id: str,
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    insight_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Apply an insight recommendation."""
     service = get_analytics_service()
-    result = await service.apply_optimization(
-        db,
-        uuid.UUID(insight_id),
-        current_user.id,
-        auto=False
-    )
+    result = await service.apply_optimization(db, uuid.UUID(insight_id), current_user.id, auto=False)
     return result
 
 
 @router.post("/insights/{insight_id}/dismiss")
 async def dismiss_insight(
-    insight_id: str,
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    insight_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Dismiss an insight."""
     insight = await db.get(ContentInsight, uuid.UUID(insight_id))
@@ -280,7 +255,7 @@ async def submit_feedback(
     insight_id: str,
     feedback: str = Query(..., description="helpful or not_helpful"),
     db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Submit feedback for an insight."""
     insight = await db.get(ContentInsight, uuid.UUID(insight_id))
@@ -295,13 +270,10 @@ async def submit_feedback(
 
 @router.get("/settings", response_model=SettingsResponse)
 async def get_settings(
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Get user analytics settings."""
-    result = await db.execute(
-        select(AnalyticsSettings).where(AnalyticsSettings.user_id == current_user.id)
-    )
+    result = await db.execute(select(AnalyticsSettings).where(AnalyticsSettings.user_id == current_user.id))
     settings = result.scalars().first()
 
     if not settings:
@@ -313,7 +285,7 @@ async def get_settings(
             auto_optimize_hashtags=False,
             auto_suggest_topics=True,
             notify_on_viral=True,
-            notify_weekly_report=True
+            notify_weekly_report=True,
         )
 
     return SettingsResponse(
@@ -323,7 +295,7 @@ async def get_settings(
         auto_optimize_hashtags=settings.auto_optimize_hashtags,
         auto_suggest_topics=settings.auto_suggest_topics,
         notify_on_viral=settings.notify_on_viral,
-        notify_weekly_report=settings.notify_weekly_report
+        notify_weekly_report=settings.notify_weekly_report,
     )
 
 
@@ -331,12 +303,10 @@ async def get_settings(
 async def update_settings(
     data: SettingsInput,
     db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Update user analytics settings."""
-    result = await db.execute(
-        select(AnalyticsSettings).where(AnalyticsSettings.user_id == current_user.id)
-    )
+    result = await db.execute(select(AnalyticsSettings).where(AnalyticsSettings.user_id == current_user.id))
     settings = result.scalars().first()
 
     if not settings:
@@ -361,7 +331,7 @@ async def update_settings(
         auto_optimize_hashtags=settings.auto_optimize_hashtags,
         auto_suggest_topics=settings.auto_suggest_topics,
         notify_on_viral=settings.notify_on_viral,
-        notify_weekly_report=settings.notify_weekly_report
+        notify_weekly_report=settings.notify_weekly_report,
     )
 
 
@@ -369,7 +339,7 @@ async def update_settings(
 async def get_dashboard_stats(
     days: int = Query(30, le=90, description="Period in days"),
     db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get dashboard statistics for the analytics page."""
     since = datetime.utcnow() - timedelta(days=days)
@@ -380,18 +350,14 @@ async def get_dashboard_stats(
             func.count(PostMetrics.id).label("total_posts"),
             func.sum(PostMetrics.views).label("total_views"),
             func.sum(PostMetrics.likes).label("total_likes"),
-            func.avg(PostMetrics.engagement_rate).label("avg_engagement")
-        )
-        .where(PostMetrics.created_at >= since)
+            func.avg(PostMetrics.engagement_rate).label("avg_engagement"),
+        ).where(PostMetrics.created_at >= since)
     )
     row = metrics_result.fetchone()
 
     # Get best platform
     platform_result = await db.execute(
-        select(
-            PostMetrics.platform,
-            func.avg(PostMetrics.engagement_rate).label("avg_eng")
-        )
+        select(PostMetrics.platform, func.avg(PostMetrics.engagement_rate).label("avg_eng"))
         .where(PostMetrics.created_at >= since)
         .group_by(PostMetrics.platform)
         .order_by(desc("avg_eng"))
@@ -411,10 +377,7 @@ async def get_dashboard_stats(
     week_ago = datetime.utcnow() - timedelta(days=7)
     two_weeks_ago = datetime.utcnow() - timedelta(days=14)
 
-    this_week_result = await db.execute(
-        select(func.sum(PostMetrics.views))
-        .where(PostMetrics.created_at >= week_ago)
-    )
+    this_week_result = await db.execute(select(func.sum(PostMetrics.views)).where(PostMetrics.created_at >= week_ago))
     last_week_result = await db.execute(
         select(func.sum(PostMetrics.views))
         .where(PostMetrics.created_at >= two_weeks_ago)
@@ -433,35 +396,28 @@ async def get_dashboard_stats(
         best_platform=best_platform_row[0] if best_platform_row else None,
         best_posting_time=None,  # TODO: Calculate from metrics
         pending_insights=pending_count,
-        weekly_growth=round(weekly_growth, 1)
+        weekly_growth=round(weekly_growth, 1),
     )
 
 
 @router.post("/generate-weekly-report")
 async def generate_weekly_report(
-    db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Generate weekly insights report."""
     service = get_analytics_service()
     insights = await service.generate_weekly_insights(db, current_user.id)
 
-    return {
-        "status": "generated",
-        "insights_count": len(insights),
-        "insight_ids": [str(i.id) for i in insights]
-    }
+    return {"status": "generated", "insights_count": len(insights), "insight_ids": [str(i.id) for i in insights]}
 
 
 @router.get("/suggestions")
 async def get_optimization_suggestions(
     platform: str | None = None,
     db: AsyncSession = Depends(get_db_async_session),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Get actionable optimization suggestions."""
     service = get_analytics_service()
-    suggestions = await service.get_optimization_suggestions(
-        db, current_user.id, platform
-    )
+    suggestions = await service.get_optimization_suggestions(db, current_user.id, platform)
     return {"suggestions": suggestions}

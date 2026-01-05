@@ -12,6 +12,7 @@ from ..observability.metrics import metrics
 
 logger = get_logger("services.enrichment")
 
+
 @dataclass
 class ProductAttributes:
     """Normalized product attributes structure for LLM/Publishers."""
@@ -65,7 +66,7 @@ class ProductAttributes:
         context_parts = [
             f"Product: {self.title}",
             f"@5=4: {self.brand or 'SalesWhisper'}",
-            f"0B53>@8O: {self.category or '45640'}"
+            f"0B53>@8O: {self.category or '45640'}",
         ]
 
         if self.description:
@@ -90,17 +91,20 @@ class ProductAttributes:
             return False
 
         try:
-            updated_time = datetime.fromisoformat(self.updated_at.replace('Z', '+00:00'))
+            updated_time = datetime.fromisoformat(self.updated_at.replace("Z", "+00:00"))
             age = datetime.utcnow() - updated_time.replace(tzinfo=None)
             return age < timedelta(hours=max_age_hours)
         except (ValueError, AttributeError):
             return False
 
+
 class ProductSourceError(Exception):
     pass
 
+
 class ProductNotFoundError(Exception):
     pass
+
 
 class ProductSource(ABC):
     @abstractmethod
@@ -110,6 +114,7 @@ class ProductSource(ABC):
     @abstractmethod
     def get_source_name(self) -> str:
         pass
+
 
 class LocalProductSource(ProductSource):
     def __init__(self):
@@ -152,9 +157,10 @@ class LocalProductSource(ProductSource):
                 "collection": "Classic 2024",
                 "sku": "SOV-DR-001",
                 "product_url": "https://saleswhisper.ru/products/dress_001",
-                "confidence_score": 1.0
+                "confidence_score": 1.0,
             }
         }
+
 
 class WildberriesSource(ProductSource):
     def __init__(self):
@@ -176,19 +182,17 @@ class WildberriesSource(ProductSource):
                 currency="RUB",
                 colors=["White"],
                 sizes=["M", "L"],
-                confidence_score=0.8
+                confidence_score=0.8,
             )
         return None
 
     def get_source_name(self) -> str:
         return self.source_name
 
+
 class ProductEnrichmentService:
     def __init__(self):
-        self.sources: dict[str, ProductSource] = {
-            "local": LocalProductSource(),
-            "wildberries": WildberriesSource()
-        }
+        self.sources: dict[str, ProductSource] = {"local": LocalProductSource(), "wildberries": WildberriesSource()}
         self.cache_ttl_hours = 24
 
     async def get_product_attrs(self, source: str, external_id: str) -> ProductAttributes | None:
@@ -211,14 +215,11 @@ class ProductEnrichmentService:
                         "Product attributes retrieved successfully",
                         source=source,
                         external_id=external_id,
-                        processing_time=processing_time
+                        processing_time=processing_time,
                     )
 
                     metrics.track_external_api_call(
-                        service=f"product_{source}",
-                        endpoint="get_product",
-                        status_code=200,
-                        duration=processing_time
+                        service=f"product_{source}", endpoint="get_product", status_code=200, duration=processing_time
                     )
 
                     return product
@@ -236,14 +237,11 @@ class ProductEnrichmentService:
                     source=source,
                     external_id=external_id,
                     error=str(e),
-                    processing_time=processing_time
+                    processing_time=processing_time,
                 )
 
                 metrics.track_external_api_call(
-                    service=f"product_{source}",
-                    endpoint="get_product",
-                    status_code=500,
-                    duration=processing_time
+                    service=f"product_{source}", endpoint="get_product", status_code=500, duration=processing_time
                 )
 
                 raise ProductSourceError(f"Error fetching product from {source}: {str(e)}")
@@ -264,12 +262,15 @@ class ProductEnrichmentService:
     def get_available_sources(self) -> list[str]:
         return list(self.sources.keys())
 
+
 # Global service instance
 enrichment_service = ProductEnrichmentService()
+
 
 # Convenience functions
 async def get_product_attrs(source: str, external_id: str) -> ProductAttributes | None:
     return await enrichment_service.get_product_attrs(source, external_id)
+
 
 async def get_llm_context(source: str, external_id: str) -> str:
     return await enrichment_service.get_enriched_context_for_llm(source, external_id)

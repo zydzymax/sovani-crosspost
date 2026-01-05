@@ -29,11 +29,13 @@ from .config import settings
 
 class EncryptionError(Exception):
     """Custom exception for encryption/decryption errors."""
+
     pass
 
 
 class SignatureError(Exception):
     """Custom exception for signature verification errors."""
+
     pass
 
 
@@ -67,15 +69,15 @@ class AESGCMCipher:
             nonce = secrets.token_bytes(12)
 
             # Prepare data
-            plaintext = data.encode('utf-8')
-            aad = associated_data.encode('utf-8') if associated_data else None
+            plaintext = data.encode("utf-8")
+            aad = associated_data.encode("utf-8") if associated_data else None
 
             # Encrypt
             ciphertext = self.cipher.encrypt(nonce, plaintext, aad)
 
             # Combine nonce + ciphertext and encode
             encrypted_data = nonce + ciphertext
-            return base64.b64encode(encrypted_data).decode('ascii')
+            return base64.b64encode(encrypted_data).decode("ascii")
 
         except Exception as e:
             raise EncryptionError(f"Encryption failed: {str(e)}")
@@ -100,11 +102,11 @@ class AESGCMCipher:
             ciphertext = encrypted_bytes[12:]
 
             # Prepare associated data
-            aad = associated_data.encode('utf-8') if associated_data else None
+            aad = associated_data.encode("utf-8") if associated_data else None
 
             # Decrypt
             plaintext = self.cipher.decrypt(nonce, ciphertext, aad)
-            return plaintext.decode('utf-8')
+            return plaintext.decode("utf-8")
 
         except Exception as e:
             raise EncryptionError(f"Decryption failed: {str(e)}")
@@ -135,11 +137,7 @@ class WebhookSigner:
         signed_payload = f"{timestamp}.{payload}"
 
         # Generate HMAC-SHA256 signature
-        signature = hmac.new(
-            self.secret.encode('utf-8'),
-            signed_payload.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
+        signature = hmac.new(self.secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
         return f"t={timestamp},v1={signature}"
 
@@ -157,14 +155,14 @@ class WebhookSigner:
         """
         try:
             # Parse signature header
-            elements = signature_header.split(',')
+            elements = signature_header.split(",")
             timestamp = None
             signatures = []
 
             for element in elements:
-                if element.startswith('t='):
+                if element.startswith("t="):
                     timestamp = int(element[2:])
-                elif element.startswith('v1='):
+                elif element.startswith("v1="):
                     signatures.append(element[3:])
 
             if timestamp is None or not signatures:
@@ -178,9 +176,7 @@ class WebhookSigner:
             # Generate expected signature
             signed_payload = f"{timestamp}.{payload}"
             expected_signature = hmac.new(
-                self.secret.encode('utf-8'),
-                signed_payload.encode('utf-8'),
-                hashlib.sha256
+                self.secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256
             ).hexdigest()
 
             # Compare signatures using constant-time comparison
@@ -202,8 +198,7 @@ class JWTManager:
         self.secret = secret or settings.security.jwt_secret_key.get_secret_value()
         self.algorithm = algorithm
 
-    def create_token(self, payload: dict[str, Any],
-                    expires_in: int | None = None) -> str:
+    def create_token(self, payload: dict[str, Any], expires_in: int | None = None) -> str:
         """
         Create JWT token.
 
@@ -216,15 +211,11 @@ class JWTManager:
         """
         # Add standard claims
         now = datetime.utcnow()
-        token_payload = {
-            'iat': now,
-            'jti': str(uuid.uuid4()),  # Unique token ID
-            **payload
-        }
+        token_payload = {"iat": now, "jti": str(uuid.uuid4()), **payload}  # Unique token ID
 
         # Add expiration if specified
         if expires_in:
-            token_payload['exp'] = now + timedelta(seconds=expires_in)
+            token_payload["exp"] = now + timedelta(seconds=expires_in)
 
         return jwt.encode(token_payload, self.secret, algorithm=self.algorithm)
 
@@ -244,21 +235,13 @@ class JWTManager:
 
     def create_api_key_token(self, user_id: str, scopes: list = None) -> str:
         """Create long-lived API key token."""
-        payload = {
-            'user_id': user_id,
-            'type': 'api_key',
-            'scopes': scopes or ['read', 'write']
-        }
+        payload = {"user_id": user_id, "type": "api_key", "scopes": scopes or ["read", "write"]}
         # API keys don't expire by default
         return self.create_token(payload)
 
     def create_webhook_token(self, webhook_id: str, source: str) -> str:
         """Create webhook authentication token."""
-        payload = {
-            'webhook_id': webhook_id,
-            'source': source,
-            'type': 'webhook'
-        }
+        payload = {"webhook_id": webhook_id, "source": source, "type": "webhook"}
         # Webhooks have 1-hour expiration
         return self.create_token(payload, expires_in=3600)
 
@@ -295,7 +278,7 @@ class IdempotencyManager:
         Returns:
             Deterministic idempotency key
         """
-        content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
         if prefix:
             return f"{prefix}_{content_hash}"
         return content_hash
@@ -316,7 +299,7 @@ class IdempotencyManager:
             return False
 
         # Allow alphanumeric, underscore, hyphen
-        allowed_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-')
+        allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
         return all(c in allowed_chars for c in key)
 
 
@@ -353,8 +336,7 @@ class SecurityUtils:
         return secrets.token_bytes(length)
 
     @staticmethod
-    def derive_key(password: str, salt: bytes, length: int = 32,
-                  iterations: int = 100000) -> bytes:
+    def derive_key(password: str, salt: bytes, length: int = 32, iterations: int = 100000) -> bytes:
         """Derive key from password using PBKDF2."""
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
@@ -362,7 +344,7 @@ class SecurityUtils:
             salt=salt,
             iterations=iterations,
         )
-        return kdf.derive(password.encode('utf-8'))
+        return kdf.derive(password.encode("utf-8"))
 
     @staticmethod
     def constant_time_compare(a: str, b: str) -> bool:
@@ -370,10 +352,10 @@ class SecurityUtils:
         return hmac.compare_digest(a, b)
 
     @staticmethod
-    def hash_content(content: str, algorithm: str = 'sha256') -> str:
+    def hash_content(content: str, algorithm: str = "sha256") -> str:
         """Hash content using specified algorithm."""
         hasher = hashlib.new(algorithm)
-        hasher.update(content.encode('utf-8'))
+        hasher.update(content.encode("utf-8"))
         return hasher.hexdigest()
 
 
@@ -500,7 +482,7 @@ if __name__ == "__main__":
 def get_test_security_config() -> dict[str, Any]:
     """Get security configuration for testing."""
     return {
-        'aes_key': 'test-key-32-bytes-long-for-aes256!',
-        'webhook_secret': 'test-webhook-secret',
-        'jwt_secret': 'test-jwt-secret-key'
+        "aes_key": "test-key-32-bytes-long-for-aes256!",
+        "webhook_secret": "test-webhook-secret",
+        "jwt_secret": "test-jwt-secret-key",
     }

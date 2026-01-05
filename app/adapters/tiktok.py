@@ -27,31 +27,37 @@ logger = get_logger("adapters.tiktok")
 
 class TikTokError(Exception):
     """Base exception for TikTok API errors."""
+
     pass
 
 
 class TikTokRateLimitError(TikTokError):
     """Raised when TikTok API rate limit is exceeded."""
+
     pass
 
 
 class TikTokAuthError(TikTokError):
     """Raised when TikTok API authentication fails."""
+
     pass
 
 
 class TikTokValidationError(TikTokError):
     """Raised when TikTok API validation fails."""
+
     pass
 
 
 class TikTokUploadError(TikTokError):
     """Raised when TikTok video upload fails."""
+
     pass
 
 
 class PostStatus(Enum):
     """TikTok post status."""
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     PUBLISHED = "published"
@@ -62,6 +68,7 @@ class PostStatus(Enum):
 
 class WebhookEventType(Enum):
     """TikTok webhook event types."""
+
     VIDEO_PUBLISH = "video.publish"
     VIDEO_UPLOAD = "video.upload"
     VIDEO_DELETE = "video.delete"
@@ -70,6 +77,7 @@ class WebhookEventType(Enum):
 @dataclass
 class TikTokVideoItem:
     """Represents a video item for TikTok."""
+
     file_path: str
     title: str
     description: str = ""
@@ -89,6 +97,7 @@ class TikTokVideoItem:
 @dataclass
 class TikTokPost:
     """Represents a TikTok post."""
+
     video_item: TikTokVideoItem
     is_app_approved: bool = False  # Whether the app can direct post
     schedule_time: datetime | None = None
@@ -98,6 +107,7 @@ class TikTokPost:
 @dataclass
 class TikTokUploadResult:
     """Result of video upload to TikTok."""
+
     upload_id: str | None
     status: PostStatus
     upload_url: str | None = None
@@ -109,6 +119,7 @@ class TikTokUploadResult:
 @dataclass
 class TikTokPublishResult:
     """Result of TikTok post publishing."""
+
     share_id: str | None
     status: PostStatus
     message: str
@@ -121,6 +132,7 @@ class TikTokPublishResult:
 @dataclass
 class WebhookEvent:
     """TikTok webhook event."""
+
     event_type: WebhookEventType
     share_id: str
     status: str
@@ -146,9 +158,7 @@ class TikTokAdapter:
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(300.0),  # TikTok uploads can take a long time
             limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
-            headers={
-                "User-Agent": "SalesWhisper-Crosspost/1.0"
-            }
+            headers={"User-Agent": "SalesWhisper-Crosspost/1.0"},
         )
 
         # Rate limiting - TikTok allows 1000 requests per day, 20 per minute
@@ -163,36 +173,36 @@ class TikTokAdapter:
 
     def _get_client_key(self) -> str:
         """Get TikTok client key from settings."""
-        if hasattr(settings.tiktok, 'client_key'):
+        if hasattr(settings.tiktok, "client_key"):
             key = settings.tiktok.client_key
-            if hasattr(key, 'get_secret_value'):
+            if hasattr(key, "get_secret_value"):
                 return key.get_secret_value()
             return str(key)
         raise TikTokAuthError("TikTok client key not configured")
 
     def _get_client_secret(self) -> str:
         """Get TikTok client secret from settings."""
-        if hasattr(settings.tiktok, 'client_secret'):
+        if hasattr(settings.tiktok, "client_secret"):
             secret = settings.tiktok.client_secret
-            if hasattr(secret, 'get_secret_value'):
+            if hasattr(secret, "get_secret_value"):
                 return secret.get_secret_value()
             return str(secret)
         raise TikTokAuthError("TikTok client secret not configured")
 
     def _get_access_token(self) -> str:
         """Get TikTok access token from settings."""
-        if hasattr(settings.tiktok, 'access_token'):
+        if hasattr(settings.tiktok, "access_token"):
             token = settings.tiktok.access_token
-            if hasattr(token, 'get_secret_value'):
+            if hasattr(token, "get_secret_value"):
                 return token.get_secret_value()
             return str(token)
         raise TikTokAuthError("TikTok access token not configured")
 
     def _get_webhook_secret(self) -> str:
         """Get TikTok webhook secret from settings."""
-        if hasattr(settings.tiktok, 'webhook_secret'):
+        if hasattr(settings.tiktok, "webhook_secret"):
             secret = settings.tiktok.webhook_secret
-            if hasattr(secret, 'get_secret_value'):
+            if hasattr(secret, "get_secret_value"):
                 return secret.get_secret_value()
             return str(secret)
         raise TikTokAuthError("TikTok webhook secret not configured")
@@ -207,7 +217,7 @@ class TikTokAdapter:
                 title=post.video_item.title,
                 file_path=post.video_item.file_path,
                 is_approved_app=post.is_app_approved,
-                is_scheduled=bool(post.schedule_time)
+                is_scheduled=bool(post.schedule_time),
             )
 
             try:
@@ -218,29 +228,22 @@ class TikTokAdapter:
                     return TikTokPublishResult(
                         share_id=None,
                         status=PostStatus.ERROR,
-                        message=upload_result.error_message or "Video upload failed"
+                        message=upload_result.error_message or "Video upload failed",
                     )
 
                 # Step 2: Create post (direct publish or draft)
                 if post.is_app_approved:
                     # Direct publish for approved apps
-                    publish_result = await self._direct_publish(
-                        post, upload_result.upload_id, correlation_id
-                    )
+                    publish_result = await self._direct_publish(post, upload_result.upload_id, correlation_id)
                 else:
                     # Create draft for non-approved apps
-                    publish_result = await self._create_draft(
-                        post, upload_result.upload_id, correlation_id
-                    )
+                    publish_result = await self._create_draft(post, upload_result.upload_id, correlation_id)
 
                 processing_time = time.time() - start_time
 
                 # Track metrics
                 metrics.track_external_api_call(
-                    service="tiktok",
-                    endpoint="publish_post",
-                    status_code=200,
-                    duration=processing_time
+                    service="tiktok", endpoint="publish_post", status_code=200, duration=processing_time
                 )
 
                 logger.info(
@@ -248,7 +251,7 @@ class TikTokAdapter:
                     share_id=publish_result.share_id,
                     status=publish_result.status.value,
                     processing_time=processing_time,
-                    post_url=publish_result.post_url
+                    post_url=publish_result.post_url,
                 )
 
                 return publish_result
@@ -260,30 +263,27 @@ class TikTokAdapter:
                 metrics.track_external_api_call(
                     service="tiktok",
                     endpoint="publish_post",
-                    status_code=getattr(e, 'error_code', 500),
+                    status_code=getattr(e, "error_code", 500),
                     duration=processing_time,
-                    error=str(e)
+                    error=str(e),
                 )
 
                 logger.error(
-                    "Failed to publish TikTok post",
-                    error=str(e),
-                    processing_time=processing_time,
-                    exc_info=True
+                    "Failed to publish TikTok post", error=str(e), processing_time=processing_time, exc_info=True
                 )
 
                 return TikTokPublishResult(
                     share_id=None,
                     status=PostStatus.ERROR,
                     message=str(e),
-                    error_code=getattr(e, 'error_code', None),
-                    retry_after=getattr(e, 'retry_after', None)
+                    error_code=getattr(e, "error_code", None),
+                    retry_after=getattr(e, "retry_after", None),
                 )
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=2, min=4, max=16),
-        retry=retry_if_exception_type((httpx.RequestError, TikTokRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, TikTokRateLimitError)),
     )
     async def _upload_video(self, video_item: TikTokVideoItem, correlation_id: str = None) -> TikTokUploadResult:
         """Upload video to TikTok using chunked upload."""
@@ -314,7 +314,7 @@ class TikTokAdapter:
                     "TikTok video uploaded successfully",
                     upload_id=upload_id,
                     file_size=file_size,
-                    upload_time=upload_time
+                    upload_time=upload_time,
                 )
 
                 return TikTokUploadResult(
@@ -322,7 +322,7 @@ class TikTokAdapter:
                     status=PostStatus.IN_PROGRESS,
                     upload_url=upload_url,
                     upload_time=upload_time,
-                    file_size=file_size
+                    file_size=file_size,
                 )
 
             except Exception as e:
@@ -333,31 +333,19 @@ class TikTokAdapter:
                     file_path=video_item.file_path,
                     error=str(e),
                     upload_time=upload_time,
-                    exc_info=True
+                    exc_info=True,
                 )
 
                 return TikTokUploadResult(
-                    upload_id=None,
-                    status=PostStatus.ERROR,
-                    upload_time=upload_time,
-                    error_message=str(e)
+                    upload_id=None, status=PostStatus.ERROR, upload_time=upload_time, error_message=str(e)
                 )
 
     async def _init_video_upload(self, file_size: int, correlation_id: str = None) -> dict[str, Any]:
         """Initialize video upload session."""
         with with_logging_context(correlation_id=correlation_id, action="init_upload"):
-            payload = {
-                "source_info": {
-                    "source": "FILE_UPLOAD",
-                    "file_size": file_size
-                }
-            }
+            payload = {"source_info": {"source": "FILE_UPLOAD", "file_size": file_size}}
 
-            response = await self._make_api_request(
-                "POST",
-                f"{self.upload_api_base}/video/init",
-                json_data=payload
-            )
+            response = await self._make_api_request("POST", f"{self.upload_api_base}/video/init", json_data=payload)
 
             return response["data"]
 
@@ -368,21 +356,18 @@ class TikTokAdapter:
             file_content = Path(file_path).read_bytes()
 
             # TikTok expects multipart upload
-            files = {
-                "video": (Path(file_path).name, file_content, "video/mp4")
-            }
+            files = {"video": (Path(file_path).name, file_content, "video/mp4")}
 
             async with self.http_client.put(upload_url, files=files) as response:
                 response.raise_for_status()
 
                 logger.info(
-                    "Video chunks uploaded successfully",
-                    file_size=len(file_content),
-                    status_code=response.status_code
+                    "Video chunks uploaded successfully", file_size=len(file_content), status_code=response.status_code
                 )
 
-    async def _direct_publish(self, post: TikTokPost, upload_id: str,
-                            correlation_id: str = None) -> TikTokPublishResult:
+    async def _direct_publish(
+        self, post: TikTokPost, upload_id: str, correlation_id: str = None
+    ) -> TikTokPublishResult:
         """Directly publish post for approved apps."""
         with with_logging_context(correlation_id=correlation_id, action="direct_publish"):
             try:
@@ -396,12 +381,9 @@ class TikTokAdapter:
                         "disable_stitch": post.video_item.disable_stitch,
                         "brand_content_toggle": post.video_item.brand_content_toggle,
                         "brand_organic_toggle": post.video_item.brand_organic_toggle,
-                        "auto_add_music": post.auto_add_music
+                        "auto_add_music": post.auto_add_music,
                     },
-                    "source_info": {
-                        "source": "FILE_UPLOAD",
-                        "video_id": upload_id
-                    }
+                    "source_info": {"source": "FILE_UPLOAD", "video_id": upload_id},
                 }
 
                 # Add scheduling if specified
@@ -413,9 +395,7 @@ class TikTokAdapter:
                     payload["post_info"]["tag"] = post.video_item.tags
 
                 response = await self._make_api_request(
-                    "POST",
-                    f"{self.upload_api_base}/video/publish",
-                    json_data=payload
+                    "POST", f"{self.upload_api_base}/video/publish", json_data=payload
                 )
 
                 data = response["data"]
@@ -429,15 +409,14 @@ class TikTokAdapter:
                     status=PostStatus.PUBLISHED if not post.schedule_time else PostStatus.PENDING,
                     message="Post published successfully",
                     post_url=post_url,
-                    published_at=datetime.now(timezone.utc) if not post.schedule_time else post.schedule_time
+                    published_at=datetime.now(timezone.utc) if not post.schedule_time else post.schedule_time,
                 )
 
             except Exception as e:
                 logger.error(f"Direct publish failed: {e}", exc_info=True)
                 raise
 
-    async def _create_draft(self, post: TikTokPost, upload_id: str,
-                          correlation_id: str = None) -> TikTokPublishResult:
+    async def _create_draft(self, post: TikTokPost, upload_id: str, correlation_id: str = None) -> TikTokPublishResult:
         """Create draft for non-approved apps."""
         with with_logging_context(correlation_id=correlation_id, action="create_draft"):
             try:
@@ -449,12 +428,9 @@ class TikTokAdapter:
                         "disable_duet": post.video_item.disable_duet,
                         "disable_comment": post.video_item.disable_comment,
                         "disable_stitch": post.video_item.disable_stitch,
-                        "auto_add_music": post.auto_add_music
+                        "auto_add_music": post.auto_add_music,
                     },
-                    "source_info": {
-                        "source": "FILE_UPLOAD",
-                        "video_id": upload_id
-                    }
+                    "source_info": {"source": "FILE_UPLOAD", "video_id": upload_id},
                 }
 
                 # Add tags
@@ -462,9 +438,7 @@ class TikTokAdapter:
                     payload["post_info"]["tag"] = post.video_item.tags
 
                 response = await self._make_api_request(
-                    "POST",
-                    f"{self.upload_api_base}/video/draft",
-                    json_data=payload
+                    "POST", f"{self.upload_api_base}/video/draft", json_data=payload
                 )
 
                 data = response["data"]
@@ -474,7 +448,7 @@ class TikTokAdapter:
                     share_id=draft_id,
                     status=PostStatus.DRAFT,
                     message="Draft created successfully. Manual approval required.",
-                    published_at=None
+                    published_at=None,
                 )
 
             except Exception as e:
@@ -488,9 +462,7 @@ class TikTokAdapter:
             message = f"{timestamp}|{payload}"
 
             expected_signature = hmac.new(
-                self.webhook_secret.encode('utf-8'),
-                message.encode('utf-8'),
-                hashlib.sha256
+                self.webhook_secret.encode("utf-8"), message.encode("utf-8"), hashlib.sha256
             ).hexdigest()
 
             return hmac.compare_digest(signature, expected_signature)
@@ -527,13 +499,11 @@ class TikTokAdapter:
                     event_type=event_type_str,
                     share_id=share_id,
                     status=status,
-                    error_code=error_code
+                    error_code=error_code,
                 )
 
                 # Update post status based on webhook
-                await self._update_post_from_webhook(
-                    share_id, status, error_code, error_message, correlation_id
-                )
+                await self._update_post_from_webhook(share_id, status, error_code, error_message, correlation_id)
 
                 return WebhookEvent(
                     event_type=event_type,
@@ -541,16 +511,16 @@ class TikTokAdapter:
                     status=status,
                     timestamp=timestamp,
                     error_code=error_code,
-                    error_message=error_message
+                    error_message=error_message,
                 )
 
             except Exception as e:
                 logger.error(f"Webhook event handling failed: {e}", payload=payload, exc_info=True)
                 raise
 
-    async def _update_post_from_webhook(self, share_id: str, status: str,
-                                      error_code: int | None, error_message: str | None,
-                                      correlation_id: str = None):
+    async def _update_post_from_webhook(
+        self, share_id: str, status: str, error_code: int | None, error_message: str | None, correlation_id: str = None
+    ):
         """Update post status from webhook event."""
         with with_logging_context(correlation_id=correlation_id):
             # Map TikTok status to our PostStatus
@@ -558,7 +528,7 @@ class TikTokAdapter:
                 "PROCESSING": PostStatus.IN_PROGRESS,
                 "SUCCESS": PostStatus.PUBLISHED,
                 "FAILED": PostStatus.ERROR,
-                "REJECTED": PostStatus.REJECTED
+                "REJECTED": PostStatus.REJECTED,
             }
 
             post_status = status_mapping.get(status, PostStatus.PENDING)
@@ -574,7 +544,7 @@ class TikTokAdapter:
                 "post_url": post_url,
                 "error_code": error_code,
                 "error_message": error_message,
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             }
 
             logger.info(
@@ -582,7 +552,7 @@ class TikTokAdapter:
                 share_id=share_id,
                 status=post_status.value,
                 post_url=post_url,
-                update_data=update_data
+                update_data=update_data,
             )
 
     async def _check_rate_limits(self):
@@ -599,15 +569,10 @@ class TikTokAdapter:
 
             # Check daily limit
             if self.daily_requests >= self.daily_limit:
-                raise TikTokRateLimitError(
-                    f"Daily rate limit exceeded: {self.daily_requests}/{self.daily_limit}"
-                )
+                raise TikTokRateLimitError(f"Daily rate limit exceeded: {self.daily_requests}/{self.daily_limit}")
 
             # Clean up old minute requests
-            self.minute_requests = [
-                req_time for req_time in self.minute_requests
-                if current_time - req_time < 60.0
-            ]
+            self.minute_requests = [req_time for req_time in self.minute_requests if current_time - req_time < 60.0]
 
             # Check minute limit
             if len(self.minute_requests) >= self.minute_limit:
@@ -625,26 +590,19 @@ class TikTokAdapter:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, TikTokRateLimitError))
+        retry=retry_if_exception_type((httpx.RequestError, TikTokRateLimitError)),
     )
-    async def _make_api_request(self, method: str, url: str,
-                              params: dict[str, Any] = None,
-                              json_data: dict[str, Any] = None) -> dict[str, Any]:
+    async def _make_api_request(
+        self, method: str, url: str, params: dict[str, Any] = None, json_data: dict[str, Any] = None
+    ) -> dict[str, Any]:
         """Make authenticated API request to TikTok."""
         await self._check_rate_limits()
 
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json; charset=UTF-8"
-        }
+        headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json; charset=UTF-8"}
 
         try:
             response = await self.http_client.request(
-                method=method,
-                url=url,
-                headers=headers,
-                params=params,
-                json=json_data
+                method=method, url=url, headers=headers, params=params, json=json_data
             )
 
             response.raise_for_status()
@@ -668,12 +626,7 @@ class TikTokAdapter:
         error_code = error_data.get("code")
         error_message = error_data.get("message", "Unknown error")
 
-        logger.error(
-            "TikTok API error",
-            error_code=error_code,
-            error_message=error_message,
-            error_data=error_data
-        )
+        logger.error("TikTok API error", error_code=error_code, error_message=error_message, error_data=error_data)
 
         # Handle specific error codes
         if error_code == "invalid_token":
@@ -697,8 +650,8 @@ class TikTokAdapter:
                 f"{self.api_base}/video/list",
                 params={
                     "fields": "id,title,video_description,duration,cover_image_url,share_url,view_count,like_count,comment_count,share_count",
-                    "max_count": 20
-                }
+                    "max_count": 20,
+                },
             )
 
             videos = response.get("data", {}).get("videos", [])
@@ -714,7 +667,7 @@ class TikTokAdapter:
                         "view_count": video.get("view_count"),
                         "like_count": video.get("like_count"),
                         "comment_count": video.get("comment_count"),
-                        "share_count": video.get("share_count")
+                        "share_count": video.get("share_count"),
                     }
 
             return {}
@@ -725,12 +678,7 @@ class TikTokAdapter:
 
     async def update_post_status(self, post_id: str, status: str, result_data: dict[str, Any] = None):
         """Update post status in database."""
-        logger.info(
-            "Updating TikTok post status",
-            post_id=post_id,
-            status=status,
-            result_data=result_data
-        )
+        logger.info("Updating TikTok post status", post_id=post_id, status=status, result_data=result_data)
 
     async def close(self):
         """Close HTTP client and cleanup resources."""
@@ -743,23 +691,21 @@ tiktok_adapter = TikTokAdapter()
 
 
 # Convenience functions
-async def publish_tiktok_video(video_path: str, title: str, description: str = "",
-                             tags: list[str] = None, privacy_level: str = "PUBLIC_TO_EVERYONE",
-                             is_app_approved: bool = False,
-                             correlation_id: str = None) -> TikTokPublishResult:
+async def publish_tiktok_video(
+    video_path: str,
+    title: str,
+    description: str = "",
+    tags: list[str] = None,
+    privacy_level: str = "PUBLIC_TO_EVERYONE",
+    is_app_approved: bool = False,
+    correlation_id: str = None,
+) -> TikTokPublishResult:
     """Publish video to TikTok."""
     video_item = TikTokVideoItem(
-        file_path=video_path,
-        title=title,
-        description=description,
-        tags=tags or [],
-        privacy_level=privacy_level
+        file_path=video_path, title=title, description=description, tags=tags or [], privacy_level=privacy_level
     )
 
-    post = TikTokPost(
-        video_item=video_item,
-        is_app_approved=is_app_approved
-    )
+    post = TikTokPost(video_item=video_item, is_app_approved=is_app_approved)
 
     return await tiktok_adapter.publish_post(post, correlation_id)
 

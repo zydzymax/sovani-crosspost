@@ -59,10 +59,7 @@ class PublishingWindowManager:
         return platform_windows.get("avoid_hours", [1, 2, 3, 4, 5])
 
     def get_next_optimal_slot(
-        self,
-        platform: Platform,
-        after: datetime = None,
-        exclude_slots: list[datetime] = None
+        self, platform: Platform, after: datetime = None, exclude_slots: list[datetime] = None
     ) -> datetime:
         """Get next optimal publishing slot for a platform."""
         if after is None:
@@ -88,10 +85,7 @@ class PublishingWindowManager:
                 candidate = candidate.replace(minute=random.randint(0, 30))
 
                 # Check if slot is excluded
-                if not any(
-                    abs((candidate - exc).total_seconds()) < 3600
-                    for exc in exclude_slots
-                ):
+                if not any(abs((candidate - exc).total_seconds()) < 3600 for exc in exclude_slots):
                     return candidate
 
         # Fallback: next hour that's not in avoid list
@@ -119,11 +113,7 @@ class ContentScheduler:
         self.min_interval_minutes = 60
 
     def schedule_post(
-        self,
-        post_id: str,
-        platforms: list[Platform],
-        scheduled_at: datetime = None,
-        use_optimal_window: bool = True
+        self, post_id: str, platforms: list[Platform], scheduled_at: datetime = None, use_optimal_window: bool = True
     ) -> dict[str, datetime]:
         """Schedule a post for publishing to specified platforms."""
         scheduled_slots = {}
@@ -139,17 +129,11 @@ class ContentScheduler:
                     # Find optimal slot
                     after = scheduled_at or datetime.now(self.window_manager.timezone)
                     slot = self.window_manager.get_next_optimal_slot(
-                        platform=platform,
-                        after=after,
-                        exclude_slots=existing_scheduled.get(platform, [])
+                        platform=platform, after=after, exclude_slots=existing_scheduled.get(platform, [])
                     )
 
                 # Add to queue
-                uow.queue.enqueue(
-                    post_id=post_id,
-                    platform=platform,
-                    scheduled_for=slot
-                )
+                uow.queue.enqueue(post_id=post_id, platform=platform, scheduled_for=slot)
                 scheduled_slots[platform.value] = slot
 
                 # Update existing scheduled for next iteration
@@ -162,19 +146,19 @@ class ContentScheduler:
         logger.info(f"Scheduled post {post_id} for {len(platforms)} platforms")
         return scheduled_slots
 
-    def _get_scheduled_slots(
-        self,
-        uow: UnitOfWork,
-        platforms: list[Platform]
-    ) -> dict[Platform, list[datetime]]:
+    def _get_scheduled_slots(self, uow: UnitOfWork, platforms: list[Platform]) -> dict[Platform, list[datetime]]:
         """Get already scheduled slots for platforms."""
         result = {}
         for platform in platforms:
-            items = uow.queue.session.query(ContentQueue).filter(
-                ContentQueue.platform == platform,
-                ContentQueue.status == "pending",
-                ContentQueue.scheduled_for >= datetime.utcnow()
-            ).all()
+            items = (
+                uow.queue.session.query(ContentQueue)
+                .filter(
+                    ContentQueue.platform == platform,
+                    ContentQueue.status == "pending",
+                    ContentQueue.scheduled_for >= datetime.utcnow(),
+                )
+                .all()
+            )
             result[platform] = [item.scheduled_for for item in items]
         return result
 
@@ -227,8 +211,7 @@ class ContentScheduler:
                         "platform": item.platform.value,
                         "caption": post.platform_captions.get(item.platform.value, post.generated_caption),
                         "media_paths": [
-                            m.transcoded_paths.get(item.platform.value, m.original_path)
-                            for m in post.media_assets
+                            m.transcoded_paths.get(item.platform.value, m.original_path) for m in post.media_assets
                         ],
                     }
                     publish_to_platforms.delay(stage_data)
@@ -251,22 +234,30 @@ class ContentScheduler:
         day_ago = now - timedelta(hours=24)
 
         # Count posts in last hour
-        hourly_count = uow.queue.session.query(ContentQueue).filter(
-            ContentQueue.platform == platform,
-            ContentQueue.status == "published",
-            ContentQueue.published_at >= hour_ago
-        ).count()
+        hourly_count = (
+            uow.queue.session.query(ContentQueue)
+            .filter(
+                ContentQueue.platform == platform,
+                ContentQueue.status == "published",
+                ContentQueue.published_at >= hour_ago,
+            )
+            .count()
+        )
 
         if hourly_count >= self.max_posts_per_hour:
             logger.debug(f"Rate limit: {platform.value} hourly limit reached")
             return False
 
         # Count posts in last day
-        daily_count = uow.queue.session.query(ContentQueue).filter(
-            ContentQueue.platform == platform,
-            ContentQueue.status == "published",
-            ContentQueue.published_at >= day_ago
-        ).count()
+        daily_count = (
+            uow.queue.session.query(ContentQueue)
+            .filter(
+                ContentQueue.platform == platform,
+                ContentQueue.status == "published",
+                ContentQueue.published_at >= day_ago,
+            )
+            .count()
+        )
 
         if daily_count >= self.max_posts_per_day:
             logger.debug(f"Rate limit: {platform.value} daily limit reached")
@@ -279,14 +270,16 @@ class ContentScheduler:
         rescheduled = 0
 
         with UnitOfWork() as uow:
-            failed_items = uow.queue.session.query(ContentQueue).filter(
-                ContentQueue.status == "failed",
-                ContentQueue.attempts < 3
-            ).limit(max_items).all()
+            failed_items = (
+                uow.queue.session.query(ContentQueue)
+                .filter(ContentQueue.status == "failed", ContentQueue.attempts < 3)
+                .limit(max_items)
+                .all()
+            )
 
             for item in failed_items:
                 # Calculate next attempt time with exponential backoff
-                backoff = timedelta(minutes=30 * (2 ** item.attempts))
+                backoff = timedelta(minutes=30 * (2**item.attempts))
                 new_scheduled = datetime.utcnow() + backoff
 
                 item.status = "pending"
@@ -307,10 +300,11 @@ class ContentScheduler:
             # Add per-platform breakdown
             platforms_stats = {}
             for platform in Platform:
-                count = uow.queue.session.query(ContentQueue).filter(
-                    ContentQueue.platform == platform,
-                    ContentQueue.status == "pending"
-                ).count()
+                count = (
+                    uow.queue.session.query(ContentQueue)
+                    .filter(ContentQueue.platform == platform, ContentQueue.status == "pending")
+                    .count()
+                )
                 platforms_stats[platform.value] = count
 
             stats["by_platform"] = platforms_stats
@@ -351,17 +345,14 @@ class ScheduleRunner:
         """Process a single schedule."""
         # Get posts matching schedule filters
         query = uow.posts.session.query(Post).filter(
-            Post.status.in_([PostStatus.PREFLIGHT, PostStatus.CAPTIONIZED]),
-            not Post.is_scheduled
+            Post.status.in_([PostStatus.PREFLIGHT, PostStatus.CAPTIONIZED]), not Post.is_scheduled
         )
 
         # Apply content filters
         if schedule.content_filter:
             filters = schedule.content_filter
             if "hashtags" in filters:
-                query = query.filter(
-                    Post.hashtags.overlap(filters["hashtags"])
-                )
+                query = query.filter(Post.hashtags.overlap(filters["hashtags"]))
             if "media_types" in filters:
                 # Filter by media type if needed
                 pass
@@ -377,10 +368,7 @@ class ScheduleRunner:
 
             for platform in platforms:
                 uow.queue.enqueue(
-                    post_id=post.id,
-                    platform=platform,
-                    scheduled_for=scheduled_for,
-                    schedule_id=schedule.id
+                    post_id=post.id, platform=platform, scheduled_for=scheduled_for, schedule_id=schedule.id
                 )
                 queued += 1
 
@@ -481,10 +469,11 @@ def register_scheduler_tasks(celery_app: Celery):
         """Clean up old queue items."""
         with UnitOfWork() as uow:
             cutoff = datetime.utcnow() - timedelta(days=30)
-            deleted = uow.queue.session.query(ContentQueue).filter(
-                ContentQueue.status.in_(["published", "cancelled"]),
-                ContentQueue.created_at < cutoff
-            ).delete()
+            deleted = (
+                uow.queue.session.query(ContentQueue)
+                .filter(ContentQueue.status.in_(["published", "cancelled"]), ContentQueue.created_at < cutoff)
+                .delete()
+            )
             uow.commit()
             return {"deleted": deleted}
 

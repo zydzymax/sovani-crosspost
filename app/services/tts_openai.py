@@ -20,42 +20,49 @@ logger = get_logger("services.tts_openai")
 
 class TTSError(Exception):
     """Base exception for TTS API errors."""
+
     pass
 
 
 class TTSRateLimitError(TTSError):
     """Rate limit exceeded."""
+
     pass
 
 
 class TTSGenerationError(TTSError):
     """Speech generation failed."""
+
     pass
 
 
 class TTSAuthError(TTSError):
     """Authentication failed."""
+
     pass
 
 
 class TTSModel(str, Enum):
     """OpenAI TTS models."""
-    TTS_1 = "tts-1"         # Standard quality, faster
-    TTS_1_HD = "tts-1-hd"   # High definition, slower
+
+    TTS_1 = "tts-1"  # Standard quality, faster
+    TTS_1_HD = "tts-1-hd"  # High definition, slower
 
 
 class TTSVoice(str, Enum):
     """OpenAI TTS voices."""
-    ALLOY = "alloy"       # Neutral
-    ECHO = "echo"         # Male
-    FABLE = "fable"       # British
-    ONYX = "onyx"         # Deep male
-    NOVA = "nova"         # Female
-    SHIMMER = "shimmer"   # Female, warm
+
+    ALLOY = "alloy"  # Neutral
+    ECHO = "echo"  # Male
+    FABLE = "fable"  # British
+    ONYX = "onyx"  # Deep male
+    NOVA = "nova"  # Female
+    SHIMMER = "shimmer"  # Female, warm
 
 
 class AudioFormat(str, Enum):
     """Audio output formats."""
+
     MP3 = "mp3"
     OPUS = "opus"
     AAC = "aac"
@@ -67,6 +74,7 @@ class AudioFormat(str, Enum):
 @dataclass
 class TTSResult:
     """Result of TTS generation."""
+
     success: bool
     audio_data: bytes | None = None
     audio_url: str | None = None
@@ -95,17 +103,14 @@ class OpenAITTSService:
 
         self.http_client = httpx.AsyncClient(
             timeout=httpx.Timeout(120.0),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
         )
 
         logger.info("OpenAI TTS service initialized")
 
     def _get_api_key(self) -> str:
         """Get OpenAI API key from settings or environment."""
-        return os.getenv('OPENAI_API_KEY', '')
+        return os.getenv("OPENAI_API_KEY", "")
 
     def _calculate_cost(self, text: str, model: TTSModel) -> float:
         """Calculate estimated cost for TTS generation."""
@@ -116,7 +121,7 @@ class OpenAITTSService:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
-        retry=retry_if_exception_type((httpx.TimeoutException, TTSRateLimitError))
+        retry=retry_if_exception_type((httpx.TimeoutException, TTSRateLimitError)),
     )
     async def generate_speech(
         self,
@@ -124,7 +129,7 @@ class OpenAITTSService:
         voice: TTSVoice = TTSVoice.ALLOY,
         model: TTSModel = TTSModel.TTS_1,
         response_format: AudioFormat = AudioFormat.MP3,
-        speed: float = 1.0
+        speed: float = 1.0,
     ) -> TTSResult:
         """Generate speech from text.
 
@@ -139,65 +144,44 @@ class OpenAITTSService:
             TTSResult with audio data
         """
         if len(text) > self.MAX_CHARS:
-            return TTSResult(
-                success=False,
-                error=f"Text too long: {len(text)} chars (max {self.MAX_CHARS})"
-            )
+            return TTSResult(success=False, error=f"Text too long: {len(text)} chars (max {self.MAX_CHARS})")
 
         if not text.strip():
-            return TTSResult(
-                success=False,
-                error="Empty text provided"
-            )
+            return TTSResult(success=False, error="Empty text provided")
 
         # Clamp speed to valid range
         speed = max(0.25, min(4.0, speed))
 
-        logger.info(
-            "Starting TTS generation",
-            voice=voice.value,
-            model=model.value,
-            chars=len(text)
-        )
+        logger.info("Starting TTS generation", voice=voice.value, model=model.value, chars=len(text))
 
         payload = {
             "model": model.value,
             "input": text,
             "voice": voice.value,
             "response_format": response_format.value,
-            "speed": speed
+            "speed": speed,
         }
 
         try:
-            response = await self.http_client.post(
-                f"{self.API_BASE}/audio/speech",
-                json=payload
-            )
+            response = await self.http_client.post(f"{self.API_BASE}/audio/speech", json=payload)
 
             if response.status_code == 401:
                 raise TTSAuthError("Invalid API credentials")
             elif response.status_code == 429:
                 raise TTSRateLimitError("Rate limit exceeded")
             elif response.status_code != 200:
-                error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+                error_data = (
+                    response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+                )
                 error_msg = error_data.get("error", {}).get("message", f"API error: {response.status_code}")
                 raise TTSGenerationError(error_msg)
 
             audio_data = response.content
             cost = self._calculate_cost(text, model)
 
-            logger.info(
-                "TTS generation completed",
-                size_bytes=len(audio_data),
-                cost=cost
-            )
+            logger.info("TTS generation completed", size_bytes=len(audio_data), cost=cost)
 
-            return TTSResult(
-                success=True,
-                audio_data=audio_data,
-                character_count=len(text),
-                cost_estimate=cost
-            )
+            return TTSResult(success=True, audio_data=audio_data, character_count=len(text), cost_estimate=cost)
 
         except httpx.TimeoutException:
             logger.error("OpenAI TTS API timeout")
@@ -206,10 +190,7 @@ class OpenAITTSService:
             raise
         except Exception as e:
             logger.error(f"TTS generation error: {e}")
-            return TTSResult(
-                success=False,
-                error=str(e)
-            )
+            return TTSResult(success=False, error=str(e))
 
     async def generate_speech_to_file(
         self,
@@ -218,7 +199,7 @@ class OpenAITTSService:
         voice: TTSVoice = TTSVoice.ALLOY,
         model: TTSModel = TTSModel.TTS_1,
         response_format: AudioFormat = AudioFormat.MP3,
-        speed: float = 1.0
+        speed: float = 1.0,
     ) -> TTSResult:
         """Generate speech and save to file.
 
@@ -234,11 +215,7 @@ class OpenAITTSService:
             TTSResult with file path
         """
         result = await self.generate_speech(
-            text=text,
-            voice=voice,
-            model=model,
-            response_format=response_format,
-            speed=speed
+            text=text, voice=voice, model=model, response_format=response_format, speed=speed
         )
 
         if not result.success:
@@ -272,7 +249,7 @@ class OpenAITTSService:
         voice: TTSVoice = TTSVoice.ALLOY,
         model: TTSModel = TTSModel.TTS_1,
         response_format: AudioFormat = AudioFormat.MP3,
-        speed: float = 1.0
+        speed: float = 1.0,
     ) -> TTSResult:
         """Generate speech for text longer than 4096 characters.
 
@@ -290,11 +267,7 @@ class OpenAITTSService:
         """
         if len(text) <= self.MAX_CHARS:
             return await self.generate_speech(
-                text=text,
-                voice=voice,
-                model=model,
-                response_format=response_format,
-                speed=speed
+                text=text, voice=voice, model=model, response_format=response_format, speed=speed
             )
 
         # Split text into chunks at sentence boundaries
@@ -306,18 +279,11 @@ class OpenAITTSService:
 
         for i, chunk in enumerate(chunks):
             result = await self.generate_speech(
-                text=chunk,
-                voice=voice,
-                model=model,
-                response_format=response_format,
-                speed=speed
+                text=chunk, voice=voice, model=model, response_format=response_format, speed=speed
             )
 
             if not result.success:
-                return TTSResult(
-                    success=False,
-                    error=f"Failed at chunk {i+1}: {result.error}"
-                )
+                return TTSResult(success=False, error=f"Failed at chunk {i+1}: {result.error}")
 
             audio_parts.append(result.audio_data)
             total_cost += result.cost_estimate
@@ -328,12 +294,7 @@ class OpenAITTSService:
         # Concatenate audio (simple concatenation works for MP3/AAC)
         combined_audio = b"".join(audio_parts)
 
-        return TTSResult(
-            success=True,
-            audio_data=combined_audio,
-            character_count=len(text),
-            cost_estimate=total_cost
-        )
+        return TTSResult(success=True, audio_data=combined_audio, character_count=len(text), cost_estimate=total_cost)
 
     def _split_text(self, text: str, max_chunk: int = 4000) -> list[str]:
         """Split text into chunks at sentence boundaries."""

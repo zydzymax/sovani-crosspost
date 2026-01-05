@@ -18,10 +18,7 @@ import logging
 
 from app.models.db import db_manager, init_database, migration_manager
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -29,24 +26,10 @@ def main():
     """Main migration script."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Database migration utility for SalesWhisper Crosspost"
-    )
-    parser.add_argument(
-        "--init",
-        action="store_true",
-        help="Initialize database and run migrations"
-    )
-    parser.add_argument(
-        "--check",
-        action="store_true",
-        help="Check database health"
-    )
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Verbose logging"
-    )
+    parser = argparse.ArgumentParser(description="Database migration utility for SalesWhisper Crosspost")
+    parser.add_argument("--init", action="store_true", help="Initialize database and run migrations")
+    parser.add_argument("--check", action="store_true", help="Check database health")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
 
     args = parser.parse_args()
 
@@ -88,6 +71,7 @@ def main():
         logger.error(f"❌ Unexpected error: {e}")
         if args.verbose:
             import traceback
+
             traceback.print_exc()
         return 1
 

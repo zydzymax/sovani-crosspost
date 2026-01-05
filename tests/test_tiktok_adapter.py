@@ -50,23 +50,20 @@ def video_item():
         title="Test Video",
         description="Test video description",
         tags=["test", "video"],
-        privacy_level="PUBLIC_TO_EVERYONE"
+        privacy_level="PUBLIC_TO_EVERYONE",
     )
 
 
 @pytest.fixture
 def tiktok_post(video_item):
     """Test TikTok post."""
-    return TikTokPost(
-        video_item=video_item,
-        is_app_approved=True
-    )
+    return TikTokPost(video_item=video_item, is_app_approved=True)
 
 
 @pytest.fixture
 def tiktok_adapter(mock_settings):
     """TikTok adapter instance with mocked settings."""
-    with patch('app.adapters.tiktok.settings', mock_settings):
+    with patch("app.adapters.tiktok.settings", mock_settings):
         adapter = TikTokAdapter()
         # Mock HTTP client
         adapter.http_client = AsyncMock(spec=httpx.AsyncClient)
@@ -78,7 +75,7 @@ class TestTikTokAdapter:
 
     def test_init_with_valid_settings(self, mock_settings):
         """Test TikTok adapter initialization with valid settings."""
-        with patch('app.adapters.tiktok.settings', mock_settings):
+        with patch("app.adapters.tiktok.settings", mock_settings):
             adapter = TikTokAdapter()
 
             assert adapter.client_key == "test_client_key"
@@ -94,7 +91,7 @@ class TestTikTokAdapter:
         mock_settings = Mock()
         del mock_settings.tiktok  # Remove tiktok settings
 
-        with patch('app.adapters.tiktok.settings', mock_settings):
+        with patch("app.adapters.tiktok.settings", mock_settings):
             with pytest.raises(TikTokAuthError, match="client key not configured"):
                 TikTokAdapter()
 
@@ -102,19 +99,10 @@ class TestTikTokAdapter:
     async def test_publish_post_approved_app_success(self, tiktok_adapter, tiktok_post):
         """Test successful post publishing for approved app."""
         # Mock successful upload
-        upload_response = {
-            "data": {
-                "upload_id": "test_upload_123",
-                "upload_url": "https://upload.tiktok.com/test"
-            }
-        }
+        upload_response = {"data": {"upload_id": "test_upload_123", "upload_url": "https://upload.tiktok.com/test"}}
 
         # Mock successful publish
-        publish_response = {
-            "data": {
-                "share_id": "test_share_123"
-            }
-        }
+        publish_response = {"data": {"share_id": "test_share_123"}}
 
         # Mock file operations
         mock_path = Mock(spec=Path)
@@ -123,8 +111,10 @@ class TestTikTokAdapter:
         mock_path.name = "test_video.mp4"
         mock_path.read_bytes.return_value = b"fake_video_content"
 
-        with patch('app.adapters.tiktok.Path', return_value=mock_path), \
-             patch.object(tiktok_adapter, '_make_api_request') as mock_api_request:
+        with (
+            patch("app.adapters.tiktok.Path", return_value=mock_path),
+            patch.object(tiktok_adapter, "_make_api_request") as mock_api_request,
+        ):
 
             # Setup API request responses
             mock_api_request.side_effect = [upload_response, publish_response]
@@ -148,18 +138,9 @@ class TestTikTokAdapter:
         """Test post publishing for non-approved app (draft creation)."""
         tiktok_post.is_app_approved = False
 
-        upload_response = {
-            "data": {
-                "upload_id": "test_upload_123",
-                "upload_url": "https://upload.tiktok.com/test"
-            }
-        }
+        upload_response = {"data": {"upload_id": "test_upload_123", "upload_url": "https://upload.tiktok.com/test"}}
 
-        draft_response = {
-            "data": {
-                "draft_id": "test_draft_123"
-            }
-        }
+        draft_response = {"data": {"draft_id": "test_draft_123"}}
 
         mock_path = Mock(spec=Path)
         mock_path.exists.return_value = True
@@ -167,8 +148,10 @@ class TestTikTokAdapter:
         mock_path.name = "test_video.mp4"
         mock_path.read_bytes.return_value = b"fake_video_content"
 
-        with patch('app.adapters.tiktok.Path', return_value=mock_path), \
-             patch.object(tiktok_adapter, '_make_api_request') as mock_api_request:
+        with (
+            patch("app.adapters.tiktok.Path", return_value=mock_path),
+            patch.object(tiktok_adapter, "_make_api_request") as mock_api_request,
+        ):
 
             mock_api_request.side_effect = [upload_response, draft_response]
 
@@ -190,7 +173,7 @@ class TestTikTokAdapter:
         mock_path = Mock(spec=Path)
         mock_path.exists.return_value = False
 
-        with patch('app.adapters.tiktok.Path', return_value=mock_path):
+        with patch("app.adapters.tiktok.Path", return_value=mock_path):
             result = await tiktok_adapter.publish_post(tiktok_post, "test_correlation_id")
 
             assert result.share_id is None
@@ -200,12 +183,7 @@ class TestTikTokAdapter:
     @pytest.mark.asyncio
     async def test_upload_video_success(self, tiktok_adapter, video_item):
         """Test successful video upload."""
-        upload_response = {
-            "data": {
-                "upload_id": "test_upload_123",
-                "upload_url": "https://upload.tiktok.com/test"
-            }
-        }
+        upload_response = {"data": {"upload_id": "test_upload_123", "upload_url": "https://upload.tiktok.com/test"}}
 
         mock_path = Mock(spec=Path)
         mock_path.exists.return_value = True
@@ -213,8 +191,10 @@ class TestTikTokAdapter:
         mock_path.name = "test_video.mp4"
         mock_path.read_bytes.return_value = b"fake_video_content"
 
-        with patch('app.adapters.tiktok.Path', return_value=mock_path), \
-             patch.object(tiktok_adapter, '_make_api_request', return_value=upload_response):
+        with (
+            patch("app.adapters.tiktok.Path", return_value=mock_path),
+            patch.object(tiktok_adapter, "_make_api_request", return_value=upload_response),
+        ):
 
             mock_response = AsyncMock()
             mock_response.status_code = 200
@@ -234,7 +214,7 @@ class TestTikTokAdapter:
         mock_path = Mock(spec=Path)
         mock_path.exists.return_value = False
 
-        with patch('app.adapters.tiktok.Path', return_value=mock_path):
+        with patch("app.adapters.tiktok.Path", return_value=mock_path):
             result = await tiktok_adapter._upload_video(video_item, "test_correlation_id")
 
             assert result.upload_id is None
@@ -253,11 +233,11 @@ class TestTikTokAdapter:
     async def test_rate_limiting_minute_limit(self, tiktok_adapter):
         """Test minute rate limit enforcement."""
         import time
+
         current_time = time.time()
         tiktok_adapter.minute_requests = [current_time - 30] * 20
 
-        with patch('time.time', return_value=current_time), \
-             patch('asyncio.sleep') as mock_sleep:
+        with patch("time.time", return_value=current_time), patch("asyncio.sleep") as mock_sleep:
 
             await tiktok_adapter._check_rate_limits()
             mock_sleep.assert_called_once()
@@ -274,21 +254,16 @@ class TestTikTokAdapter:
         tiktok_adapter.http_client.request.return_value = mock_response
 
         result = await tiktok_adapter._make_api_request(
-            "POST",
-            "https://api.tiktok.com/test",
-            json_data={"test": "data"}
+            "POST", "https://api.tiktok.com/test", json_data={"test": "data"}
         )
 
         assert result["data"]["result"] == "success"
         tiktok_adapter.http_client.request.assert_called_once_with(
             method="POST",
             url="https://api.tiktok.com/test",
-            headers={
-                "Authorization": "Bearer test_access_token",
-                "Content-Type": "application/json; charset=UTF-8"
-            },
+            headers={"Authorization": "Bearer test_access_token", "Content-Type": "application/json; charset=UTF-8"},
             params=None,
-            json={"test": "data"}
+            json={"test": "data"},
         )
 
     @pytest.mark.asyncio
@@ -296,12 +271,7 @@ class TestTikTokAdapter:
         """Test API request error handling."""
         mock_response = AsyncMock()
         mock_response.status_code = 400
-        mock_response.json.return_value = {
-            "error": {
-                "code": "invalid_request",
-                "message": "Bad request"
-            }
-        }
+        mock_response.json.return_value = {"error": {"code": "invalid_request", "message": "Bad request"}}
         mock_response.raise_for_status = Mock()
 
         tiktok_adapter.http_client.request.return_value = mock_response
@@ -313,12 +283,7 @@ class TestTikTokAdapter:
     async def test_api_request_rate_limit_error(self, tiktok_adapter):
         """Test API request rate limit error."""
         mock_response = AsyncMock()
-        mock_response.json.return_value = {
-            "error": {
-                "code": "rate_limit_exceeded",
-                "message": "Too many requests"
-            }
-        }
+        mock_response.json.return_value = {"error": {"code": "rate_limit_exceeded", "message": "Too many requests"}}
         mock_response.raise_for_status = Mock()
 
         tiktok_adapter.http_client.request.return_value = mock_response
@@ -330,12 +295,7 @@ class TestTikTokAdapter:
     async def test_api_request_auth_error(self, tiktok_adapter):
         """Test API request authentication error."""
         mock_response = AsyncMock()
-        mock_response.json.return_value = {
-            "error": {
-                "code": "invalid_token",
-                "message": "Invalid access token"
-            }
-        }
+        mock_response.json.return_value = {"error": {"code": "invalid_token", "message": "Invalid access token"}}
         mock_response.raise_for_status = Mock()
 
         tiktok_adapter.http_client.request.return_value = mock_response
@@ -351,12 +311,9 @@ class TestTikTokAdapter:
         # Create expected signature
         import hashlib
         import hmac
+
         message = f"{timestamp}|{payload}"
-        expected_signature = hmac.new(
-            b"test_webhook_secret",
-            message.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
+        expected_signature = hmac.new(b"test_webhook_secret", message.encode("utf-8"), hashlib.sha256).hexdigest()
 
         result = tiktok_adapter.validate_webhook_signature(payload, expected_signature, timestamp)
         assert result is True
@@ -376,13 +333,10 @@ class TestTikTokAdapter:
         payload = {
             "event_type": "video.publish",
             "timestamp": 1234567890,
-            "data": {
-                "share_id": "test_share_123",
-                "status": "SUCCESS"
-            }
+            "data": {"share_id": "test_share_123", "status": "SUCCESS"},
         }
 
-        with patch.object(tiktok_adapter, '_update_post_from_webhook') as mock_update:
+        with patch.object(tiktok_adapter, "_update_post_from_webhook") as mock_update:
             event = await tiktok_adapter.handle_webhook_event(payload, "test_correlation_id")
 
             assert event.event_type == WebhookEventType.VIDEO_PUBLISH
@@ -391,9 +345,7 @@ class TestTikTokAdapter:
             assert event.timestamp == 1234567890
             assert event.error_code is None
 
-            mock_update.assert_called_once_with(
-                "test_share_123", "SUCCESS", None, None, "test_correlation_id"
-            )
+            mock_update.assert_called_once_with("test_share_123", "SUCCESS", None, None, "test_correlation_id")
 
     @pytest.mark.asyncio
     async def test_handle_webhook_event_failure(self, tiktok_adapter):
@@ -405,11 +357,11 @@ class TestTikTokAdapter:
                 "share_id": "test_share_123",
                 "status": "FAILED",
                 "error_code": 4001,
-                "error_message": "Content violates community guidelines"
-            }
+                "error_message": "Content violates community guidelines",
+            },
         }
 
-        with patch.object(tiktok_adapter, '_update_post_from_webhook') as mock_update:
+        with patch.object(tiktok_adapter, "_update_post_from_webhook") as mock_update:
             event = await tiktok_adapter.handle_webhook_event(payload, "test_correlation_id")
 
             assert event.event_type == WebhookEventType.VIDEO_PUBLISH
@@ -425,13 +377,7 @@ class TestTikTokAdapter:
     @pytest.mark.asyncio
     async def test_handle_webhook_event_missing_event_type(self, tiktok_adapter):
         """Test handling webhook event with missing event type."""
-        payload = {
-            "timestamp": 1234567890,
-            "data": {
-                "share_id": "test_share_123",
-                "status": "SUCCESS"
-            }
-        }
+        payload = {"timestamp": 1234567890, "data": {"share_id": "test_share_123", "status": "SUCCESS"}}
 
         with pytest.raises(TikTokValidationError, match="Missing event_type"):
             await tiktok_adapter.handle_webhook_event(payload, "test_correlation_id")
@@ -452,13 +398,13 @@ class TestTikTokAdapter:
                         "view_count": 1000,
                         "like_count": 50,
                         "comment_count": 10,
-                        "share_count": 5
+                        "share_count": 5,
                     }
                 ]
             }
         }
 
-        with patch.object(tiktok_adapter, '_make_api_request', return_value=video_list_response):
+        with patch.object(tiktok_adapter, "_make_api_request", return_value=video_list_response):
             result = await tiktok_adapter.get_video_info("test_share_123")
 
             assert result["id"] == "test_share_123"
@@ -470,13 +416,9 @@ class TestTikTokAdapter:
     @pytest.mark.asyncio
     async def test_get_video_info_not_found(self, tiktok_adapter):
         """Test video info retrieval for non-existent video."""
-        video_list_response = {
-            "data": {
-                "videos": []
-            }
-        }
+        video_list_response = {"data": {"videos": []}}
 
-        with patch.object(tiktok_adapter, '_make_api_request', return_value=video_list_response):
+        with patch.object(tiktok_adapter, "_make_api_request", return_value=video_list_response):
             result = await tiktok_adapter.get_video_info("nonexistent_share_id")
 
             assert result == {}
@@ -484,7 +426,7 @@ class TestTikTokAdapter:
     @pytest.mark.asyncio
     async def test_get_video_info_api_error(self, tiktok_adapter):
         """Test video info retrieval with API error."""
-        with patch.object(tiktok_adapter, '_make_api_request', side_effect=TikTokError("API Error")):
+        with patch.object(tiktok_adapter, "_make_api_request", side_effect=TikTokError("API Error")):
             result = await tiktok_adapter.get_video_info("test_share_123")
 
             assert result == {}
@@ -502,12 +444,12 @@ class TestTikTokConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_publish_tiktok_video(self):
         """Test publish TikTok video convenience function."""
-        with patch('app.adapters.tiktok.tiktok_adapter') as mock_adapter:
+        with patch("app.adapters.tiktok.tiktok_adapter") as mock_adapter:
             mock_result = TikTokPublishResult(
                 share_id="test_share_123",
                 status=PostStatus.PUBLISHED,
                 message="Success",
-                published_at=datetime.now(timezone.utc)
+                published_at=datetime.now(timezone.utc),
             )
             mock_adapter.publish_post.return_value = mock_result
 
@@ -517,7 +459,7 @@ class TestTikTokConvenienceFunctions:
                 description="Test description",
                 tags=["test", "video"],
                 is_app_approved=True,
-                correlation_id="test_correlation"
+                correlation_id="test_correlation",
             )
 
             assert result.share_id == "test_share_123"
@@ -535,13 +477,11 @@ class TestTikTokConvenienceFunctions:
     @pytest.mark.asyncio
     async def test_validate_tiktok_webhook(self):
         """Test validate TikTok webhook convenience function."""
-        with patch('app.adapters.tiktok.tiktok_adapter') as mock_adapter:
+        with patch("app.adapters.tiktok.tiktok_adapter") as mock_adapter:
             mock_adapter.validate_webhook_signature.return_value = True
 
             result = await validate_tiktok_webhook(
-                payload='{"test": "data"}',
-                signature="test_signature",
-                timestamp="1234567890"
+                payload='{"test": "data"}', signature="test_signature", timestamp="1234567890"
             )
 
             assert result is True
@@ -554,13 +494,10 @@ class TestTikTokConvenienceFunctions:
         """Test handle TikTok webhook convenience function."""
         payload = {"event_type": "video.publish", "data": {"share_id": "123"}}
         mock_event = WebhookEvent(
-            event_type=WebhookEventType.VIDEO_PUBLISH,
-            share_id="123",
-            status="SUCCESS",
-            timestamp=1234567890
+            event_type=WebhookEventType.VIDEO_PUBLISH, share_id="123", status="SUCCESS", timestamp=1234567890
         )
 
-        with patch('app.adapters.tiktok.tiktok_adapter') as mock_adapter:
+        with patch("app.adapters.tiktok.tiktok_adapter") as mock_adapter:
             mock_adapter.handle_webhook_event.return_value = mock_event
 
             result = await handle_tiktok_webhook(payload, "test_correlation")
@@ -576,10 +513,7 @@ class TestTikTokDataClasses:
     def test_tiktok_video_item_creation(self):
         """Test TikTokVideoItem creation."""
         video_item = TikTokVideoItem(
-            file_path="/test/video.mp4",
-            title="Test Video",
-            description="Test description",
-            tags=["test", "video"]
+            file_path="/test/video.mp4", title="Test Video", description="Test description", tags=["test", "video"]
         )
 
         assert video_item.file_path == "/test/video.mp4"
@@ -591,24 +525,18 @@ class TestTikTokDataClasses:
 
     def test_tiktok_video_item_default_tags(self):
         """Test TikTokVideoItem with default tags."""
-        video_item = TikTokVideoItem(
-            file_path="/test/video.mp4",
-            title="Test Video"
-        )
+        video_item = TikTokVideoItem(file_path="/test/video.mp4", title="Test Video")
 
         assert video_item.tags == []
 
     def test_tiktok_post_creation(self):
         """Test TikTokPost creation."""
-        video_item = TikTokVideoItem(
-            file_path="/test/video.mp4",
-            title="Test Video"
-        )
+        video_item = TikTokVideoItem(file_path="/test/video.mp4", title="Test Video")
 
         post = TikTokPost(
             video_item=video_item,
             is_app_approved=True,
-            schedule_time=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+            schedule_time=datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
         )
 
         assert post.video_item == video_item
@@ -619,10 +547,7 @@ class TestTikTokDataClasses:
     def test_tiktok_upload_result_creation(self):
         """Test TikTokUploadResult creation."""
         result = TikTokUploadResult(
-            upload_id="test_upload_123",
-            status=PostStatus.IN_PROGRESS,
-            upload_time=1.5,
-            file_size=1024000
+            upload_id="test_upload_123", status=PostStatus.IN_PROGRESS, upload_time=1.5, file_size=1024000
         )
 
         assert result.upload_id == "test_upload_123"
@@ -640,7 +565,7 @@ class TestTikTokDataClasses:
             status=PostStatus.PUBLISHED,
             message="Success",
             post_url="https://tiktok.com/@user/video/123",
-            published_at=published_at
+            published_at=published_at,
         )
 
         assert result.share_id == "test_share_123"
@@ -657,7 +582,7 @@ class TestTikTokDataClasses:
             status="SUCCESS",
             timestamp=1234567890,
             error_code=None,
-            error_message=None
+            error_message=None,
         )
 
         assert event.event_type == WebhookEventType.VIDEO_PUBLISH
@@ -678,8 +603,10 @@ class TestTikTokErrorHandling:
         mock_path.exists.return_value = True
         mock_path.stat.return_value.st_size = 1024000
 
-        with patch('app.adapters.tiktok.Path', return_value=mock_path), \
-             patch.object(tiktok_adapter, '_make_api_request', side_effect=httpx.RequestError("Network error")):
+        with (
+            patch("app.adapters.tiktok.Path", return_value=mock_path),
+            patch.object(tiktok_adapter, "_make_api_request", side_effect=httpx.RequestError("Network error")),
+        ):
 
             # Should retry and eventually fail
             with pytest.raises(RetryError):
@@ -688,8 +615,10 @@ class TestTikTokErrorHandling:
     @pytest.mark.asyncio
     async def test_rate_limit_retry(self, tiktok_adapter):
         """Test rate limit retry behavior."""
-        with patch.object(tiktok_adapter, '_check_rate_limits', side_effect=TikTokRateLimitError("Rate limit")), \
-             patch('asyncio.sleep'):
+        with (
+            patch.object(tiktok_adapter, "_check_rate_limits", side_effect=TikTokRateLimitError("Rate limit")),
+            patch("asyncio.sleep"),
+        ):
 
             with pytest.raises(RetryError):
                 await tiktok_adapter._make_api_request("GET", "https://api.tiktok.com/test")

@@ -76,7 +76,7 @@ async def get_redis_client() -> redis.Redis:
             decode_responses=True,
             max_connections=settings.redis.max_connections,
             retry_on_timeout=settings.redis.retry_on_timeout,
-            socket_timeout=settings.redis.socket_timeout
+            socket_timeout=settings.redis.socket_timeout,
         )
 
         # Test connection
@@ -87,15 +87,11 @@ async def get_redis_client() -> redis.Redis:
 
     except Exception as e:
         logger.error("Redis connection failed", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Redis connection error"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Redis connection error")
 
 
 def verify_api_key(
-    x_api_key: str | None = Header(None, alias="X-API-Key"),
-    settings: Settings = Depends(get_settings)
+    x_api_key: str | None = Header(None, alias="X-API-Key"), settings: Settings = Depends(get_settings)
 ) -> str:
     """
     Verify API key authentication.
@@ -112,9 +108,7 @@ def verify_api_key(
     """
     if not x_api_key:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key required",
-            headers={"WWW-Authenticate": "APIKey"}
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required", headers={"WWW-Authenticate": "APIKey"}
         )
 
     try:
@@ -124,10 +118,7 @@ def verify_api_key(
 
         # Placeholder validation - in production this would check against database
         if len(x_api_key) < 16:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid API key format"
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key format")
 
         return x_api_key
 
@@ -135,16 +126,10 @@ def verify_api_key(
         raise
     except Exception as e:
         logger.error("API key validation error", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication error"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Authentication error")
 
 
-def verify_jwt_token(
-    authorization: str | None = Header(None),
-    settings: Settings = Depends(get_settings)
-) -> dict:
+def verify_jwt_token(authorization: str | None = Header(None), settings: Settings = Depends(get_settings)) -> dict:
     """
     Verify JWT token authentication.
 
@@ -162,17 +147,14 @@ def verify_jwt_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header required",
-            headers={"WWW-Authenticate": "Bearer"}
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:
         # Extract token from "Bearer <token>" format
         scheme, token = authorization.split()
         if scheme.lower() != "bearer":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication scheme"
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication scheme")
 
         # Verify and decode token
         payload = decode_jwt_token(token)
@@ -181,22 +163,16 @@ def verify_jwt_token(
         return payload
 
     except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format")
     except Exception as e:
         logger.warning("JWT token verification failed", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
 
 def verify_telegram_webhook(
     request: Request,
     x_telegram_bot_api_secret_token: str | None = Header(None),
-    settings: Settings = Depends(get_settings)
+    settings: Settings = Depends(get_settings),
 ) -> bool:
     """
     Verify Telegram webhook signature.
@@ -219,14 +195,8 @@ def verify_telegram_webhook(
         # In production, this would verify the actual webhook signature
         # For now, we'll check the secret token header
         if x_telegram_bot_api_secret_token:
-            if not SecurityUtils.constant_time_compare(
-                x_telegram_bot_api_secret_token,
-                webhook_secret
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid webhook secret token"
-                )
+            if not SecurityUtils.constant_time_compare(x_telegram_bot_api_secret_token, webhook_secret):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid webhook secret token")
 
         logger.debug("Telegram webhook verified")
         return True
@@ -235,16 +205,10 @@ def verify_telegram_webhook(
         raise
     except Exception as e:
         logger.error("Webhook verification error", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Webhook verification failed"
-        )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Webhook verification failed")
 
 
-def get_current_user(
-    token_payload: dict = Depends(verify_jwt_token),
-    db: Session = Depends(get_db_session)
-) -> dict:
+def get_current_user(token_payload: dict = Depends(verify_jwt_token), db: Session = Depends(get_db_session)) -> dict:
     """
     Get current authenticated user.
 
@@ -261,17 +225,14 @@ def get_current_user(
     try:
         user_id = token_payload.get("user_id")
         if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload"
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
         # In production, this would query the user from database
         # For now, return basic user info from token
         user_info = {
             "id": user_id,
             "type": token_payload.get("type", "user"),
-            "scopes": token_payload.get("scopes", [])
+            "scopes": token_payload.get("scopes", []),
         }
 
         logger.debug("Current user retrieved", user_id=user_id)
@@ -281,15 +242,10 @@ def get_current_user(
         raise
     except Exception as e:
         logger.error("User retrieval error", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="User retrieval failed"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User retrieval failed")
 
 
-def require_admin(
-    current_user: dict = Depends(get_current_user)
-) -> dict:
+def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """
     Require admin privileges.
 
@@ -305,10 +261,7 @@ def require_admin(
     try:
         user_scopes = current_user.get("scopes", [])
         if "admin" not in user_scopes:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin privileges required"
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
 
         logger.debug("Admin access granted", user_id=current_user["id"])
         return current_user
@@ -317,17 +270,10 @@ def require_admin(
         raise
     except Exception as e:
         logger.error("Admin check error", error=str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authorization check failed"
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Authorization check failed")
 
 
-def get_pagination_params(
-    page: int = 1,
-    per_page: int = 20,
-    max_per_page: int = 100
-) -> dict:
+def get_pagination_params(page: int = 1, per_page: int = 20, max_per_page: int = 100) -> dict:
     """
     Get pagination parameters with validation.
 
@@ -343,32 +289,18 @@ def get_pagination_params(
         HTTPException: If parameters are invalid
     """
     if page < 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Page number must be >= 1"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Page number must be >= 1")
 
     if per_page < 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Per page must be >= 1"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Per page must be >= 1")
 
     if per_page > max_per_page:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Per page must be <= {max_per_page}"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Per page must be <= {max_per_page}")
 
     # Calculate offset
     offset = (page - 1) * per_page
 
-    return {
-        "page": page,
-        "per_page": per_page,
-        "offset": offset,
-        "limit": per_page
-    }
+    return {"page": page, "per_page": per_page, "offset": offset, "limit": per_page}
 
 
 def validate_platform(platform: str) -> str:
@@ -388,17 +320,14 @@ def validate_platform(platform: str) -> str:
 
     if platform.lower() not in supported_platforms:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported platform. Supported: {supported_platforms}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported platform. Supported: {supported_platforms}"
         )
 
     return platform.lower()
 
 
 def get_rate_limit_info(
-    request: Request,
-    redis_client: redis.Redis = Depends(get_redis_client),
-    settings: Settings = Depends(get_settings)
+    request: Request, redis_client: redis.Redis = Depends(get_redis_client), settings: Settings = Depends(get_settings)
 ) -> dict:
     """
     Get rate limiting information.
@@ -425,7 +354,7 @@ def get_rate_limit_info(
             "client_ip": client_ip,
             "current_requests": current_requests,
             "limit": settings.app.api_rate_limit_per_minute,
-            "remaining": max(0, settings.app.api_rate_limit_per_minute - current_requests)
+            "remaining": max(0, settings.app.api_rate_limit_per_minute - current_requests),
         }
 
         logger.debug("Rate limit info retrieved", **rate_limit_info)
@@ -438,7 +367,7 @@ def get_rate_limit_info(
             "client_ip": "unknown",
             "current_requests": 0,
             "limit": settings.app.api_rate_limit_per_minute,
-            "remaining": settings.app.api_rate_limit_per_minute
+            "remaining": settings.app.api_rate_limit_per_minute,
         }
 
 
@@ -446,8 +375,10 @@ def get_rate_limit_info(
 def get_optional_api_key(x_api_key: str | None = Header(None, alias="X-API-Key")) -> str | None:
     return x_api_key
 
+
 def get_optional_jwt_token(authorization: str | None = Header(None)) -> str | None:
     return authorization
+
 
 OptionalAPIKey = Depends(get_optional_api_key)
 OptionalJWTToken = Depends(get_optional_jwt_token)
@@ -461,8 +392,7 @@ from sqlalchemy import select
 
 
 async def get_current_user(
-    authorization: str | None = Header(None, alias="Authorization"),
-    db = Depends(get_db_async_session)
+    authorization: str | None = Header(None, alias="Authorization"), db=Depends(get_db_async_session)
 ):
     """
     Get current authenticated user from JWT token.
@@ -499,10 +429,7 @@ async def get_current_user(
     try:
         secret_key = settings.security.jwt_secret_key.get_secret_value()
         payload = jwt.decode(
-            token,
-            secret_key,
-            algorithms=["HS256"],
-            options={"verify_aud": False}  # Cross-service SSO
+            token, secret_key, algorithms=["HS256"], options={"verify_aud": False}  # Cross-service SSO
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(
@@ -546,8 +473,7 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    authorization: str | None = Header(None, alias="Authorization"),
-    db = Depends(get_db_async_session)
+    authorization: str | None = Header(None, alias="Authorization"), db=Depends(get_db_async_session)
 ):
     """
     Get current user if authenticated, None otherwise.
@@ -573,6 +499,7 @@ def check_subscription_active(user):
         HTTPException: If subscription expired
     """
     from ..models.entities import SubscriptionPlan
+
     # Master accounts bypass all subscription checks
     if getattr(user, "is_master", False):
         return

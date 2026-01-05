@@ -42,7 +42,7 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
             post_id=post_id,
             update_id=update_data.get("update_id"),
             has_message=bool(update_data.get("message")),
-            has_channel_post=bool(update_data.get("channel_post"))
+            has_channel_post=bool(update_data.get("channel_post")),
         )
 
         try:
@@ -57,12 +57,7 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                     raise ValueError("No processable content in update")
 
                 # Create post record
-                _create_post_record(
-                    db_session,
-                    post_id,
-                    content,
-                    update_data
-                )
+                _create_post_record(db_session, post_id, content, update_data)
 
                 # Download and validate media files
                 media_info = _process_media_files(content, post_id)
@@ -78,13 +73,7 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                 processing_time = time.time() - task_start_time
 
                 # Update task status
-                _update_task_status(
-                    db_session,
-                    post_id,
-                    "ingest",
-                    "completed",
-                    processing_time
-                )
+                _update_task_status(db_session, post_id, "ingest", "completed", processing_time)
 
                 # Track metrics
                 metrics.track_post_created("telegram", "webhook")
@@ -93,7 +82,7 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                     platform="telegram",
                     success=True,
                     duration=processing_time,
-                    file_size=sum(m.get("file_size", 0) for m in media_info) if media_info else 0
+                    file_size=sum(m.get("file_size", 0) for m in media_info) if media_info else 0,
                 )
 
                 # Audit log
@@ -102,7 +91,7 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                     platform="telegram",
                     user_id=str(content.get("from", {}).get("id", "unknown")),
                     product_id="telegram_ingest",
-                    processing_time=processing_time
+                    processing_time=processing_time,
                 )
 
                 # Prepare next stage
@@ -112,11 +101,12 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                     "media_count": len(media_info) if media_info else 0,
                     "text_content": content.get("text") or content.get("caption", ""),
                     "source": "telegram",
-                    "original_update": update_data
+                    "original_update": update_data,
                 }
 
                 # Trigger next stage (enrich)
                 from .enrich import enrich_post_content
+
                 enrich_task = enrich_post_content.delay(next_stage_data)
 
                 logger.info(
@@ -124,7 +114,7 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                     post_id=post_id,
                     processing_time=processing_time,
                     next_task_id=enrich_task.id,
-                    media_files_count=len(media_info) if media_info else 0
+                    media_files_count=len(media_info) if media_info else 0,
                 )
 
                 return {
@@ -133,7 +123,7 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                     "processing_time": processing_time,
                     "media_processed": len(media_info) if media_info else 0,
                     "next_stage": "enrich",
-                    "next_task_id": enrich_task.id
+                    "next_task_id": enrich_task.id,
                 }
 
             finally:
@@ -147,20 +137,13 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                 post_id=post_id,
                 error=str(e),
                 processing_time=processing_time,
-                exc_info=True
+                exc_info=True,
             )
 
             # Update task status
             try:
                 db_session = db_manager.get_session()
-                _update_task_status(
-                    db_session,
-                    post_id,
-                    "ingest",
-                    "failed",
-                    processing_time,
-                    error_message=str(e)
-                )
+                _update_task_status(db_session, post_id, "ingest", "failed", processing_time, error_message=str(e))
                 db_session.commit()
                 db_session.close()
             except:
@@ -175,7 +158,7 @@ def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> 
                     "Retrying telegram update processing",
                     post_id=post_id,
                     retry_count=self.request.retries + 1,
-                    max_retries=self.max_retries
+                    max_retries=self.max_retries,
                 )
                 raise self.retry(countdown=60 * (self.request.retries + 1))
 
@@ -193,8 +176,9 @@ def _extract_content_from_update(update_data: dict[str, Any]) -> dict[str, Any] 
     return None
 
 
-def _create_post_record(db_session: Session, post_id: str, content: dict[str, Any],
-                       update_data: dict[str, Any]) -> dict[str, Any]:
+def _create_post_record(
+    db_session: Session, post_id: str, content: dict[str, Any], update_data: dict[str, Any]
+) -> dict[str, Any]:
     """Create initial post record in database."""
     logger.info("Creating post record", post_id=post_id)
 
@@ -206,7 +190,7 @@ def _create_post_record(db_session: Session, post_id: str, content: dict[str, An
         "original_update": update_data,
         "status": "ingested",
         "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow()
+        "updated_at": datetime.utcnow(),
     }
 
     # In real implementation:
@@ -246,12 +230,7 @@ def _download_media_file(media_data: dict[str, Any], media_type: str, post_id: s
     if not file_id:
         return None
 
-    logger.info(
-        "Processing media file",
-        post_id=post_id,
-        file_id=file_id,
-        media_type=media_type
-    )
+    logger.info("Processing media file", post_id=post_id, file_id=file_id, media_type=media_type)
 
     # This is a placeholder - would actually download file
     # In real implementation:
@@ -270,16 +249,11 @@ def _download_media_file(media_data: dict[str, Any], media_type: str, post_id: s
         "width": media_data.get("width"),
         "height": media_data.get("height"),
         "local_path": f"/tmp/{post_id}_{file_id}",  # Placeholder
-        "s3_path": f"media/{post_id}/{file_id}",    # Placeholder
-        "downloaded_at": datetime.utcnow().isoformat()
+        "s3_path": f"media/{post_id}/{file_id}",  # Placeholder
+        "downloaded_at": datetime.utcnow().isoformat(),
     }
 
-    logger.info(
-        "Media file processed",
-        post_id=post_id,
-        file_id=file_id,
-        file_size=media_info["file_size"]
-    )
+    logger.info("Media file processed", post_id=post_id, file_id=file_id, file_size=media_info["file_size"])
 
     return media_info
 
@@ -297,16 +271,11 @@ def _update_post_with_media(db_session: Session, post_id: str, media_info: list)
     logger.info("Post updated with media info", post_id=post_id)
 
 
-def _update_task_status(db_session: Session, post_id: str, stage: str, status: str,
-                       processing_time: float, error_message: str = None):
+def _update_task_status(
+    db_session: Session, post_id: str, stage: str, status: str, processing_time: float, error_message: str = None
+):
     """Update task status in database."""
-    logger.debug(
-        "Updating task status",
-        post_id=post_id,
-        stage=stage,
-        status=status,
-        processing_time=processing_time
-    )
+    logger.debug("Updating task status", post_id=post_id, stage=stage, status=status, processing_time=processing_time)
 
     # This is a placeholder - would update task status table
     # In real implementation:

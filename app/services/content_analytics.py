@@ -118,10 +118,7 @@ class ContentAnalyticsService:
         logger.info("ContentAnalyticsService initialized")
 
     async def collect_metrics_for_post(
-        self,
-        db: AsyncSession,
-        publish_result_id: uuid.UUID,
-        metrics_data: dict[str, Any]
+        self, db: AsyncSession, publish_result_id: uuid.UUID, metrics_data: dict[str, Any]
     ) -> PostMetrics:
         """Store metrics snapshot for a published post."""
 
@@ -161,7 +158,7 @@ class ContentAnalyticsService:
             followers_before=metrics_data.get("followers_before"),
             followers_after=metrics_data.get("followers_after"),
             followers_gained=metrics_data.get("followers_gained", 0),
-            hours_since_publish=hours_since
+            hours_since_publish=hours_since,
         )
 
         db.add(metrics)
@@ -172,10 +169,7 @@ class ContentAnalyticsService:
         return metrics
 
     async def analyze_post_performance(
-        self,
-        db: AsyncSession,
-        post_id: uuid.UUID,
-        user_id: uuid.UUID
+        self, db: AsyncSession, post_id: uuid.UUID, user_id: uuid.UUID
     ) -> ContentInsight | None:
         """Analyze a single post performance and generate insights."""
 
@@ -186,10 +180,7 @@ class ContentAnalyticsService:
 
         # Get latest metrics
         metrics_result = await db.execute(
-            select(PostMetrics)
-            .where(PostMetrics.post_id == post_id)
-            .order_by(desc(PostMetrics.measured_at))
-            .limit(1)
+            select(PostMetrics).where(PostMetrics.post_id == post_id).order_by(desc(PostMetrics.measured_at)).limit(1)
         )
         metrics = metrics_result.scalars().first()
 
@@ -224,9 +215,7 @@ class ContentAnalyticsService:
 
         if self.ai_client:
             try:
-                analysis = await self._generate_ai_analysis(
-                    post, metrics, benchmarks
-                )
+                analysis = await self._generate_ai_analysis(post, metrics, benchmarks)
                 detailed_analysis = analysis.get("analysis")
                 recommendations = analysis.get("recommendations", [])
             except Exception as e:
@@ -241,16 +230,16 @@ class ContentAnalyticsService:
             priority=priority,
             title=title,
             summary=f"Engagement Rate: {metrics.engagement_rate:.2%} (среднее: {avg_engagement:.2%}). "
-                    f"Просмотры: {metrics.views}, Лайки: {metrics.likes}, Комментарии: {metrics.comments}",
+            f"Просмотры: {metrics.views}, Лайки: {metrics.likes}, Комментарии: {metrics.comments}",
             detailed_analysis=detailed_analysis,
             recommendations=recommendations,
             confidence_score=0.85,
             supporting_data={
                 "metrics": metrics.to_dict(),
                 "benchmarks": benchmarks,
-                "performance_ratio": performance_ratio
+                "performance_ratio": performance_ratio,
             },
-            expires_at=datetime.utcnow() + timedelta(days=30)
+            expires_at=datetime.utcnow() + timedelta(days=30),
         )
 
         db.add(insight)
@@ -260,11 +249,7 @@ class ContentAnalyticsService:
         logger.info("Post analysis insight created", insight_id=str(insight.id))
         return insight
 
-    async def generate_weekly_insights(
-        self,
-        db: AsyncSession,
-        user_id: uuid.UUID
-    ) -> list[ContentInsight]:
+    async def generate_weekly_insights(self, db: AsyncSession, user_id: uuid.UUID) -> list[ContentInsight]:
         """Generate weekly performance insights for a user."""
 
         insights = []
@@ -309,9 +294,7 @@ class ContentAnalyticsService:
                     posting_times[hour].append(m.engagement_rate)
 
             best_hours = sorted(
-                posting_times.keys(),
-                key=lambda h: sum(posting_times[h]) / len(posting_times[h]),
-                reverse=True
+                posting_times.keys(), key=lambda h: sum(posting_times[h]) / len(posting_times[h]), reverse=True
             )[:3]
 
             # Create weekly insight
@@ -322,24 +305,28 @@ class ContentAnalyticsService:
                 priority=InsightPriority.MEDIUM,
                 title=f"📈 Недельный отчёт: {platform}",
                 summary=f"За неделю: {len(platform_metrics)} постов, {total_views} просмотров, "
-                        f"avg engagement: {avg_engagement:.2%}",
+                f"avg engagement: {avg_engagement:.2%}",
                 detailed_analysis="Лучшее время для постов: " + ", ".join(f"{h}:00" for h in best_hours),
-                recommendations=[
-                    {
-                        "action": f"Публикуйте в {best_hours[0]}:00 для максимального охвата",
-                        "impact": "high",
-                        "effort": "low"
-                    }
-                ] if best_hours else [],
+                recommendations=(
+                    [
+                        {
+                            "action": f"Публикуйте в {best_hours[0]}:00 для максимального охвата",
+                            "impact": "high",
+                            "effort": "low",
+                        }
+                    ]
+                    if best_hours
+                    else []
+                ),
                 supporting_data={
                     "total_posts": len(platform_metrics),
                     "total_views": total_views,
                     "total_likes": total_likes,
                     "avg_engagement": avg_engagement,
                     "best_hours": best_hours,
-                    "best_post_id": str(best_post.post_id) if best_post else None
+                    "best_post_id": str(best_post.post_id) if best_post else None,
                 },
-                expires_at=datetime.utcnow() + timedelta(days=7)
+                expires_at=datetime.utcnow() + timedelta(days=7),
             )
 
             db.add(insight)
@@ -351,19 +338,14 @@ class ContentAnalyticsService:
         return insights
 
     async def get_optimization_suggestions(
-        self,
-        db: AsyncSession,
-        user_id: uuid.UUID,
-        platform: str | None = None
+        self, db: AsyncSession, user_id: uuid.UUID, platform: str | None = None
     ) -> list[dict[str, Any]]:
         """Get actionable optimization suggestions based on analytics."""
 
         suggestions = []
 
         # Get user settings
-        settings_result = await db.execute(
-            select(AnalyticsSettings).where(AnalyticsSettings.user_id == user_id)
-        )
+        settings_result = await db.execute(select(AnalyticsSettings).where(AnalyticsSettings.user_id == user_id))
         settings = settings_result.scalars().first()
 
         if not settings or settings.optimization_mode == OptimizationMode.DISABLED:
@@ -381,26 +363,24 @@ class ContentAnalyticsService:
         insights = insights_result.scalars().all()
 
         for insight in insights:
-            for rec in (insight.recommendations or []):
-                suggestions.append({
-                    "insight_id": str(insight.id),
-                    "type": insight.insight_type.value,
-                    "priority": insight.priority.value,
-                    "action": rec.get("action"),
-                    "impact": rec.get("impact", "medium"),
-                    "effort": rec.get("effort", "medium"),
-                    "platform": insight.platform,
-                    "auto_applicable": settings.optimization_mode == OptimizationMode.AUTO
-                })
+            for rec in insight.recommendations or []:
+                suggestions.append(
+                    {
+                        "insight_id": str(insight.id),
+                        "type": insight.insight_type.value,
+                        "priority": insight.priority.value,
+                        "action": rec.get("action"),
+                        "impact": rec.get("impact", "medium"),
+                        "effort": rec.get("effort", "medium"),
+                        "platform": insight.platform,
+                        "auto_applicable": settings.optimization_mode == OptimizationMode.AUTO,
+                    }
+                )
 
         return suggestions
 
     async def apply_optimization(
-        self,
-        db: AsyncSession,
-        insight_id: uuid.UUID,
-        user_id: uuid.UUID,
-        auto: bool = False
+        self, db: AsyncSession, insight_id: uuid.UUID, user_id: uuid.UUID, auto: bool = False
     ) -> dict[str, Any]:
         """Apply an optimization suggestion."""
 
@@ -409,9 +389,7 @@ class ContentAnalyticsService:
             return {"success": False, "error": "Insight not found"}
 
         # Check user settings
-        settings_result = await db.execute(
-            select(AnalyticsSettings).where(AnalyticsSettings.user_id == user_id)
-        )
+        settings_result = await db.execute(select(AnalyticsSettings).where(AnalyticsSettings.user_id == user_id))
         settings = settings_result.scalars().first()
 
         if auto and (not settings or settings.optimization_mode != OptimizationMode.AUTO):
@@ -439,12 +417,7 @@ class ContentAnalyticsService:
         logger.info("Optimization applied", insight_id=str(insight_id), auto=auto)
         return result
 
-    async def _get_user_benchmarks(
-        self,
-        db: AsyncSession,
-        user_id: uuid.UUID,
-        platform: str
-    ) -> dict[str, Any] | None:
+    async def _get_user_benchmarks(self, db: AsyncSession, user_id: uuid.UUID, platform: str) -> dict[str, Any] | None:
         """Get user performance benchmarks for a platform."""
 
         # Try to get existing benchmark
@@ -463,9 +436,7 @@ class ContentAnalyticsService:
         # Calculate from recent metrics
         month_ago = datetime.utcnow() - timedelta(days=30)
         metrics_result = await db.execute(
-            select(PostMetrics)
-            .where(PostMetrics.platform == platform)
-            .where(PostMetrics.created_at >= month_ago)
+            select(PostMetrics).where(PostMetrics.platform == platform).where(PostMetrics.created_at >= month_ago)
         )
         metrics = metrics_result.scalars().all()
 
@@ -476,15 +447,10 @@ class ContentAnalyticsService:
             "avg_views": sum(m.views for m in metrics) / len(metrics),
             "avg_likes": sum(m.likes for m in metrics) / len(metrics),
             "avg_engagement_rate": sum(m.engagement_rate for m in metrics) / len(metrics),
-            "total_posts": len(metrics)
+            "total_posts": len(metrics),
         }
 
-    async def _generate_ai_analysis(
-        self,
-        post: Post,
-        metrics: PostMetrics,
-        benchmarks: dict | None
-    ) -> dict[str, Any]:
+    async def _generate_ai_analysis(self, post: Post, metrics: PostMetrics, benchmarks: dict | None) -> dict[str, Any]:
         """Generate AI-powered analysis using LLM."""
 
         if not self.ai_client:
@@ -500,34 +466,33 @@ class ContentAnalyticsService:
 
         if metrics.engagement_rate > avg_engagement * 1.5:
             analysis_parts.append("Этот пост показал результаты выше среднего.")
-            recommendations.append({
-                "action": "Создавайте больше похожего контента",
-                "impact": "high",
-                "effort": "medium"
-            })
+            recommendations.append(
+                {"action": "Создавайте больше похожего контента", "impact": "high", "effort": "medium"}
+            )
         elif metrics.engagement_rate < avg_engagement * 0.5:
             analysis_parts.append("Этот пост показал результаты ниже среднего.")
-            recommendations.append({
-                "action": "Попробуйте другой формат или время публикации",
-                "impact": "high",
-                "effort": "low"
-            })
+            recommendations.append(
+                {"action": "Попробуйте другой формат или время публикации", "impact": "high", "effort": "low"}
+            )
 
         if metrics.views > 0 and metrics.likes / metrics.views < 0.02:
-            recommendations.append({
-                "action": "Добавьте более привлекательный визуал или заголовок",
-                "impact": "medium",
-                "effort": "medium"
-            })
+            recommendations.append(
+                {
+                    "action": "Добавьте более привлекательный визуал или заголовок",
+                    "impact": "medium",
+                    "effort": "medium",
+                }
+            )
 
         return {
             "analysis": " ".join(analysis_parts) if analysis_parts else "Пост показал средние результаты.",
-            "recommendations": recommendations
+            "recommendations": recommendations,
         }
 
 
 # Singleton instance
 _analytics_service: ContentAnalyticsService | None = None
+
 
 def get_analytics_service() -> ContentAnalyticsService:
     global _analytics_service
