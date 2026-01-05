@@ -4,18 +4,15 @@ Supports Hailuo Video-01 for text-to-video and image-to-video generation.
 """
 
 import asyncio
-import time
-from datetime import datetime
-from typing import Optional, Dict, Any
+import os
 from dataclasses import dataclass
 from enum import Enum
-import os
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.logging import get_logger
-
 
 logger = get_logger("services.video_gen_minimax")
 
@@ -59,11 +56,11 @@ class MinimaxModel(str, Enum):
 class MinimaxVideoResult:
     """Result of Minimax video generation."""
     success: bool
-    video_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    task_id: Optional[str] = None
+    video_url: str | None = None
+    thumbnail_url: str | None = None
+    task_id: str | None = None
     duration_seconds: int = 0
-    error: Optional[str] = None
+    error: str | None = None
     cost_estimate: float = 0.28  # ~$0.28 per video
 
 
@@ -104,7 +101,7 @@ class MinimaxService:
         model: MinimaxModel = MinimaxModel.VIDEO_01
     ) -> MinimaxVideoResult:
         """Generate video from text prompt."""
-        logger.info(f"Starting Minimax text-to-video generation", prompt=prompt[:50])
+        logger.info("Starting Minimax text-to-video generation", prompt=prompt[:50])
 
         payload = {
             "model": model.value,
@@ -154,7 +151,7 @@ class MinimaxService:
         model: MinimaxModel = MinimaxModel.VIDEO_01
     ) -> MinimaxVideoResult:
         """Generate video from image."""
-        logger.info(f"Starting Minimax image-to-video generation")
+        logger.info("Starting Minimax image-to-video generation")
 
         payload = {
             "model": model.value,
@@ -199,9 +196,9 @@ class MinimaxService:
         poll_interval: int = 5
     ) -> MinimaxVideoResult:
         """Poll for video generation result."""
-        logger.info(f"Polling for Minimax result", task_id=task_id)
+        logger.info("Polling for Minimax result", task_id=task_id)
 
-        for attempt in range(max_attempts):
+        for _attempt in range(max_attempts):
             response = await self.http_client.get(
                 f"{self.API_BASE}/query/video_generation",
                 params={"task_id": task_id}
@@ -258,7 +255,7 @@ class MinimaxService:
             error="Timeout waiting for video generation"
         )
 
-    async def get_task_status(self, task_id: str) -> Dict[str, Any]:
+    async def get_task_status(self, task_id: str) -> dict[str, Any]:
         """Get status of a video generation task."""
         response = await self.http_client.get(
             f"{self.API_BASE}/query/video_generation",
@@ -273,7 +270,7 @@ class MinimaxService:
 
 
 # Singleton instance
-_minimax_service: Optional[MinimaxService] = None
+_minimax_service: MinimaxService | None = None
 
 
 def get_minimax_service() -> MinimaxService:

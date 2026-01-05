@@ -5,20 +5,20 @@ This module loads and validates publishing rules for different platforms,
 ensuring content meets platform requirements before publishing.
 """
 
-import yaml
 import os
 import re
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
-from dataclasses import dataclass, asdict
-from enum import Enum
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+import yaml
 
 from ..core.config import settings
 from ..core.logging import get_logger, with_logging_context
 from ..observability.metrics import metrics
-
 
 logger = get_logger("services.preflight_rules")
 
@@ -54,12 +54,12 @@ class RuleViolation:
     severity: ViolationSeverity
     message: str
     platform: str
-    field: Optional[str] = None
-    current_value: Optional[Union[str, int, float]] = None
-    limit_value: Optional[Union[str, int, float]] = None
-    suggestion: Optional[str] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
+    field: str | None = None
+    current_value: str | int | float | None = None
+    limit_value: str | int | float | None = None
+    suggestion: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert violation to dictionary."""
         return {
             "type": self.type.value,
@@ -77,26 +77,26 @@ class RuleViolation:
 @dataclass
 class MediaMetadata:
     """Media metadata for validation."""
-    file_path: Optional[str] = None
-    file_size: Optional[int] = None  # bytes
-    width: Optional[int] = None
-    height: Optional[int] = None
-    duration: Optional[float] = None  # seconds
-    format: Optional[str] = None
-    mime_type: Optional[str] = None
-    aspect_ratio: Optional[str] = None
+    file_path: str | None = None
+    file_size: int | None = None  # bytes
+    width: int | None = None
+    height: int | None = None
+    duration: float | None = None  # seconds
+    format: str | None = None
+    mime_type: str | None = None
+    aspect_ratio: str | None = None
 
 
 @dataclass
 class PostContent:
     """Post content for validation."""
     caption: str
-    hashtags: List[str]
-    mentions: List[str]
-    links: List[str]
-    media: List[MediaMetadata]
+    hashtags: list[str]
+    mentions: list[str]
+    links: list[str]
+    media: list[MediaMetadata]
     platform: str
-    
+
     def __post_init__(self):
         """Initialize lists if None."""
         if self.hashtags is None:
@@ -113,20 +113,20 @@ class PostContent:
 class ValidationResult:
     """Result of content validation."""
     is_valid: bool
-    violations: List[RuleViolation]
+    violations: list[RuleViolation]
     platform: str
     validation_time: float
-    metadata: Dict[str, Any]
-    
-    def get_blocking_violations(self) -> List[RuleViolation]:
+    metadata: dict[str, Any]
+
+    def get_blocking_violations(self) -> list[RuleViolation]:
         """Get violations that block publishing."""
         return [v for v in self.violations if v.severity == ViolationSeverity.ERROR]
-    
-    def get_warnings(self) -> List[RuleViolation]:
+
+    def get_warnings(self) -> list[RuleViolation]:
         """Get warning violations."""
         return [v for v in self.violations if v.severity == ViolationSeverity.WARNING]
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert result to dictionary."""
         return {
             "is_valid": self.is_valid,
@@ -141,36 +141,36 @@ class ValidationResult:
 
 class PreflightRulesService:
     """Service for loading and validating preflight rules."""
-    
+
     def __init__(self):
         """Initialize preflight rules service."""
         self.rules_cache = {}
         self.rules_loaded_at = None
         self.rules_file_path = self._get_rules_file_path()
         self.cache_ttl = 300  # 5 minutes
-        
+
         # Load rules on initialization
         self._load_rules()
-        
+
         logger.info("PreflightRulesService initialized", rules_file=self.rules_file_path)
-    
+
     def _get_rules_file_path(self) -> str:
         """Get path to rules YAML file."""
         # Try to find rules file relative to project root
         current_dir = Path(__file__).parent
         project_root = current_dir.parent.parent
         rules_path = project_root / "config" / "publishing_rules.yml"
-        
+
         if rules_path.exists():
             return str(rules_path)
-        
+
         # Fallback to configured path if available
         if hasattr(settings, 'publishing_rules_path'):
             return settings.publishing_rules_path
-        
+
         # Create default rules if file doesn't exist
         return self._create_default_rules_file(str(rules_path))
-    
+
     def _create_default_rules_file(self, file_path: str) -> str:
         """Create default rules file if it doesn't exist."""
         default_rules = {
@@ -358,32 +358,32 @@ class PreflightRulesService:
                 }
             }
         }
-        
+
         # Create directory if it doesn't exist
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        
+
         # Write default rules
         with open(file_path, 'w', encoding='utf-8') as f:
             yaml.dump(default_rules, f, default_flow_style=False, allow_unicode=True)
-        
+
         logger.info("Created default publishing rules file", file_path=file_path)
         return file_path
-    
+
     def _load_rules(self):
         """Load rules from YAML file."""
         try:
-            with open(self.rules_file_path, 'r', encoding='utf-8') as f:
+            with open(self.rules_file_path, encoding='utf-8') as f:
                 self.rules_cache = yaml.safe_load(f)
-            
+
             self.rules_loaded_at = time.time()
-            
+
             logger.info(
                 "Publishing rules loaded successfully",
                 file_path=self.rules_file_path,
                 platforms=list(self.rules_cache.get("platforms", {}).keys()),
                 version=self.rules_cache.get("version", "unknown")
             )
-            
+
         except Exception as e:
             logger.error(f"Failed to load publishing rules: {e}", file_path=self.rules_file_path)
             # Use minimal fallback rules
@@ -398,33 +398,33 @@ class PreflightRulesService:
                 }
             }
             self.rules_loaded_at = time.time()
-    
+
     def _maybe_reload_rules(self):
         """Reload rules if cache is expired."""
-        if (not self.rules_loaded_at or 
+        if (not self.rules_loaded_at or
             time.time() - self.rules_loaded_at > self.cache_ttl):
             logger.info("Reloading publishing rules due to cache expiration")
             self._load_rules()
-    
-    def get_platform_rules(self, platform: str) -> Optional[Dict[str, Any]]:
+
+    def get_platform_rules(self, platform: str) -> dict[str, Any] | None:
         """Get rules for specific platform."""
         self._maybe_reload_rules()
-        
+
         platforms = self.rules_cache.get("platforms", {})
         return platforms.get(platform)
-    
+
     def validate_post(self, content: PostContent) -> ValidationResult:
         """
         Validate post content against platform rules.
-        
+
         Args:
             content: Post content to validate
-            
+
         Returns:
             Validation result with violations
         """
         start_time = time.time()
-        
+
         with with_logging_context(platform=content.platform):
             logger.info(
                 "Starting preflight validation",
@@ -433,9 +433,9 @@ class PreflightRulesService:
                 hashtags_count=len(content.hashtags),
                 media_count=len(content.media)
             )
-            
+
             violations = []
-            
+
             # Get platform rules
             platform_rules = self.get_platform_rules(content.platform)
             if not platform_rules:
@@ -446,7 +446,7 @@ class PreflightRulesService:
                     platform=content.platform,
                     suggestion="Use supported platforms: instagram, vk, tiktok, youtube, telegram"
                 ))
-                
+
                 return ValidationResult(
                     is_valid=False,
                     violations=violations,
@@ -454,31 +454,31 @@ class PreflightRulesService:
                     validation_time=time.time() - start_time,
                     metadata={"rules_version": self.rules_cache.get("version", "unknown")}
                 )
-            
+
             # Validate caption
             violations.extend(self._validate_caption(content, platform_rules))
-            
+
             # Validate hashtags
             violations.extend(self._validate_hashtags(content, platform_rules))
-            
+
             # Validate mentions
             violations.extend(self._validate_mentions(content, platform_rules))
-            
+
             # Validate links
             violations.extend(self._validate_links(content, platform_rules))
-            
+
             # Validate media
             violations.extend(self._validate_media(content, platform_rules))
-            
+
             # Validate content restrictions
             violations.extend(self._validate_content_restrictions(content, platform_rules))
-            
+
             # Determine if valid (no blocking violations)
             blocking_violations = [v for v in violations if v.severity == ViolationSeverity.ERROR]
             is_valid = len(blocking_violations) == 0
-            
+
             validation_time = time.time() - start_time
-            
+
             # Track metrics
             metrics.track_preflight_validation(
                 platform=content.platform,
@@ -487,7 +487,7 @@ class PreflightRulesService:
                 blocking_violations_count=len(blocking_violations),
                 validation_time=validation_time
             )
-            
+
             logger.info(
                 "Preflight validation completed",
                 platform=content.platform,
@@ -496,7 +496,7 @@ class PreflightRulesService:
                 blocking_violations=len(blocking_violations),
                 validation_time=validation_time
             )
-            
+
             return ValidationResult(
                 is_valid=is_valid,
                 violations=violations,
@@ -508,14 +508,14 @@ class PreflightRulesService:
                     "total_checks": 6  # caption, hashtags, mentions, links, media, content
                 }
             )
-    
-    def _validate_caption(self, content: PostContent, rules: Dict[str, Any]) -> List[RuleViolation]:
+
+    def _validate_caption(self, content: PostContent, rules: dict[str, Any]) -> list[RuleViolation]:
         """Validate caption against rules."""
         violations = []
         caption_rules = rules.get("caption", {})
-        
+
         caption_length = len(content.caption)
-        
+
         # Check if caption is required
         if caption_rules.get("required", True) and not content.caption.strip():
             violations.append(RuleViolation(
@@ -526,7 +526,7 @@ class PreflightRulesService:
                 field="caption",
                 suggestion="Add a caption to your post"
             ))
-        
+
         # Check minimum length
         min_length = caption_rules.get("min_length", 0)
         if caption_length < min_length and content.caption.strip():
@@ -540,7 +540,7 @@ class PreflightRulesService:
                 limit_value=min_length,
                 suggestion=f"Caption must be at least {min_length} characters long"
             ))
-        
+
         # Check maximum length
         max_length = caption_rules.get("max_length", 10000)
         if caption_length > max_length:
@@ -554,16 +554,16 @@ class PreflightRulesService:
                 limit_value=max_length,
                 suggestion=f"Shorten caption to {max_length} characters or less"
             ))
-        
+
         return violations
-    
-    def _validate_hashtags(self, content: PostContent, rules: Dict[str, Any]) -> List[RuleViolation]:
+
+    def _validate_hashtags(self, content: PostContent, rules: dict[str, Any]) -> list[RuleViolation]:
         """Validate hashtags against rules."""
         violations = []
         hashtag_rules = rules.get("hashtags", {})
-        
+
         hashtag_count = len(content.hashtags)
-        
+
         # Check maximum count
         max_count = hashtag_rules.get("max_count", 30)
         if hashtag_count > max_count:
@@ -577,7 +577,7 @@ class PreflightRulesService:
                 limit_value=max_count,
                 suggestion=f"Reduce hashtags to {max_count} or fewer"
             ))
-        
+
         # Check individual hashtag length
         max_length_each = hashtag_rules.get("max_length_each", 100)
         for i, hashtag in enumerate(content.hashtags):
@@ -592,16 +592,16 @@ class PreflightRulesService:
                     limit_value=max_length_each,
                     suggestion=f"Shorten hashtag to {max_length_each} characters or less"
                 ))
-        
+
         return violations
-    
-    def _validate_mentions(self, content: PostContent, rules: Dict[str, Any]) -> List[RuleViolation]:
+
+    def _validate_mentions(self, content: PostContent, rules: dict[str, Any]) -> list[RuleViolation]:
         """Validate mentions against rules."""
         violations = []
         mention_rules = rules.get("mentions", {})
-        
+
         mention_count = len(content.mentions)
-        
+
         # Check maximum count
         max_count = mention_rules.get("max_count", 20)
         if mention_count > max_count:
@@ -615,16 +615,16 @@ class PreflightRulesService:
                 limit_value=max_count,
                 suggestion=f"Reduce mentions to {max_count} or fewer"
             ))
-        
+
         return violations
-    
-    def _validate_links(self, content: PostContent, rules: Dict[str, Any]) -> List[RuleViolation]:
+
+    def _validate_links(self, content: PostContent, rules: dict[str, Any]) -> list[RuleViolation]:
         """Validate links against rules."""
         violations = []
         link_rules = rules.get("links", {})
-        
+
         link_count = len(content.links)
-        
+
         # Check if links are allowed
         if not link_rules.get("allowed", True) and link_count > 0:
             violations.append(RuleViolation(
@@ -637,7 +637,7 @@ class PreflightRulesService:
                 limit_value=0,
                 suggestion="Remove all links from the post"
             ))
-        
+
         # Check maximum count
         max_count = link_rules.get("max_count", 10)
         if link_count > max_count:
@@ -651,16 +651,16 @@ class PreflightRulesService:
                 limit_value=max_count,
                 suggestion=f"Reduce links to {max_count} or fewer"
             ))
-        
+
         return violations
-    
-    def _validate_media(self, content: PostContent, rules: Dict[str, Any]) -> List[RuleViolation]:
+
+    def _validate_media(self, content: PostContent, rules: dict[str, Any]) -> list[RuleViolation]:
         """Validate media against rules."""
         violations = []
         media_rules = rules.get("media", {})
-        
+
         media_count = len(content.media)
-        
+
         # Check if media is required
         if media_rules.get("required", False) and media_count == 0:
             violations.append(RuleViolation(
@@ -673,7 +673,7 @@ class PreflightRulesService:
                 limit_value=1,
                 suggestion="Add at least one image or video to your post"
             ))
-        
+
         # Check maximum count
         max_count = media_rules.get("max_count", 10)
         if media_count > max_count:
@@ -687,11 +687,11 @@ class PreflightRulesService:
                 limit_value=max_count,
                 suggestion=f"Reduce media files to {max_count} or fewer"
             ))
-        
+
         # Validate individual media files
         max_file_size = media_rules.get("max_file_size", 100 * 1024 * 1024)  # 100MB default
         supported_formats = media_rules.get("supported_formats", [])
-        
+
         for i, media in enumerate(content.media):
             # Check file size
             if media.file_size and media.file_size > max_file_size:
@@ -705,7 +705,7 @@ class PreflightRulesService:
                     limit_value=max_file_size,
                     suggestion=f"Compress file to under {max_file_size // (1024*1024)}MB"
                 ))
-            
+
             # Check format
             if media.format and supported_formats and media.format.lower() not in [f.lower() for f in supported_formats]:
                 violations.append(RuleViolation(
@@ -718,16 +718,16 @@ class PreflightRulesService:
                     limit_value=", ".join(supported_formats),
                     suggestion=f"Convert to supported format: {', '.join(supported_formats)}"
                 ))
-            
+
             # Validate video-specific rules
             if media.format and media.format.lower() in ['mp4', 'mov', 'avi', 'webm']:
                 video_rules = media_rules.get("video", {})
-                
+
                 # Check duration
                 if media.duration:
                     min_duration = video_rules.get("min_duration", 0)
                     max_duration = video_rules.get("max_duration", float('inf'))
-                    
+
                     if media.duration < min_duration:
                         violations.append(RuleViolation(
                             type=ViolationType.MEDIA_TOO_LONG,
@@ -739,7 +739,7 @@ class PreflightRulesService:
                             limit_value=min_duration,
                             suggestion=f"Video must be at least {min_duration} seconds long"
                         ))
-                    
+
                     if media.duration > max_duration:
                         violations.append(RuleViolation(
                             type=ViolationType.MEDIA_TOO_LONG,
@@ -751,12 +751,12 @@ class PreflightRulesService:
                             limit_value=max_duration,
                             suggestion=f"Trim video to {max_duration} seconds or less"
                         ))
-                
+
                 # Check dimensions
                 if media.width and media.height:
                     max_width = video_rules.get("max_width")
                     max_height = video_rules.get("max_height")
-                    
+
                     if max_width and media.width > max_width:
                         violations.append(RuleViolation(
                             type=ViolationType.MEDIA_WRONG_DIMENSIONS,
@@ -768,7 +768,7 @@ class PreflightRulesService:
                             limit_value=max_width,
                             suggestion=f"Resize video width to {max_width}px or less"
                         ))
-                    
+
                     if max_height and media.height > max_height:
                         violations.append(RuleViolation(
                             type=ViolationType.MEDIA_WRONG_DIMENSIONS,
@@ -780,18 +780,18 @@ class PreflightRulesService:
                             limit_value=max_height,
                             suggestion=f"Resize video height to {max_height}px or less"
                         ))
-        
+
         return violations
-    
-    def _validate_content_restrictions(self, content: PostContent, rules: Dict[str, Any]) -> List[RuleViolation]:
+
+    def _validate_content_restrictions(self, content: PostContent, rules: dict[str, Any]) -> list[RuleViolation]:
         """Validate content restrictions (forbidden words, patterns)."""
         violations = []
         content_rules = rules.get("content", {})
-        
+
         # Check forbidden words
         forbidden_words = content_rules.get("forbidden_words", [])
         caption_lower = content.caption.lower()
-        
+
         for word in forbidden_words:
             if word.lower() in caption_lower:
                 violations.append(RuleViolation(
@@ -803,10 +803,10 @@ class PreflightRulesService:
                     current_value=word,
                     suggestion=f"Remove or replace the word '{word}'"
                 ))
-        
+
         # Check forbidden patterns (regex)
         forbidden_patterns = content_rules.get("forbidden_patterns", [])
-        
+
         for pattern in forbidden_patterns:
             try:
                 if re.search(pattern, content.caption, re.IGNORECASE):
@@ -821,15 +821,15 @@ class PreflightRulesService:
                     ))
             except re.error as e:
                 logger.warning(f"Invalid regex pattern in rules: {pattern}", error=str(e))
-        
+
         return violations
-    
-    def get_platform_limits(self, platform: str) -> Dict[str, Any]:
+
+    def get_platform_limits(self, platform: str) -> dict[str, Any]:
         """Get platform limits for display/UI purposes."""
         rules = self.get_platform_rules(platform)
         if not rules:
             return {}
-        
+
         return {
             "caption_max_length": rules.get("caption", {}).get("max_length", 0),
             "hashtags_max_count": rules.get("hashtags", {}).get("max_count", 0),
@@ -841,8 +841,8 @@ class PreflightRulesService:
             "links_allowed": rules.get("links", {}).get("allowed", True),
             "media_required": rules.get("media", {}).get("required", False)
         }
-    
-    def get_supported_platforms(self) -> List[str]:
+
+    def get_supported_platforms(self) -> list[str]:
         """Get list of supported platforms."""
         self._maybe_reload_rules()
         return list(self.rules_cache.get("platforms", {}).keys())
@@ -853,14 +853,14 @@ preflight_rules_service = PreflightRulesService()
 
 
 # Convenience functions
-def validate_post_content(caption: str, platform: str, 
-                         hashtags: List[str] = None,
-                         mentions: List[str] = None,
-                         links: List[str] = None,
-                         media_metadata: List[Dict[str, Any]] = None) -> ValidationResult:
+def validate_post_content(caption: str, platform: str,
+                         hashtags: list[str] = None,
+                         mentions: list[str] = None,
+                         links: list[str] = None,
+                         media_metadata: list[dict[str, Any]] = None) -> ValidationResult:
     """
     Validate post content against platform rules.
-    
+
     Args:
         caption: Post caption text
         platform: Target platform
@@ -868,7 +868,7 @@ def validate_post_content(caption: str, platform: str,
         mentions: List of mentions
         links: List of links
         media_metadata: List of media metadata dicts
-        
+
     Returns:
         Validation result
     """
@@ -877,7 +877,7 @@ def validate_post_content(caption: str, platform: str,
     if media_metadata:
         for meta in media_metadata:
             media.append(MediaMetadata(**meta))
-    
+
     content = PostContent(
         caption=caption,
         hashtags=hashtags or [],
@@ -886,44 +886,44 @@ def validate_post_content(caption: str, platform: str,
         media=media,
         platform=platform
     )
-    
+
     return preflight_rules_service.validate_post(content)
 
 
-def get_platform_publishing_limits(platform: str) -> Dict[str, Any]:
+def get_platform_publishing_limits(platform: str) -> dict[str, Any]:
     """Get publishing limits for a platform."""
     return preflight_rules_service.get_platform_limits(platform)
 
 
-def get_all_supported_platforms() -> List[str]:
+def get_all_supported_platforms() -> list[str]:
     """Get list of all supported platforms."""
     return preflight_rules_service.get_supported_platforms()
 
 
 # Advanced validation functions
-def validate_aspect_ratio_compliance(media: MediaMetadata, platform: str) -> List[RuleViolation]:
+def validate_aspect_ratio_compliance(media: MediaMetadata, platform: str) -> list[RuleViolation]:
     """
     Validate media aspect ratio compliance for platform.
-    
+
     Args:
         media: Media metadata to validate
         platform: Target platform
-        
+
     Returns:
         List of aspect ratio violations
     """
     violations = []
-    
+
     if not media.width or not media.height:
         return violations
-        
+
     rules = preflight_rules_service.get_platform_rules(platform)
     if not rules:
         return violations
-    
+
     # Calculate actual aspect ratio
     aspect_ratio = media.width / media.height
-    
+
     # Get supported aspect ratios for the platform
     media_rules = rules.get("media", {})
     if media.format and media.format.lower() in ['mp4', 'mov', 'avi']:
@@ -934,7 +934,7 @@ def validate_aspect_ratio_compliance(media: MediaMetadata, platform: str) -> Lis
         # Image rules
         image_rules = media_rules.get("image", {})
         supported_ratios = image_rules.get("supported_aspect_ratios", [])
-    
+
     if supported_ratios:
         # Convert ratio strings to floats and check compliance
         ratio_matches = False
@@ -942,12 +942,12 @@ def validate_aspect_ratio_compliance(media: MediaMetadata, platform: str) -> Lis
             if ':' in ratio_str:
                 width_ratio, height_ratio = map(float, ratio_str.split(':'))
                 expected_ratio = width_ratio / height_ratio
-                
+
                 # Allow some tolerance for floating point comparison
                 if abs(aspect_ratio - expected_ratio) < 0.01:
                     ratio_matches = True
                     break
-        
+
         if not ratio_matches:
             violations.append(RuleViolation(
                 type=ViolationType.MEDIA_WRONG_DIMENSIONS,
@@ -959,36 +959,36 @@ def validate_aspect_ratio_compliance(media: MediaMetadata, platform: str) -> Lis
                 limit_value=", ".join(supported_ratios),
                 suggestion=f"Resize media to supported aspect ratios: {', '.join(supported_ratios)}"
             ))
-    
+
     return violations
 
 
-def validate_business_compliance(content: PostContent, custom_rules: Dict[str, Any] = None) -> List[RuleViolation]:
+def validate_business_compliance(content: PostContent, custom_rules: dict[str, Any] = None) -> list[RuleViolation]:
     """
     Validate content against business compliance rules.
-    
+
     Args:
         content: Post content to validate
         custom_rules: Additional business rules to apply
-        
+
     Returns:
         List of business compliance violations
     """
     violations = []
-    
+
     rules = preflight_rules_service.get_platform_rules(content.platform)
     if not rules:
         return violations
-    
+
     content_rules = rules.get("content", {})
-    
+
     # Check for required words (brand mentions, etc.)
     required_words = content_rules.get("required_words", [])
     if custom_rules:
         required_words.extend(custom_rules.get("required_words", []))
-    
+
     caption_lower = content.caption.lower()
-    
+
     for required_word in required_words:
         if required_word.lower() not in caption_lower:
             violations.append(RuleViolation(
@@ -1001,18 +1001,18 @@ def validate_business_compliance(content: PostContent, custom_rules: Dict[str, A
                 limit_value=required_word,
                 suggestion=f"Include '{required_word}' in the caption"
             ))
-    
+
     # Advanced pattern matching for business rules
     business_patterns = content_rules.get("business_patterns", [])
     if custom_rules:
         business_patterns.extend(custom_rules.get("business_patterns", []))
-    
+
     for pattern_config in business_patterns:
         if isinstance(pattern_config, dict):
             pattern = pattern_config.get("pattern", "")
             severity = pattern_config.get("severity", "error")
             message = pattern_config.get("message", f"Content violates business pattern: {pattern}")
-            
+
             try:
                 if re.search(pattern, content.caption, re.IGNORECASE):
                     violations.append(RuleViolation(
@@ -1026,28 +1026,28 @@ def validate_business_compliance(content: PostContent, custom_rules: Dict[str, A
                     ))
             except re.error as e:
                 logger.warning(f"Invalid business pattern regex: {pattern}", error=str(e))
-    
+
     return violations
 
 
-def get_optimal_posting_times(platform: str) -> Dict[str, Any]:
+def get_optimal_posting_times(platform: str) -> dict[str, Any]:
     """
     Get optimal posting times for a platform.
-    
+
     Args:
         platform: Target platform
-        
+
     Returns:
         Dictionary with optimal posting times and recommendations
     """
     service = preflight_rules_service
     service._maybe_reload_rules()
-    
+
     business_rules = service.rules_cache.get("business", {})
     posting_windows = business_rules.get("posting_windows", {})
-    
+
     platform_windows = posting_windows.get(platform, {})
-    
+
     return {
         "platform": platform,
         "optimal_hours": platform_windows.get("optimal_hours", []),
@@ -1059,103 +1059,103 @@ def get_optimal_posting_times(platform: str) -> Dict[str, Any]:
     }
 
 
-def validate_content_quality(content: PostContent) -> Dict[str, Any]:
+def validate_content_quality(content: PostContent) -> dict[str, Any]:
     """
     Validate content quality using advanced checks.
-    
+
     Args:
         content: Post content to validate
-        
+
     Returns:
         Dictionary with quality metrics and recommendations
     """
     service = preflight_rules_service
     service._maybe_reload_rules()
-    
+
     quality_rules = service.rules_cache.get("quality_checks", {})
-    
+
     quality_result = {
         "overall_score": 0.0,
         "checks": {},
         "recommendations": []
     }
-    
+
     # Text analysis
     text_analysis = quality_rules.get("text_analysis", {})
     if text_analysis.get("enabled", False):
         text_checks = text_analysis.get("checks", [])
-        
+
         caption_text = content.caption.strip()
-        
+
         # Basic readability check
         if "readability_score" in text_checks:
             # Simple readability metric based on sentence length and word complexity
             sentences = caption_text.split('.')
             words = caption_text.split()
             avg_sentence_length = len(words) / max(len(sentences), 1)
-            
+
             readability_score = min(100, max(0, 100 - (avg_sentence_length - 10) * 2))
             quality_result["checks"]["readability"] = {
                 "score": readability_score,
                 "status": "good" if readability_score >= 70 else "needs_improvement",
                 "details": f"Average sentence length: {avg_sentence_length:.1f} words"
             }
-            
+
             if readability_score < 70:
                 quality_result["recommendations"].append(
                     "Consider shorter sentences for better readability"
                 )
-        
+
         # Grammar and spelling basic check
         if "grammar_check" in text_checks or "spelling_check" in text_checks:
             # Basic checks - in production this would integrate with services like Grammarly API
             has_typos = any(word in caption_text.lower() for word in ["teh", "adn", "youre", "its" "recieve"])
-            
+
             quality_result["checks"]["grammar"] = {
                 "status": "needs_review" if has_typos else "good",
                 "details": "Basic grammar check completed"
             }
-            
+
             if has_typos:
                 quality_result["recommendations"].append(
                     "Review text for potential spelling errors"
                 )
-    
+
     # Calculate overall score
-    scores = [check.get("score", 80) for check in quality_result["checks"].values() 
+    scores = [check.get("score", 80) for check in quality_result["checks"].values()
              if "score" in check]
     quality_result["overall_score"] = sum(scores) / len(scores) if scores else 75.0
-    
+
     return quality_result
 
 
-def get_platform_performance_insights(platform: str) -> Dict[str, Any]:
+def get_platform_performance_insights(platform: str) -> dict[str, Any]:
     """
     Get performance insights and recommendations for a platform.
-    
+
     Args:
         platform: Target platform
-        
+
     Returns:
         Dictionary with performance insights
     """
     service = preflight_rules_service
     service._maybe_reload_rules()
-    
+
     business_rules = service.rules_cache.get("business", {})
-    
+
     insights = {
         "platform": platform,
         "content_strategy": {},
         "posting_recommendations": {},
         "performance_factors": []
     }
-    
+
     # Content strategy insights
     content_strategy = business_rules.get("content_strategy", {})
     if content_strategy:
         hashtag_mixing = content_strategy.get("hashtag_mixing", {})
-        
+
         insights["content_strategy"] = {
             "hashtag_strategy": {
                 "popular_ratio": hashtag_mixing.get("popular_ratio", 0.3),
@@ -1169,12 +1169,12 @@ def get_platform_performance_insights(platform: str) -> Dict[str, Any]:
                 "recommendation": "Maintain consistent posting schedule without oversaturation"
             }
         }
-    
+
     # Platform-specific performance factors
     platform_rules = service.get_platform_rules(platform)
     if platform_rules:
         algorithm_rules = platform_rules.get("algorithm", {})
-        
+
         if platform == "tiktok" and algorithm_rules:
             insights["performance_factors"].extend([
                 "Use trending sounds for better algorithm visibility",
@@ -1182,7 +1182,7 @@ def get_platform_performance_insights(platform: str) -> Dict[str, Any]:
                 "Vertical (9:16) format performs best",
                 "15-30 second videos have highest engagement"
             ])
-        
+
         elif platform == "instagram":
             insights["performance_factors"].extend([
                 "Post during optimal hours (9-12, 17-20 UTC)",
@@ -1190,7 +1190,7 @@ def get_platform_performance_insights(platform: str) -> Dict[str, Any]:
                 "Square (1:1) or portrait (4:5) images perform well",
                 "Stories and Reels boost overall account reach"
             ])
-        
+
         elif platform == "youtube":
             insights["performance_factors"].extend([
                 "Custom thumbnails increase click-through rate",
@@ -1198,7 +1198,7 @@ def get_platform_performance_insights(platform: str) -> Dict[str, Any]:
                 "Consistent posting schedule builds audience",
                 "End screens and cards improve watch time"
             ])
-    
+
     return insights
 
 

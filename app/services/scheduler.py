@@ -9,25 +9,19 @@ This module provides:
 """
 
 import logging
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
-from pathlib import Path
 import random
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
 import pytz
 import yaml
-
 from celery import Celery
 from celery.schedules import crontab
 
 from ..core.config import settings
-from ..models.db import db_manager
-from ..models.entities import (
-    Post, PostStatus, Platform, Schedule, ContentQueue
-)
-from ..models.repositories import (
-    PostRepository, ScheduleRepository, ContentQueueRepository, UnitOfWork
-)
-
+from ..models.entities import ContentQueue, Platform, Post, PostStatus, Schedule
+from ..models.repositories import UnitOfWork
 
 logger = logging.getLogger(__name__)
 
@@ -39,25 +33,25 @@ class PublishingWindowManager:
         self.rules = self._load_rules(rules_path)
         self.timezone = pytz.timezone(settings.app.brand_timezone)
 
-    def _load_rules(self, path: str) -> Dict[str, Any]:
+    def _load_rules(self, path: str) -> dict[str, Any]:
         """Load publishing rules from YAML."""
         try:
             rules_file = Path(path)
             if rules_file.exists():
-                with open(rules_file, "r", encoding="utf-8") as f:
+                with open(rules_file, encoding="utf-8") as f:
                     return yaml.safe_load(f)
         except Exception as e:
             logger.warning(f"Failed to load publishing rules: {e}")
         return {}
 
-    def get_optimal_hours(self, platform: Platform) -> List[int]:
+    def get_optimal_hours(self, platform: Platform) -> list[int]:
         """Get optimal posting hours for a platform."""
         business = self.rules.get("business", {})
         windows = business.get("posting_windows", {})
         platform_windows = windows.get(platform.value, {})
         return platform_windows.get("optimal_hours", [9, 12, 17, 20])
 
-    def get_avoid_hours(self, platform: Platform) -> List[int]:
+    def get_avoid_hours(self, platform: Platform) -> list[int]:
         """Get hours to avoid for a platform."""
         business = self.rules.get("business", {})
         windows = business.get("posting_windows", {})
@@ -68,7 +62,7 @@ class PublishingWindowManager:
         self,
         platform: Platform,
         after: datetime = None,
-        exclude_slots: List[datetime] = None
+        exclude_slots: list[datetime] = None
     ) -> datetime:
         """Get next optimal publishing slot for a platform."""
         if after is None:
@@ -127,10 +121,10 @@ class ContentScheduler:
     def schedule_post(
         self,
         post_id: str,
-        platforms: List[Platform],
+        platforms: list[Platform],
         scheduled_at: datetime = None,
         use_optimal_window: bool = True
-    ) -> Dict[str, datetime]:
+    ) -> dict[str, datetime]:
         """Schedule a post for publishing to specified platforms."""
         scheduled_slots = {}
 
@@ -171,8 +165,8 @@ class ContentScheduler:
     def _get_scheduled_slots(
         self,
         uow: UnitOfWork,
-        platforms: List[Platform]
-    ) -> Dict[Platform, List[datetime]]:
+        platforms: list[Platform]
+    ) -> dict[Platform, list[datetime]]:
         """Get already scheduled slots for platforms."""
         result = {}
         for platform in platforms:
@@ -184,7 +178,7 @@ class ContentScheduler:
             result[platform] = [item.scheduled_for for item in items]
         return result
 
-    def get_next_posts_to_publish(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_next_posts_to_publish(self, limit: int = 10) -> list[dict[str, Any]]:
         """Get posts due for publishing."""
         with UnitOfWork() as uow:
             due_items = uow.queue.get_due_items(limit=limit)
@@ -198,7 +192,7 @@ class ContentScheduler:
                 for item in due_items
             ]
 
-    def process_scheduled_queue(self) -> Dict[str, int]:
+    def process_scheduled_queue(self) -> dict[str, int]:
         """Process scheduled queue and trigger publishing."""
         from ..workers.tasks.publish import publish_to_platforms
 
@@ -305,7 +299,7 @@ class ContentScheduler:
         logger.info(f"Rescheduled {rescheduled} failed items")
         return rescheduled
 
-    def get_queue_stats(self) -> Dict[str, Any]:
+    def get_queue_stats(self) -> dict[str, Any]:
         """Get current queue statistics."""
         with UnitOfWork() as uow:
             stats = uow.queue.get_queue_stats()
@@ -329,7 +323,7 @@ class ScheduleRunner:
     def __init__(self):
         self.scheduler = ContentScheduler()
 
-    def check_and_run_schedules(self) -> Dict[str, int]:
+    def check_and_run_schedules(self) -> dict[str, int]:
         """Check all active schedules and queue content."""
         stats = {"checked": 0, "queued": 0}
 
@@ -358,7 +352,7 @@ class ScheduleRunner:
         # Get posts matching schedule filters
         query = uow.posts.session.query(Post).filter(
             Post.status.in_([PostStatus.PREFLIGHT, PostStatus.CAPTIONIZED]),
-            Post.is_scheduled == False
+            not Post.is_scheduled
         )
 
         # Apply content filters
@@ -434,7 +428,7 @@ class ScheduleRunner:
 
 
 # Celery Beat schedule configuration
-def get_celery_beat_schedule() -> Dict[str, Dict[str, Any]]:
+def get_celery_beat_schedule() -> dict[str, dict[str, Any]]:
     """Generate Celery Beat schedule from configuration."""
     return {
         "process-scheduled-queue": {

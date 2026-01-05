@@ -7,25 +7,18 @@ This module handles intelligent media adaptation for different platforms:
 - Quality optimization per platform
 """
 
-import os
-import time
-import tempfile
 import asyncio
-from typing import Dict, Any, List
+import os
+import tempfile
+import time
 from pathlib import Path
+from typing import Any
 
-from ..celery_app import celery
-from ...core.logging import get_logger, with_logging_context
-from ...core.config import settings
-from ...observability.metrics import metrics
-from ...media.smart_media_adapter import (
-    smart_adapter,
-    adapt_for_platforms,
-    CropMode,
-    AdaptationResult,
-    PLATFORM_SPECS
-)
 from ...adapters.storage_s3 import s3_storage
+from ...core.logging import get_logger, with_logging_context
+from ...media.smart_media_adapter import PLATFORM_SPECS, AdaptationResult, CropMode, smart_adapter
+from ...observability.metrics import metrics
+from ..celery_app import celery
 
 logger = get_logger("tasks.transcode")
 
@@ -54,7 +47,7 @@ def run_async(coro):
 
 
 @celery.task(bind=True, name="app.workers.tasks.transcode.process_media")
-def process_media(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:
+def process_media(self, stage_data: dict[str, Any]) -> dict[str, Any]:
     """
     Process and transcode media files for different platforms.
 
@@ -195,9 +188,9 @@ def process_media(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:
 async def _adapt_media_for_platforms(
     input_path: str,
     output_dir: str,
-    platforms: List[str],
+    platforms: list[str],
     media_type: str
-) -> Dict[str, AdaptationResult]:
+) -> dict[str, AdaptationResult]:
     """Adapt media for multiple platforms using SmartMediaAdapter."""
     results = {}
 
@@ -293,10 +286,10 @@ def _upload_media(local_path: str, s3_key: str) -> str:
 
 
 def _trigger_next_stage(
-    stage_data: Dict[str, Any],
-    processed_media: Dict[str, Any],
+    stage_data: dict[str, Any],
+    processed_media: dict[str, Any],
     start_time: float
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Trigger next pipeline stage (preflight)."""
     processing_time = time.time() - start_time
     post_id = stage_data.get("post_id")
@@ -334,7 +327,7 @@ def adapt_single_media(
     platform: str,
     media_type: str = "image",
     format_type: str = "feed"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Adapt a single media file for a specific platform.
 
@@ -398,7 +391,7 @@ def adapt_single_media(
 
 
 @celery.task(bind=True, name="app.workers.tasks.transcode.get_platform_specs")
-def get_platform_specs(self, platform: str) -> Dict[str, Any]:
+def get_platform_specs(self, platform: str) -> dict[str, Any]:
     """Get media specifications for a platform."""
     specs = PLATFORM_SPECS.get(platform.lower(), {})
     return {

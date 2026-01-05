@@ -8,22 +8,17 @@ Provides endpoints for:
 - Dashboard statistics
 """
 
-from typing import Optional, List
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, func, and_, desc
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
+from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, IPvAnyAddress
 
-from .deps import get_db_async_session, get_current_user, require_admin
-from ..models.entities import (
-    User, FraudEvent, BlockedIP, RateLimitOverride,
-    FraudEventType, FraudRiskLevel
-)
-from ..services.antifraud import antifraud_service
 from ..core.logging import get_logger
+from ..models.entities import BlockedIP, FraudEvent, FraudEventType, FraudRiskLevel, RateLimitOverride, User
+from .deps import get_db_async_session, require_admin
 
 logger = get_logger("api.admin_fraud")
 
@@ -37,10 +32,10 @@ class FraudEventResponse(BaseModel):
     event_type: str
     risk_level: str
     score: float
-    user_id: Optional[UUID]
-    ip_address: Optional[str]
-    device_fingerprint: Optional[str]
-    details: Optional[dict]
+    user_id: UUID | None
+    ip_address: str | None
+    device_fingerprint: str | None
+    details: dict | None
     created_at: datetime
 
     class Config:
@@ -53,23 +48,23 @@ class FraudStatsResponse(BaseModel):
     blocked_ips_count: int
     events_by_type: dict
     events_by_risk: dict
-    top_ips: List[dict]
-    hourly_trend: List[dict]
+    top_ips: list[dict]
+    hourly_trend: list[dict]
 
 
 class BlockedIPCreate(BaseModel):
     ip_address: str
     reason: str
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 class BlockedIPResponse(BaseModel):
     id: UUID
     ip_address: str
     reason: str
-    blocked_by: Optional[UUID]
+    blocked_by: UUID | None
     blocked_at: datetime
-    expires_at: Optional[datetime]
+    expires_at: datetime | None
     is_active: bool
 
     class Config:
@@ -82,7 +77,7 @@ class RateLimitOverrideCreate(BaseModel):
     limit_per_minute: int
     limit_per_hour: int
     reason: str
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 class RateLimitOverrideResponse(BaseModel):
@@ -92,9 +87,9 @@ class RateLimitOverrideResponse(BaseModel):
     limit_per_minute: int
     limit_per_hour: int
     reason: str
-    created_by: Optional[UUID]
+    created_by: UUID | None
     created_at: datetime
-    expires_at: Optional[datetime]
+    expires_at: datetime | None
     is_active: bool
 
     class Config:
@@ -103,14 +98,14 @@ class RateLimitOverrideResponse(BaseModel):
 
 # ============ Fraud Events ============
 
-@router.get("/events", response_model=List[FraudEventResponse])
+@router.get("/events", response_model=list[FraudEventResponse])
 async def list_fraud_events(
-    event_type: Optional[FraudEventType] = None,
-    risk_level: Optional[FraudRiskLevel] = None,
-    ip_address: Optional[str] = None,
-    user_id: Optional[UUID] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    event_type: FraudEventType | None = None,
+    risk_level: FraudRiskLevel | None = None,
+    ip_address: str | None = None,
+    user_id: UUID | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
     limit: int = Query(default=50, le=200),
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_db_async_session),
@@ -204,7 +199,7 @@ async def get_fraud_stats(
 
     # Blocked IPs count
     blocked_query = select(func.count()).select_from(BlockedIP).where(
-        BlockedIP.is_active == True
+        BlockedIP.is_active
     )
     blocked_result = await db.execute(blocked_query)
     blocked_ips_count = blocked_result.scalar() or 0
@@ -290,7 +285,7 @@ async def get_fraud_stats(
 
 # ============ Blocked IPs ============
 
-@router.get("/blocked-ips", response_model=List[BlockedIPResponse])
+@router.get("/blocked-ips", response_model=list[BlockedIPResponse])
 async def list_blocked_ips(
     active_only: bool = True,
     limit: int = Query(default=50, le=200),
@@ -306,7 +301,7 @@ async def list_blocked_ips(
     query = select(BlockedIP)
 
     if active_only:
-        query = query.where(BlockedIP.is_active == True)
+        query = query.where(BlockedIP.is_active)
 
     query = query.order_by(desc(BlockedIP.blocked_at)).offset(offset).limit(limit)
 
@@ -330,7 +325,7 @@ async def block_ip(
         select(BlockedIP).where(
             and_(
                 BlockedIP.ip_address == data.ip_address,
-                BlockedIP.is_active == True
+                BlockedIP.is_active
             )
         )
     )
@@ -399,7 +394,7 @@ async def unblock_ip(
 
 # ============ Rate Limit Overrides ============
 
-@router.get("/rate-limits", response_model=List[RateLimitOverrideResponse])
+@router.get("/rate-limits", response_model=list[RateLimitOverrideResponse])
 async def list_rate_limit_overrides(
     active_only: bool = True,
     limit: int = Query(default=50, le=200),
@@ -415,7 +410,7 @@ async def list_rate_limit_overrides(
     query = select(RateLimitOverride)
 
     if active_only:
-        query = query.where(RateLimitOverride.is_active == True)
+        query = query.where(RateLimitOverride.is_active)
 
     query = query.order_by(desc(RateLimitOverride.created_at)).offset(offset).limit(limit)
 
@@ -441,7 +436,7 @@ async def create_rate_limit_override(
             and_(
                 RateLimitOverride.identifier == data.identifier,
                 RateLimitOverride.identifier_type == data.identifier_type,
-                RateLimitOverride.is_active == True
+                RateLimitOverride.is_active
             )
         )
     )

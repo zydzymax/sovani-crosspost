@@ -8,11 +8,10 @@ This module provides:
 - Default values and environment-specific overrides
 """
 
-from typing import Optional, List, Dict, Any
-from pathlib import Path
 import os
+from typing import Any
 
-from pydantic import Field, field_validator, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -143,12 +142,12 @@ class TelegramConfig(BaseSettings):
     bot_token: SecretStr = Field(default="")
     publishing_bot_token: SecretStr = Field(default="")
     admin_channel_id: str = Field(default="")
-    webhook_url: Optional[str] = Field(default=None)
+    webhook_url: str | None = Field(default=None)
 
     # Bot settings
     webhook_path: str = Field(default="/api/webhooks/telegram")
     max_connections: int = Field(default=100)
-    allowed_updates: List[str] = Field(
+    allowed_updates: list[str] = Field(
         default=["message", "channel_post", "edited_message"]
     )
 
@@ -181,8 +180,8 @@ class SocialMediaConfig(BaseSettings):
     youtube_redirect_uri: str = Field(default="", validation_alias="YOUTUBE_REDIRECT_URI")
 
     # Proxy settings for geo-restricted APIs
-    ig_proxy_url: Optional[str] = Field(default=None, validation_alias="IG_PROXY_URL")
-    tiktok_proxy_url: Optional[str] = Field(default=None, validation_alias="TIKTOK_PROXY_URL")
+    ig_proxy_url: str | None = Field(default=None, validation_alias="IG_PROXY_URL")
+    tiktok_proxy_url: str | None = Field(default=None, validation_alias="TIKTOK_PROXY_URL")
 
 
 class MediaConfig(BaseSettings):
@@ -195,10 +194,10 @@ class MediaConfig(BaseSettings):
 
     # File limits
     max_file_size_mb: int = Field(default=500, validation_alias="MAX_FILE_SIZE_MB")
-    supported_video_formats: List[str] = Field(
+    supported_video_formats: list[str] = Field(
         default=["mp4", "mov", "avi", "mkv"]
     )
-    supported_image_formats: List[str] = Field(
+    supported_image_formats: list[str] = Field(
         default=["jpg", "jpeg", "png", "webp"]
     )
 
@@ -235,7 +234,7 @@ class CeleryConfig(BaseSettings):
     retry_backoff_factor: int = Field(default=2, validation_alias="RETRY_BACKOFF_FACTOR")
 
     # Queue priorities
-    queue_priorities: Dict[str, int] = Field(
+    queue_priorities: dict[str, int] = Field(
         default={
             "ingest": 9,
             "enrich": 8,
@@ -380,7 +379,7 @@ class Settings:
             url = url.replace("postgresql://", "postgresql+asyncpg://")
         return url
 
-    def get_redis_url(self, db: Optional[int] = None) -> str:
+    def get_redis_url(self, db: int | None = None) -> str:
         """Get Redis URL with optional database number."""
         url = str(self.redis.redis_url)
         if db is not None:
@@ -388,7 +387,7 @@ class Settings:
             url = url.rsplit('/', 1)[0] + f'/{db}'
         return url
 
-    def get_s3_config(self) -> Dict[str, Any]:
+    def get_s3_config(self) -> dict[str, Any]:
         """Get S3 configuration as dictionary."""
         return {
             'endpoint_url': self.s3.endpoint,
@@ -417,15 +416,15 @@ if __name__ == "__main__":
     # Validate all configurations
     try:
         print("\n Configuration validation:")
-        print(f"  App config: OK")
-        print(f"  Database config: OK")
-        print(f"  Redis config: OK")
-        print(f"  S3 config: OK")
-        print(f"  Security config: OK")
+        print("  App config: OK")
+        print("  Database config: OK")
+        print("  Redis config: OK")
+        print("  S3 config: OK")
+        print("  Security config: OK")
         print(f"  Telegram config: {'OK' if settings.telegram.bot_token else 'Missing bot token'}")
         print(f"  Social media config: {'OK' if settings.social_media.vk_service_token else 'Missing tokens'}")
-        print(f"  Media config: OK")
-        print(f"  Celery config: OK")
+        print("  Media config: OK")
+        print("  Celery config: OK")
 
     except Exception as e:
         print(f"L Configuration error: {e}")
@@ -433,7 +432,6 @@ if __name__ == "__main__":
 
 def get_test_settings() -> Settings:
     """Get test-specific settings with overrides."""
-    import tempfile
 
     # Override with test values
     os.environ.update({

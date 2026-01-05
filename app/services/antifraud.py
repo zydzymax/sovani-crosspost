@@ -8,17 +8,14 @@ Provides protection against:
 """
 
 import hashlib
-import time
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple
-from enum import Enum
-from dataclasses import dataclass, field
-from collections import defaultdict
-import asyncio
 import json
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any
 
 from ..core.logging import get_logger
-from ..core.config import settings
 
 logger = get_logger("services.antifraud")
 
@@ -51,7 +48,7 @@ class FraudSignal:
     risk_level: FraudRiskLevel
     score: float  # 0.0 - 1.0
     description: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
 
@@ -61,9 +58,9 @@ class FraudCheckResult:
     passed: bool
     risk_level: FraudRiskLevel
     total_score: float
-    signals: List[FraudSignal]
+    signals: list[FraudSignal]
     action: str  # allow, challenge, block
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 @dataclass
@@ -73,7 +70,7 @@ class RateLimitResult:
     current_count: int
     limit: int
     reset_at: datetime
-    retry_after: Optional[int] = None
+    retry_after: int | None = None
 
 
 @dataclass
@@ -81,7 +78,7 @@ class TelegramTrustResult:
     """Result of Telegram account trust check."""
     score: float  # 0.0 - 1.0, higher = more trustworthy
     reason: str
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class AntifraudService:
@@ -99,7 +96,7 @@ class AntifraudService:
     def __init__(self, redis_client=None):
         """Initialize antifraud service."""
         self._redis = redis_client
-        self._local_cache: Dict[str, Any] = {}
+        self._local_cache: dict[str, Any] = {}
 
         # Configuration
         self.config = {
@@ -141,10 +138,10 @@ class AntifraudService:
         self,
         telegram_id: int,
         ip_address: str,
-        device_fingerprint: Optional[str] = None,
-        phone_hash: Optional[str] = None,
-        telegram_user_data: Optional[Dict[str, Any]] = None,
-        browser_data: Optional[Dict[str, Any]] = None
+        device_fingerprint: str | None = None,
+        phone_hash: str | None = None,
+        telegram_user_data: dict[str, Any] | None = None,
+        browser_data: dict[str, Any] | None = None
     ) -> FraudCheckResult:
         """
         Check if user is eligible for demo account.
@@ -157,7 +154,7 @@ class AntifraudService:
         5. IP address (least reliable, checked last)
         6. Cross-correlation analysis
         """
-        signals: List[FraudSignal] = []
+        signals: list[FraudSignal] = []
 
         # ===== LAYER 1: VPN/Proxy - STRICT BLOCK for demo =====
         is_vpn = await self._check_vpn_proxy(ip_address)
@@ -204,7 +201,7 @@ class AntifraudService:
                     fraud_type=FraudType.DEVICE_FINGERPRINT,
                     risk_level=FraudRiskLevel.CRITICAL,
                     score=0.95,
-                    description=f"Device already used for demo",
+                    description="Device already used for demo",
                     metadata={"device_count": device_count}
                 ))
             else:
@@ -255,8 +252,8 @@ class AntifraudService:
         self,
         telegram_id: int,
         ip_address: str,
-        device_fingerprint: Optional[str] = None,
-        phone_hash: Optional[str] = None
+        device_fingerprint: str | None = None,
+        phone_hash: str | None = None
     ):
         """Register demo account usage for future checks."""
         timestamp = datetime.utcnow().isoformat()
@@ -303,10 +300,10 @@ class AntifraudService:
         user_id: str,
         amount: float,
         currency: str,
-        card_bin: Optional[str] = None,
-        card_country: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        email: Optional[str] = None
+        card_bin: str | None = None,
+        card_country: str | None = None,
+        ip_address: str | None = None,
+        email: str | None = None
     ) -> FraudCheckResult:
         """
         Check payment for fraud risk.
@@ -318,7 +315,7 @@ class AntifraudService:
         - Amount anomalies
         - Velocity checks
         """
-        signals: List[FraudSignal] = []
+        signals: list[FraudSignal] = []
 
         # Check high-risk countries
         if card_country and card_country.upper() in self.config["high_risk_countries"]:
@@ -425,7 +422,7 @@ class AntifraudService:
         self,
         identifier: str,
         tier: str = "anonymous",
-        endpoint: Optional[str] = None
+        endpoint: str | None = None
     ) -> RateLimitResult:
         """
         Check if request is within rate limits.
@@ -497,7 +494,7 @@ class AntifraudService:
         self,
         user_agent: str,
         ip_address: str,
-        request_patterns: Optional[List[Dict]] = None
+        request_patterns: list[dict] | None = None
     ) -> FraudSignal:
         """
         Detect bot or automated activity.
@@ -561,7 +558,7 @@ class AntifraudService:
 
     def _calculate_result(
         self,
-        signals: List[FraudSignal],
+        signals: list[FraudSignal],
         force_block: bool = False
     ) -> FraudCheckResult:
         """Calculate final fraud check result from signals."""
@@ -643,7 +640,7 @@ class AntifraudService:
             return int(count) if count else 0
         return 0
 
-    async def _get_previous_demo(self, telegram_id: int) -> Optional[datetime]:
+    async def _get_previous_demo(self, telegram_id: int) -> datetime | None:
         """Get previous demo registration date."""
         if self._redis:
             key = f"antifraud:demo:telegram:{telegram_id}"
@@ -655,7 +652,7 @@ class AntifraudService:
     async def _check_telegram_trust(
         self,
         telegram_id: int,
-        user_data: Dict[str, Any]
+        user_data: dict[str, Any]
     ) -> "TelegramTrustResult":
         """
         Calculate trust score for Telegram account.
@@ -738,8 +735,8 @@ class AntifraudService:
     async def _find_similar_fingerprints(
         self,
         fingerprint: str,
-        browser_data: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+        browser_data: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         """
         Find similar device fingerprints using fuzzy matching.
 
@@ -781,8 +778,8 @@ class AntifraudService:
 
     def _calculate_fingerprint_similarity(
         self,
-        fp1: Dict[str, Any],
-        fp2: Dict[str, Any]
+        fp1: dict[str, Any],
+        fp2: dict[str, Any]
     ) -> int:
         """Calculate similarity percentage between two fingerprints."""
         components = [
@@ -815,9 +812,9 @@ class AntifraudService:
 
     def _get_matching_components(
         self,
-        fp1: Dict[str, Any],
-        fp2: Dict[str, Any]
-    ) -> List[str]:
+        fp1: dict[str, Any],
+        fp2: dict[str, Any]
+    ) -> list[str]:
         """Get list of matching fingerprint components."""
         components = [
             "screen_resolution", "timezone", "language", "platform",
@@ -835,9 +832,9 @@ class AntifraudService:
         self,
         telegram_id: int,
         ip_address: str,
-        device_fingerprint: Optional[str],
-        phone_hash: Optional[str]
-    ) -> List[FraudSignal]:
+        device_fingerprint: str | None,
+        phone_hash: str | None
+    ) -> list[FraudSignal]:
         """
         Cross-correlation analysis to detect fraud patterns.
 
@@ -949,14 +946,14 @@ class AntifraudService:
             return count
         return 0
 
-    async def _get_registration_ip(self, user_id: str) -> Optional[str]:
+    async def _get_registration_ip(self, user_id: str) -> str | None:
         """Get user's registration IP."""
         if self._redis:
             key = f"antifraud:registration_ip:{user_id}"
             return await self._redis.get(key)
         return None
 
-    async def _get_ip_country(self, ip_address: str) -> Optional[str]:
+    async def _get_ip_country(self, ip_address: str) -> str | None:
         """Get country from IP. Would use geoip service in production."""
         # Placeholder
         return "RU"

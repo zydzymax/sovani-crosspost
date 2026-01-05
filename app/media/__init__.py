@@ -7,41 +7,38 @@ This module provides intelligent media adaptation for social platforms:
 - Platform specifications and quality presets
 """
 
-from .smart_media_adapter import (
-    SmartMediaAdapter,
-    smart_adapter,
-    adapt_image_for_platform,
-    adapt_video_for_platform,
-    adapt_for_platforms,
-    CropMode,
-    AdaptationResult,
-    RegionOfInterest,
-    PLATFORM_SPECS,
-)
-
 from .ffmpeg_wrapper import (
-    FFmpegWrapper,
-    ffmpeg_wrapper,
     AspectRatio,
-    ConversionStrategy,
-    QualityProfile,
     ConversionParams,
     ConversionResult,
-    convert_to_aspect_ratio,
+    ConversionStrategy,
+    FFmpegWrapper,
+    QualityProfile,
     convert_for_platform,
+    convert_to_aspect_ratio,
+    ffmpeg_wrapper,
     get_video_info,
 )
-
 from .smart_crop_stub import (
-    SmartCropStub,
-    smart_crop_stub,
-    CropStrategy,
     ContentType,
+    CropStrategy,
+    SmartCropStub,
     analyze_for_smart_crop,
     get_platform_strategy,
     get_smart_crop_info,
+    smart_crop_stub,
 )
-
+from .smart_media_adapter import (
+    PLATFORM_SPECS,
+    AdaptationResult,
+    CropMode,
+    RegionOfInterest,
+    SmartMediaAdapter,
+    adapt_for_platforms,
+    adapt_image_for_platform,
+    adapt_video_for_platform,
+    smart_adapter,
+)
 
 __all__ = [
     # Smart Media Adapter

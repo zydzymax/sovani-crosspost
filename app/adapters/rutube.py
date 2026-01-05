@@ -1,22 +1,21 @@
 """RuTube API adapter for Crosspost."""
 
 import asyncio
+import hashlib
 import mimetypes
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
-import hashlib
+from pathlib import Path
+from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
 from ..core.logging import get_logger, with_logging_context
 from ..observability.metrics import metrics
-
 
 logger = get_logger("adapters.rutube")
 
@@ -84,8 +83,8 @@ class RuTubeVideo:
     category: VideoCategory = VideoCategory.ENTERTAINMENT
     is_hidden: bool = False
     is_adult: bool = False
-    scheduled_publish_time: Optional[datetime] = None
-    tags: List[str] = None
+    scheduled_publish_time: datetime | None = None
+    tags: list[str] = None
 
     def __post_init__(self):
         if self.tags is None:
@@ -95,13 +94,13 @@ class RuTubeVideo:
 @dataclass
 class RuTubePublishResult:
     """Result of RuTube video publishing."""
-    video_id: Optional[str]
+    video_id: str | None
     status: VideoStatus
     message: str
-    video_url: Optional[str] = None
-    embed_url: Optional[str] = None
-    published_at: Optional[datetime] = None
-    error_code: Optional[str] = None
+    video_url: str | None = None
+    embed_url: str | None = None
+    published_at: datetime | None = None
+    error_code: str | None = None
 
 
 class RuTubeAdapter:
@@ -210,7 +209,7 @@ class RuTubeAdapter:
                     error_code=getattr(e, 'error_code', None)
                 )
 
-    async def _init_upload(self, video: RuTubeVideo) -> Dict[str, Any]:
+    async def _init_upload(self, video: RuTubeVideo) -> dict[str, Any]:
         """Initialize upload session and get upload URL."""
         file_path = Path(video.file_path)
 
@@ -261,7 +260,7 @@ class RuTubeAdapter:
                 hash_md5.update(chunk)
         return hash_md5.hexdigest()
 
-    async def _upload_file(self, upload_info: Dict[str, Any], file_path: str):
+    async def _upload_file(self, upload_info: dict[str, Any], file_path: str):
         """Upload file to RuTube upload server."""
         upload_url = upload_info["upload_url"]
         file_content = upload_info.get("file_content")
@@ -289,7 +288,7 @@ class RuTubeAdapter:
 
         logger.info("File uploaded to RuTube successfully")
 
-    async def _create_video(self, upload_info: Dict[str, Any], video: RuTubeVideo) -> RuTubePublishResult:
+    async def _create_video(self, upload_info: dict[str, Any], video: RuTubeVideo) -> RuTubePublishResult:
         """Create video entry with metadata."""
         video_id = upload_info["video_id"]
 
@@ -308,7 +307,7 @@ class RuTubeAdapter:
         if video.scheduled_publish_time:
             metadata["publication_ts"] = int(video.scheduled_publish_time.timestamp())
 
-        response = await self._make_api_request(
+        await self._make_api_request(
             f"/video/{video_id}/",
             method="PATCH",
             json_data=metadata
@@ -328,7 +327,7 @@ class RuTubeAdapter:
             published_at=None  # Will be set when processing completes
         )
 
-    async def get_video_status(self, video_id: str) -> Dict[str, Any]:
+    async def get_video_status(self, video_id: str) -> dict[str, Any]:
         """Get video processing status."""
         response = await self._make_api_request(
             f"/video/{video_id}/",
@@ -362,7 +361,7 @@ class RuTubeAdapter:
             logger.error(f"Failed to delete RuTube video: {e}", video_id=video_id)
             return False
 
-    async def get_channel_videos(self, limit: int = 20, offset: int = 0) -> Dict[str, Any]:
+    async def get_channel_videos(self, limit: int = 20, offset: int = 0) -> dict[str, Any]:
         """Get list of channel videos."""
         response = await self._make_api_request(
             "/video/person/",
@@ -433,8 +432,8 @@ class RuTubeAdapter:
         retry=retry_if_exception_type((httpx.RequestError, RuTubeRateLimitError))
     )
     async def _make_api_request(self, endpoint: str, method: str = "GET",
-                                 params: Dict[str, Any] = None,
-                                 json_data: Dict[str, Any] = None) -> Dict[str, Any]:
+                                 params: dict[str, Any] = None,
+                                 json_data: dict[str, Any] = None) -> dict[str, Any]:
         """Make API request to RuTube."""
         await self._check_rate_limits()
 
@@ -490,7 +489,7 @@ async def upload_rutube_video(
     title: str,
     description: str = "",
     category: VideoCategory = VideoCategory.ENTERTAINMENT,
-    tags: List[str] = None,
+    tags: list[str] = None,
     is_hidden: bool = False,
     scheduled_time: datetime = None,
     api_key: str = None,

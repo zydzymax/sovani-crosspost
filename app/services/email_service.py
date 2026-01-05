@@ -4,15 +4,13 @@ Email service for sending authentication codes and notifications.
 Uses aiosmtplib for async email delivery via SMTP.
 """
 
-import asyncio
 import logging
 from dataclasses import dataclass
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Optional
+from email.mime.text import MIMEText
 
 import aiosmtplib
-from jinja2 import Environment, BaseLoader
+from jinja2 import BaseLoader, Environment
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +178,7 @@ class EmailService:
         to_email: str,
         product_name: str,
         plan_name: str,
-        expires_at: Optional[str] = None
+        expires_at: str | None = None
     ) -> bool:
         """Send subscription activation email."""
         subject = f"Подписка {product_name} активирована — SalesWhisper"
@@ -203,7 +201,7 @@ class EmailService:
         to_email: str,
         subject: str,
         html: str,
-        text: Optional[str] = None
+        text: str | None = None
     ) -> bool:
         """Send email via SMTP."""
         try:
@@ -253,7 +251,7 @@ class EmailService:
 
 
 # Singleton instance (will be initialized with config)
-_email_service: Optional[EmailService] = None
+_email_service: EmailService | None = None
 
 
 def get_email_service() -> EmailService:

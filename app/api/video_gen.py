@@ -1,17 +1,18 @@
 """Video Generation API routes."""
 
-from typing import Optional, List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.entities import User, VideoGenTask, VideoGenStatus, VideoGenProvider
-from ..services.video_gen_runway import RunwayService, AspectRatio as RunwayAspectRatio
-from ..services.video_gen_kling import KlingService, KlingModel, AspectRatio as KlingAspectRatio, VideoDuration
-from ..services.video_gen_minimax import MinimaxService, MinimaxModel
+from ..models.entities import User, VideoGenProvider, VideoGenStatus, VideoGenTask
+from ..services.video_gen_kling import AspectRatio as KlingAspectRatio
+from ..services.video_gen_kling import KlingService, VideoDuration
+from ..services.video_gen_minimax import MinimaxService
+from ..services.video_gen_runway import AspectRatio as RunwayAspectRatio
+from ..services.video_gen_runway import RunwayService
 from .deps import get_current_user, get_db_async_session
 
 router = APIRouter(prefix="/video-gen", tags=["video-generation"])
@@ -40,10 +41,10 @@ class VideoTaskResponse(BaseModel):
     status: str
     prompt: str
     duration_seconds: int
-    video_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
+    video_url: str | None = None
+    thumbnail_url: str | None = None
     cost_estimate: float
-    error: Optional[str] = None
+    error: str | None = None
     created_at: str
 
 
@@ -288,7 +289,7 @@ async def get_task_status(
     )
 
 
-@router.get("/tasks", response_model=List[VideoTaskResponse])
+@router.get("/tasks", response_model=list[VideoTaskResponse])
 async def list_tasks(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_async_session),

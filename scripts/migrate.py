@@ -9,14 +9,14 @@ Usage:
 """
 
 import sys
-import os
 from pathlib import Path
 
 # Add the app directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "app"))
 
-from app.models.db import init_database, migration_manager, db_manager
 import logging
+
+from app.models.db import db_manager, init_database, migration_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,31 +28,31 @@ logger = logging.getLogger(__name__)
 def main():
     """Main migration script."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Database migration utility for SalesWhisper Crosspost"
     )
     parser.add_argument(
-        "--init", 
-        action="store_true", 
+        "--init",
+        action="store_true",
         help="Initialize database and run migrations"
     )
     parser.add_argument(
-        "--check", 
-        action="store_true", 
+        "--check",
+        action="store_true",
         help="Check database health"
     )
     parser.add_argument(
         "--verbose", "-v",
-        action="store_true", 
+        action="store_true",
         help="Verbose logging"
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    
+
     try:
         if args.check:
             logger.info("Checking database health...")
@@ -63,7 +63,7 @@ def main():
             else:
                 logger.error("❌ Database health check failed")
                 return 1
-        
+
         elif args.init:
             logger.info("Initializing database and running migrations...")
             success = init_database()
@@ -73,7 +73,7 @@ def main():
             else:
                 logger.error("❌ Database initialization failed")
                 return 1
-        
+
         else:
             logger.info("Running database migrations...")
             success = migration_manager.run_migrations()
@@ -83,7 +83,7 @@ def main():
             else:
                 logger.error("❌ Migration failed")
                 return 1
-    
+
     except Exception as e:
         logger.error(f"❌ Unexpected error: {e}")
         if args.verbose:

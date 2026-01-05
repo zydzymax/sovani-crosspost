@@ -5,18 +5,15 @@ Allows users to add SaaS products/plans to cart before checkout.
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import settings
 from ..core.logging import get_logger
-from .deps import get_db_async_session, get_current_user
-from ..models.entities import User, Cart, SaaSProduct, SaaSProductPlan, PromoCode
+from ..models.entities import Cart, PromoCode, SaaSProduct, SaaSProductPlan, User
+from .deps import get_current_user, get_db_async_session
 
 logger = get_logger("api.cart")
 
@@ -44,11 +41,11 @@ class CartItemResponse(BaseModel):
 
 class CartResponse(BaseModel):
     """Full cart response."""
-    items: List[CartItemResponse]
+    items: list[CartItemResponse]
     subtotal_rub: float
     discount_rub: float = 0
-    promo_code: Optional[str] = None
-    promo_description: Optional[str] = None
+    promo_code: str | None = None
+    promo_description: str | None = None
     total_rub: float
 
 
@@ -96,7 +93,7 @@ async def calculate_cart_total(db: AsyncSession, cart: Cart) -> tuple[Decimal, D
         result = await db.execute(
             select(PromoCode).where(
                 PromoCode.code == cart.promo_code,
-                PromoCode.is_active == True
+                PromoCode.is_active
             )
         )
         promo = result.scalar_one_or_none()
@@ -169,7 +166,7 @@ async def add_to_cart(
     result = await db.execute(
         select(SaaSProduct).where(
             SaaSProduct.code == item.product_code,
-            SaaSProduct.is_active == True
+            SaaSProduct.is_active
         )
     )
     product = result.scalar_one_or_none()
@@ -185,7 +182,7 @@ async def add_to_cart(
         select(SaaSProductPlan).where(
             SaaSProductPlan.product_id == product.id,
             SaaSProductPlan.code == item.plan_code,
-            SaaSProductPlan.is_active == True
+            SaaSProductPlan.is_active
         )
     )
     plan = result.scalar_one_or_none()
@@ -326,7 +323,7 @@ async def apply_promo_code(
     result = await db.execute(
         select(PromoCode).where(
             PromoCode.code == code,
-            PromoCode.is_active == True
+            PromoCode.is_active
         )
     )
     promo = result.scalar_one_or_none()

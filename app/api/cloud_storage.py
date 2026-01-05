@@ -10,22 +10,25 @@ Provides endpoints for:
 """
 
 from datetime import datetime
-from typing import Optional, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.logging import get_logger
 from ..core.config import settings
-from .deps import get_db_session, get_current_user
+from ..core.logging import get_logger
 from ..models.entities import (
-    User, CloudProvider, CloudConnectionStatus,
-    CloudStorageConnection, CloudSyncedFile, MediaType
+    CloudConnectionStatus,
+    CloudProvider,
+    CloudStorageConnection,
+    CloudSyncedFile,
+    MediaType,
+    User,
 )
 from ..services.cloud_storage import cloud_storage_service
+from .deps import get_current_user, get_db_session
 
 logger = get_logger("api.cloud_storage")
 
@@ -44,10 +47,10 @@ class ConnectCloudRequest(BaseModel):
 class ConnectCloudResponse(BaseModel):
     """Response for cloud connection."""
     success: bool
-    connection_id: Optional[str] = None
-    oauth_url: Optional[str] = None
+    connection_id: str | None = None
+    oauth_url: str | None = None
     message: str
-    folder_info: Optional[dict] = None
+    folder_info: dict | None = None
 
 
 class OAuthCallbackRequest(BaseModel):
@@ -60,20 +63,20 @@ class CloudConnectionResponse(BaseModel):
     """Cloud connection details."""
     id: str
     provider: str
-    folder_name: Optional[str]
-    folder_url: Optional[str]
+    folder_name: str | None
+    folder_url: str | None
     status: str
     is_public: bool
     sync_enabled: bool
-    last_sync_at: Optional[datetime]
+    last_sync_at: datetime | None
     files_synced_total: int
-    error_message: Optional[str]
+    error_message: str | None
     created_at: datetime
 
 
 class CloudConnectionsListResponse(BaseModel):
     """List of cloud connections."""
-    connections: List[CloudConnectionResponse]
+    connections: list[CloudConnectionResponse]
     total: int
 
 
@@ -81,23 +84,23 @@ class SyncTriggerResponse(BaseModel):
     """Sync trigger response."""
     success: bool
     message: str
-    task_id: Optional[str] = None
+    task_id: str | None = None
 
 
 class CloudFileResponse(BaseModel):
     """Synced file info."""
     id: str
     cloud_file_name: str
-    cloud_file_path: Optional[str]
+    cloud_file_path: str | None
     media_type: str
-    cloud_file_size: Optional[int]
+    cloud_file_size: int | None
     is_synced: bool
-    last_synced_at: Optional[datetime]
+    last_synced_at: datetime | None
 
 
 class CloudFilesListResponse(BaseModel):
     """List of synced files."""
-    files: List[CloudFileResponse]
+    files: list[CloudFileResponse]
     total: int
     page: int
     page_size: int
@@ -107,17 +110,17 @@ class FolderStructureResponse(BaseModel):
     """Expected folder structure guide."""
     description: str
     structure: dict
-    supported_video_formats: List[str]
-    supported_image_formats: List[str]
-    tips: List[str]
+    supported_video_formats: list[str]
+    supported_image_formats: list[str]
+    tips: list[str]
 
 
 class UpdateConnectionRequest(BaseModel):
     """Update connection settings."""
-    sync_enabled: Optional[bool] = None
-    sync_videos: Optional[bool] = None
-    sync_photos: Optional[bool] = None
-    sync_interval_minutes: Optional[int] = None
+    sync_enabled: bool | None = None
+    sync_videos: bool | None = None
+    sync_photos: bool | None = None
+    sync_interval_minutes: int | None = None
 
 
 # ==================== ROUTES ====================
@@ -150,7 +153,7 @@ async def connect_cloud_storage(
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid provider. Supported: google_drive, yandex_disk"
+            detail="Invalid provider. Supported: google_drive, yandex_disk"
         )
 
     # Extract folder ID from URL
@@ -191,7 +194,7 @@ async def connect_cloud_storage(
     await db.refresh(connection)
 
     logger.info(
-        f"Cloud connection created",
+        "Cloud connection created",
         user_id=str(current_user.id),
         provider=provider.value,
         connection_id=str(connection.id),
@@ -333,7 +336,7 @@ async def oauth_callback(
     await db.commit()
 
     logger.info(
-        f"OAuth callback successful",
+        "OAuth callback successful",
         connection_id=str(connection.id),
         provider=connection.provider.value
     )
@@ -490,7 +493,7 @@ async def delete_connection(
     await db.commit()
 
     logger.info(
-        f"Cloud connection deleted",
+        "Cloud connection deleted",
         connection_id=str(connection_id),
         user_id=str(current_user.id)
     )
@@ -531,7 +534,7 @@ async def trigger_sync(
         task = sync_cloud_connection.delay(str(connection_id))
 
         logger.info(
-            f"Sync task queued",
+            "Sync task queued",
             connection_id=str(connection_id),
             task_id=task.id
         )
@@ -554,7 +557,7 @@ async def list_synced_files(
     connection_id: UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    media_type: Optional[str] = Query(None, description="Filter by media type: video or image"),
+    media_type: str | None = Query(None, description="Filter by media type: video or image"),
     db: AsyncSession = Depends(get_db_session),
     current_user: User = Depends(get_current_user)
 ):

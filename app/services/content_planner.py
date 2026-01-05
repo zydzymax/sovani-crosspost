@@ -12,19 +12,18 @@ Pricing (per plan):
 
 import json
 import os
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict
-from enum import Enum
 import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from enum import Enum
+from typing import Any
 
-import openai
 import httpx
+import openai
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
 from ..core.logging import get_logger
-
 
 logger = get_logger("services.content_planner")
 
@@ -54,14 +53,14 @@ class PlannedPost:
     time: str  # HH:MM
     topic: str
     caption_draft: str
-    hashtags: List[str]
-    platforms: List[str]
+    hashtags: list[str]
+    platforms: list[str]
     media_type: MediaType
-    image_prompt: Optional[str] = None
-    video_prompt: Optional[str] = None
-    call_to_action: Optional[str] = None
-    content_pillar: Optional[str] = None  # Educational, Entertaining, Promotional, etc.
-    engagement_hook: Optional[str] = None  # First line hook for attention
+    image_prompt: str | None = None
+    video_prompt: str | None = None
+    call_to_action: str | None = None
+    content_pillar: str | None = None  # Educational, Entertaining, Promotional, etc.
+    engagement_hook: str | None = None  # First line hook for attention
 
 
 @dataclass
@@ -73,11 +72,11 @@ class ContentPlanResult:
     duration_days: int
     posts_per_day: int
     tone: str
-    platforms: List[str]
-    posts: List[PlannedPost]
+    platforms: list[str]
+    posts: list[PlannedPost]
     total_posts: int
     generation_cost_usd: float = 0.0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # Pricing constants
@@ -267,12 +266,12 @@ class ContentPlannerService:
         niche: str,
         duration_days: int = 7,
         posts_per_day: int = 1,
-        platforms: List[str] = None,
+        platforms: list[str] = None,
         tone: Tone = Tone.PROFESSIONAL,
         target_audience: str = None,
         brand_guidelines: str = None,
-        exclude_topics: List[str] = None,
-        preferred_posting_times: List[str] = None
+        exclude_topics: list[str] = None,
+        preferred_posting_times: list[str] = None
     ) -> ContentPlanResult:
         """
         Generate content plan using two-stage AI pipeline.
@@ -384,13 +383,13 @@ class ContentPlannerService:
         niche: str,
         duration_days: int,
         posts_per_day: int,
-        platforms: List[str],
+        platforms: list[str],
         tone: Tone,
         target_audience: str,
         brand_guidelines: str,
-        exclude_topics: List[str],
-        preferred_posting_times: List[str]
-    ) -> Dict[str, Any]:
+        exclude_topics: list[str],
+        preferred_posting_times: list[str]
+    ) -> dict[str, Any]:
         """Stage 1: Generate initial plan using o1-mini (GPT-5 reasoning)."""
         total_posts = duration_days * posts_per_day
         start_date = datetime.now()
@@ -478,11 +477,11 @@ class ContentPlannerService:
     )
     async def _stage2_review_with_claude(
         self,
-        raw_plan: Dict[str, Any],
+        raw_plan: dict[str, Any],
         niche: str,
         tone: Tone,
-        platforms: List[str]
-    ) -> Dict[str, Any]:
+        platforms: list[str]
+    ) -> dict[str, Any]:
         """Stage 2: Review and improve plan using Claude."""
 
         if not self.anthropic_key:
@@ -547,10 +546,10 @@ class ContentPlannerService:
 
     def _parse_posts(
         self,
-        plan_data: Dict[str, Any],
-        platforms: List[str],
-        preferred_posting_times: List[str]
-    ) -> List[PlannedPost]:
+        plan_data: dict[str, Any],
+        platforms: list[str],
+        preferred_posting_times: list[str]
+    ) -> list[PlannedPost]:
         """Parse plan data into PlannedPost objects."""
         posts_data = plan_data.get("posts", plan_data.get("plan", []))
         if isinstance(posts_data, dict):
@@ -709,7 +708,7 @@ async def generate_content_plan(
     niche: str,
     duration_days: int = 7,
     posts_per_day: int = 1,
-    platforms: List[str] = None,
+    platforms: list[str] = None,
     tone: str = "professional"
 ) -> ContentPlanResult:
     """Generate content plan using two-stage AI pipeline."""
@@ -723,7 +722,7 @@ async def generate_content_plan(
     )
 
 
-def get_content_plan_price(duration_days: int = 7, posts_per_day: int = 1) -> Dict[str, float]:
+def get_content_plan_price(duration_days: int = 7, posts_per_day: int = 1) -> dict[str, float]:
     """
     Calculate content plan price.
 

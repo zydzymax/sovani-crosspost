@@ -1,22 +1,13 @@
 """Text-to-Speech API routes."""
 
-from typing import Optional, List
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.entities import User
-from ..services.tts_openai import (
-    OpenAITTSService,
-    TTSVoice,
-    TTSModel,
-    AudioFormat,
-    TTSResult
-)
-from .deps import get_current_user, get_db_async_session
+from ..services.tts_openai import AudioFormat, OpenAITTSService, TTSModel, TTSVoice
+from .deps import get_current_user
 
 router = APIRouter(prefix="/tts", tags=["text-to-speech"])
 
@@ -45,7 +36,7 @@ class TTSResponse(BaseModel):
     success: bool
     character_count: int
     cost_estimate: float
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @router.post("/generate", response_class=Response)

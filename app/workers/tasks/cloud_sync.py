@@ -8,33 +8,26 @@ This module handles:
 - Managing sync status and error handling
 """
 
-import time
 import os
-from typing import Dict, Any, Optional, List
+import time
 from datetime import datetime, timedelta
+from typing import Any
 from uuid import UUID
 
-from celery import current_task
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-from ..celery_app import celery
 from ...core.logging import get_logger, with_logging_context
-from ...core.config import settings
 from ...models.db import db_manager
-from ...models.entities import (
-    CloudStorageConnection, CloudConnectionStatus, CloudSyncedFile,
-    CloudProvider, MediaType as DBMediaType
-)
+from ...models.entities import CloudConnectionStatus, CloudStorageConnection, CloudSyncedFile
+from ...models.entities import MediaType as DBMediaType
 from ...services.cloud_storage import cloud_storage_service
-from ...adapters.google_drive import MediaType
-from ...observability.metrics import metrics
+from ..celery_app import celery
 
 logger = get_logger("tasks.cloud_sync")
 
 
 @celery.task(bind=True, name="app.workers.tasks.cloud_sync.sync_cloud_connection")
-def sync_cloud_connection(self, connection_id: str) -> Dict[str, Any]:
+def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
     """
     Sync a single cloud storage connection.
 
@@ -237,7 +230,7 @@ def sync_cloud_connection(self, connection_id: str) -> Dict[str, Any]:
 
 
 @celery.task(bind=True, name="app.workers.tasks.cloud_sync.sync_all_connections")
-def sync_all_connections(self) -> Dict[str, Any]:
+def sync_all_connections(self) -> dict[str, Any]:
     """
     Sync all active cloud storage connections.
 
@@ -261,7 +254,7 @@ def sync_all_connections(self) -> Dict[str, Any]:
                 result = await session.execute(
                     select(CloudStorageConnection).where(
                         CloudStorageConnection.status == CloudConnectionStatus.ACTIVE,
-                        CloudStorageConnection.sync_enabled == True
+                        CloudStorageConnection.sync_enabled
                     )
                 )
                 connections = result.scalars().all()
@@ -329,7 +322,7 @@ def sync_all_connections(self) -> Dict[str, Any]:
 
 
 @celery.task(bind=True, name="app.workers.tasks.cloud_sync.process_synced_file")
-def process_synced_file(self, synced_file_id: str) -> Dict[str, Any]:
+def process_synced_file(self, synced_file_id: str) -> dict[str, Any]:
     """
     Process a synced file through the media adapter.
 
