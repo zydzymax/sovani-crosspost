@@ -1,5 +1,5 @@
 """
-Instagram Graph API adapter for SoVAni Crosspost.
+Instagram Graph API adapter for SalesWhisper Crosspost.
 
 This module handles Instagram publishing through the Instagram Graph API,
 including container creation, media upload, and publishing workflows.
@@ -122,7 +122,7 @@ class InstagramAdapter:
             timeout=httpx.Timeout(30.0),
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
             headers={
-                "User-Agent": "SoVAni-Crosspost/1.0"
+                "User-Agent": "SalesWhisper-Crosspost/1.0"
             }
         )
         
@@ -556,7 +556,7 @@ class InstagramAdapter:
         
         # Mock URL for testing
         file_name = Path(file_path).name
-        return f"https://cdn.sovani.ru/uploads/{file_name}"
+        return f"https://cdn.saleswhisper.ru/uploads/{file_name}"
     
     @retry(
         stop=stop_after_attempt(3),

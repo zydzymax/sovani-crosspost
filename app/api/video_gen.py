@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from ..models.entities import User, VideoGenTask, VideoGenStatus, VideoGenProvider
-from ..services.video_gen_runway import RunwayService, RunwayVideoResult, AspectRatio
+from ..services.video_gen_runway import RunwayService, AspectRatio as RunwayAspectRatio
+from ..services.video_gen_kling import KlingService, KlingModel, AspectRatio as KlingAspectRatio, VideoDuration
+from ..services.video_gen_minimax import MinimaxService, MinimaxModel
 from .deps import get_current_user, get_db_async_session
 
 router = APIRouter(prefix="/video-gen", tags=["video-generation"])
@@ -21,6 +23,7 @@ class TextToVideoRequest(BaseModel):
     prompt: str = Field(..., min_length=10, max_length=1000, description="Video description")
     duration: int = Field(5, ge=5, le=10, description="Duration in seconds (5 or 10)")
     aspect_ratio: str = Field("16:9", description="Aspect ratio (16:9, 9:16, 1:1)")
+    provider: str = Field("kling", description="Provider: kling, minimax, runway")
 
 
 class ImageToVideoRequest(BaseModel):
@@ -28,6 +31,7 @@ class ImageToVideoRequest(BaseModel):
     image_url: str = Field(..., description="Source image URL")
     prompt: str = Field("", max_length=500, description="Optional motion guidance")
     duration: int = Field(5, ge=5, le=10, description="Duration in seconds")
+    provider: str = Field("kling", description="Provider: kling, minimax, runway")
 
 
 class VideoTaskResponse(BaseModel):
@@ -50,6 +54,14 @@ async def generate_video_from_text(
     db: AsyncSession = Depends(get_db_async_session)
 ):
     """Generate video from text prompt."""
+    # Validate provider
+    valid_providers = ["kling", "minimax", "runway"]
+    if request.provider not in valid_providers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid provider. Valid options: {valid_providers}"
+        )
+
     # Validate aspect ratio
     valid_ratios = ["16:9", "9:16", "1:1"]
     if request.aspect_ratio not in valid_ratios:
@@ -58,10 +70,17 @@ async def generate_video_from_text(
             detail=f"Invalid aspect ratio. Valid options: {valid_ratios}"
         )
 
+    # Map provider string to enum
+    provider_map = {
+        "kling": VideoGenProvider.KLING,
+        "minimax": VideoGenProvider.MINIMAX,
+        "runway": VideoGenProvider.RUNWAY
+    }
+
     # Create task record
     task = VideoGenTask(
         user_id=current_user.id,
-        provider=VideoGenProvider.RUNWAY,
+        provider=provider_map[request.provider],
         prompt=request.prompt,
         duration_seconds=request.duration,
         status=VideoGenStatus.PENDING
@@ -70,20 +89,38 @@ async def generate_video_from_text(
     await db.commit()
     await db.refresh(task)
 
-    # Start generation
+    # Start generation based on provider
     try:
-        service = RunwayService()
-        aspect = AspectRatio(request.aspect_ratio)
-
-        # Update status
         task.status = VideoGenStatus.GENERATING
         await db.commit()
 
-        result = await service.generate_video_from_text(
-            prompt=request.prompt,
-            duration=request.duration,
-            aspect_ratio=aspect
-        )
+        if request.provider == "kling":
+            service = KlingService()
+            duration = VideoDuration.SHORT if request.duration <= 5 else VideoDuration.LONG
+            aspect = KlingAspectRatio(request.aspect_ratio)
+            result = await service.generate_from_text(
+                prompt=request.prompt,
+                duration=duration,
+                aspect_ratio=aspect
+            )
+            await service.close()
+
+        elif request.provider == "minimax":
+            service = MinimaxService()
+            result = await service.generate_from_text(
+                prompt=request.prompt
+            )
+            await service.close()
+
+        else:  # runway
+            service = RunwayService()
+            aspect = RunwayAspectRatio(request.aspect_ratio)
+            result = await service.generate_video_from_text(
+                prompt=request.prompt,
+                duration=request.duration,
+                aspect_ratio=aspect
+            )
+            await service.close()
 
         # Update task with result
         if result.success:
@@ -98,8 +135,6 @@ async def generate_video_from_text(
 
         await db.commit()
         await db.refresh(task)
-
-        await service.close()
 
     except Exception as e:
         task.status = VideoGenStatus.FAILED
@@ -127,10 +162,25 @@ async def generate_video_from_image(
     db: AsyncSession = Depends(get_db_async_session)
 ):
     """Generate video from image."""
+    # Validate provider
+    valid_providers = ["kling", "minimax", "runway"]
+    if request.provider not in valid_providers:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid provider. Valid options: {valid_providers}"
+        )
+
+    # Map provider string to enum
+    provider_map = {
+        "kling": VideoGenProvider.KLING,
+        "minimax": VideoGenProvider.MINIMAX,
+        "runway": VideoGenProvider.RUNWAY
+    }
+
     # Create task record
     task = VideoGenTask(
         user_id=current_user.id,
-        provider=VideoGenProvider.RUNWAY,
+        provider=provider_map[request.provider],
         prompt=request.prompt or "animate this image",
         source_image_url=request.image_url,
         duration_seconds=request.duration,
@@ -140,18 +190,37 @@ async def generate_video_from_image(
     await db.commit()
     await db.refresh(task)
 
-    # Start generation
+    # Start generation based on provider
     try:
-        service = RunwayService()
-
         task.status = VideoGenStatus.GENERATING
         await db.commit()
 
-        result = await service.generate_video_from_image(
-            image_url=request.image_url,
-            prompt=request.prompt,
-            duration=request.duration
-        )
+        if request.provider == "kling":
+            service = KlingService()
+            duration = VideoDuration.SHORT if request.duration <= 5 else VideoDuration.LONG
+            result = await service.generate_from_image(
+                image_url=request.image_url,
+                prompt=request.prompt,
+                duration=duration
+            )
+            await service.close()
+
+        elif request.provider == "minimax":
+            service = MinimaxService()
+            result = await service.generate_from_image(
+                image_url=request.image_url,
+                prompt=request.prompt
+            )
+            await service.close()
+
+        else:  # runway
+            service = RunwayService()
+            result = await service.generate_video_from_image(
+                image_url=request.image_url,
+                prompt=request.prompt,
+                duration=request.duration
+            )
+            await service.close()
 
         if result.success:
             task.status = VideoGenStatus.COMPLETED
@@ -165,8 +234,6 @@ async def generate_video_from_image(
 
         await db.commit()
         await db.refresh(task)
-
-        await service.close()
 
     except Exception as e:
         task.status = VideoGenStatus.FAILED
@@ -258,13 +325,36 @@ async def get_video_providers():
     return {
         "providers": [
             {
+                "id": "kling",
+                "name": "Kling AI",
+                "description": "Kling 2.0 - высококачественная генерация видео",
+                "cost_per_video_5s": 0.25,
+                "cost_per_video_10s": 0.50,
+                "max_duration": 10,
+                "features": ["text-to-video", "image-to-video"],
+                "aspect_ratios": ["16:9", "9:16", "1:1"],
+                "recommended": True
+            },
+            {
+                "id": "minimax",
+                "name": "MiniMax Hailuo",
+                "description": "Hailuo Video-01 - кинематографическое качество",
+                "cost_per_video": 0.28,
+                "max_duration": 6,
+                "features": ["text-to-video", "image-to-video"],
+                "aspect_ratios": ["16:9"],
+                "recommended": True
+            },
+            {
                 "id": "runway",
                 "name": "Runway ML",
-                "description": "Gen-3 Alpha text-to-video and image-to-video",
+                "description": "Gen-3 Alpha - быстрая генерация",
                 "cost_per_second": 0.15,
                 "max_duration": 10,
                 "features": ["text-to-video", "image-to-video"],
-                "aspect_ratios": ["16:9", "9:16", "1:1"]
+                "aspect_ratios": ["16:9", "9:16", "1:1"],
+                "recommended": False,
+                "note": "Требуется платная подписка для API"
             }
         ]
     }

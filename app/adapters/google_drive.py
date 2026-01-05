@@ -1,5 +1,5 @@
 """
-Google Drive Adapter for SoVAni Crosspost.
+Google Drive Adapter for SalesWhisper Crosspost.
 
 Provides integration with Google Drive for fetching user media files.
 Users share a folder with the service and media is automatically synced.

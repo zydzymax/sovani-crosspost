@@ -1,5 +1,5 @@
 """
-Yandex Disk Adapter for SoVAni Crosspost.
+Yandex Disk Adapter for SalesWhisper Crosspost.
 
 Provides integration with Yandex Disk for fetching user media files.
 Users share a folder with the service and media is automatically synced.

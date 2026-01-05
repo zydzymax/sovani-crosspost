@@ -110,7 +110,7 @@ curl http://localhost:8003/api/v1/health
 curl http://localhost:8003/api/v1/ready
 
 # Database
-PGPASSWORD=your_pass psql -h localhost -p 5433 -U sovani -d sovani_crosspost -c "SELECT 1"
+PGPASSWORD=your_pass psql -h localhost -p 5433 -U saleswhisper -d saleswhisper_crosspost -c "SELECT 1"
 
 # Redis
 redis-cli -p 6380 ping
@@ -136,10 +136,10 @@ pm2 logs crosspost-worker
 ### Database
 ```bash
 # Backup
-PGPASSWORD=your_pass pg_dump -h localhost -p 5433 -U sovani sovani_crosspost > backup.sql
+PGPASSWORD=your_pass pg_dump -h localhost -p 5433 -U saleswhisper saleswhisper_crosspost > backup.sql
 
 # Restore
-PGPASSWORD=your_pass psql -h localhost -p 5433 -U sovani sovani_crosspost < backup.sql
+PGPASSWORD=your_pass psql -h localhost -p 5433 -U saleswhisper saleswhisper_crosspost < backup.sql
 ```
 
 ### MinIO/S3
@@ -160,7 +160,7 @@ mc mirror local/media-bucket /backup/media/
 ### API not starting
 ```bash
 # Check logs
-docker logs sovani_api
+docker logs saleswhisper_api
 
 # Check dependencies
 docker compose ps
@@ -178,8 +178,8 @@ docker compose restart worker
 ### Database connection issues
 ```bash
 # Check PostgreSQL
-docker exec -it sovani_postgres pg_isready
+docker exec -it saleswhisper_postgres pg_isready
 
 # Check connection from API
-docker exec -it sovani_api python -c "from app.models.db import db_manager; print(db_manager.health_check())"
+docker exec -it saleswhisper_api python -c "from app.models.db import db_manager; print(db_manager.health_check())"
 ```

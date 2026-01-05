@@ -422,3 +422,253 @@ async def regenerate_post(
     await db.refresh(plan)
 
     return PlannedPostResponse(**plan.plan_data[request.post_index])
+
+
+# ==================== MANUAL UPLOAD ====================
+
+class ManualPostUpload(BaseModel):
+    """Single post for manual upload."""
+    date: str = Field(..., description="Post date YYYY-MM-DD")
+    time: str = Field("12:00", description="Post time HH:MM")
+    topic: str = Field(..., min_length=2, description="Post topic")
+    caption: str = Field(..., min_length=10, description="Post caption/text")
+    hashtags: Optional[List[str]] = Field(default=[], description="Hashtags")
+    platforms: List[str] = Field(default=["telegram"], description="Target platforms")
+    media_type: str = Field("IMAGE", description="IMAGE, VIDEO, CAROUSEL, TEXT_ONLY")
+    image_prompt: Optional[str] = Field(None, description="Prompt for AI image generation")
+    media_url: Optional[str] = Field(None, description="URL to existing media")
+
+
+class ManualPlanUpload(BaseModel):
+    """Manual content plan upload."""
+    name: str = Field(..., min_length=2, max_length=100, description="Plan name")
+    niche: str = Field("custom", description="Business niche")
+    tone: str = Field("professional", description="Content tone")
+    posts: List[ManualPostUpload] = Field(..., min_length=1, description="Posts list")
+
+
+class UploadFromCSVRequest(BaseModel):
+    """CSV content for upload."""
+    csv_content: str = Field(..., description="CSV content with columns: date,time,topic,caption,hashtags,platforms,media_type")
+    name: str = Field(..., min_length=2, description="Plan name")
+    niche: str = Field("custom", description="Business niche")
+
+
+@router.post("/upload", response_model=ContentPlanResponse)
+async def upload_plan(
+    request: ManualPlanUpload,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_async_session)
+):
+    """Upload content plan manually (JSON)."""
+    from datetime import datetime
+    
+    # Validate platforms
+    valid_platforms = ["telegram", "vk", "instagram", "facebook", "tiktok", "youtube", "rutube"]
+    valid_media_types = ["IMAGE", "VIDEO", "CAROUSEL", "TEXT_ONLY"]
+    
+    posts_data = []
+    for post in request.posts:
+        # Validate platforms
+        for platform in post.platforms:
+            if platform.lower() not in valid_platforms:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid platform: {platform}"
+                )
+        
+        # Validate media type
+        if post.media_type.upper() not in valid_media_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid media_type: {post.media_type}. Valid: {valid_media_types}"
+            )
+        
+        # Parse date to get day of week
+        try:
+            date_obj = datetime.strptime(post.date, "%Y-%m-%d")
+            day_of_week = date_obj.strftime("%A")
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid date format: {post.date}. Use YYYY-MM-DD"
+            )
+        
+        posts_data.append({
+            "date": post.date,
+            "day_of_week": day_of_week,
+            "time": post.time,
+            "topic": post.topic,
+            "caption_draft": post.caption,
+            "hashtags": post.hashtags or [],
+            "platforms": [p.lower() for p in post.platforms],
+            "media_type": post.media_type.upper(),
+            "image_prompt": post.image_prompt,
+            "media_url": post.media_url,
+            "call_to_action": None
+        })
+    
+    # Calculate duration
+    dates = [datetime.strptime(p["date"], "%Y-%m-%d") for p in posts_data]
+    duration_days = (max(dates) - min(dates)).days + 1 if dates else 1
+    
+    # Create plan
+    plan = ContentPlan(
+        user_id=current_user.id,
+        niche=request.niche,
+        duration_days=duration_days,
+        posts_per_day=len(posts_data) // duration_days if duration_days > 0 else len(posts_data),
+        tone=request.tone,
+        platforms=list(set(p for post in posts_data for p in post["platforms"])),
+        plan_data=posts_data,
+        status=ContentPlanStatus.DRAFT
+    )
+    
+    db.add(plan)
+    await db.commit()
+    await db.refresh(plan)
+    
+    return ContentPlanResponse(
+        id=str(plan.id),
+        niche=plan.niche,
+        duration_days=plan.duration_days,
+        posts_per_day=plan.posts_per_day,
+        tone=plan.tone,
+        platforms=plan.platforms,
+        status=plan.status.value,
+        posts=[PlannedPostResponse(
+            date=p["date"],
+            day_of_week=p["day_of_week"],
+            time=p["time"],
+            topic=p["topic"],
+            caption_draft=p["caption_draft"],
+            hashtags=p["hashtags"],
+            platforms=p["platforms"],
+            media_type=p["media_type"],
+            image_prompt=p.get("image_prompt"),
+            call_to_action=p.get("call_to_action")
+        ) for p in plan.plan_data],
+        total_posts=len(plan.plan_data),
+        posts_created=0,
+        posts_published=0
+    )
+
+
+@router.post("/upload-csv", response_model=ContentPlanResponse)
+async def upload_plan_from_csv(
+    request: UploadFromCSVRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_async_session)
+):
+    """Upload content plan from CSV format.
+    
+    CSV columns: date,time,topic,caption,hashtags,platforms,media_type
+    Example:
+    2025-01-01,10:00,New Year Sale,Happy New Year! 🎉,#newyear #sale,telegram|instagram,IMAGE
+    """
+    import csv
+    from io import StringIO
+    from datetime import datetime
+    
+    try:
+        reader = csv.DictReader(StringIO(request.csv_content))
+        posts_data = []
+        
+        required_columns = ["date", "topic", "caption"]
+        
+        for row in reader:
+            # Check required columns
+            for col in required_columns:
+                if col not in row or not row[col]:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Missing required column: {col}"
+                    )
+            
+            # Parse date
+            try:
+                date_obj = datetime.strptime(row["date"].strip(), "%Y-%m-%d")
+                day_of_week = date_obj.strftime("%A")
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid date format: {row['date']}. Use YYYY-MM-DD"
+                )
+            
+            # Parse hashtags (comma or space separated)
+            hashtags_raw = row.get("hashtags", "")
+            hashtags = [h.strip() for h in hashtags_raw.replace(",", " ").split() if h.strip()]
+            
+            # Parse platforms (pipe or comma separated)
+            platforms_raw = row.get("platforms", "telegram")
+            platforms = [p.strip().lower() for p in platforms_raw.replace("|", ",").split(",") if p.strip()]
+            
+            posts_data.append({
+                "date": row["date"].strip(),
+                "day_of_week": day_of_week,
+                "time": row.get("time", "12:00").strip(),
+                "topic": row["topic"].strip(),
+                "caption_draft": row["caption"].strip(),
+                "hashtags": hashtags,
+                "platforms": platforms,
+                "media_type": row.get("media_type", "IMAGE").strip().upper(),
+                "image_prompt": row.get("image_prompt", "").strip() or None,
+                "call_to_action": row.get("call_to_action", "").strip() or None
+            })
+        
+        if not posts_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid posts found in CSV"
+            )
+        
+    except csv.Error as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"CSV parsing error: {str(e)}"
+        )
+    
+    # Calculate duration
+    dates = [datetime.strptime(p["date"], "%Y-%m-%d") for p in posts_data]
+    duration_days = (max(dates) - min(dates)).days + 1 if dates else 1
+    
+    # Create plan
+    plan = ContentPlan(
+        user_id=current_user.id,
+        niche=request.niche,
+        duration_days=duration_days,
+        posts_per_day=len(posts_data) // duration_days if duration_days > 0 else len(posts_data),
+        tone="custom",
+        platforms=list(set(p for post in posts_data for p in post["platforms"])),
+        plan_data=posts_data,
+        status=ContentPlanStatus.DRAFT
+    )
+    
+    db.add(plan)
+    await db.commit()
+    await db.refresh(plan)
+    
+    return ContentPlanResponse(
+        id=str(plan.id),
+        niche=plan.niche,
+        duration_days=plan.duration_days,
+        posts_per_day=plan.posts_per_day,
+        tone=plan.tone,
+        platforms=plan.platforms,
+        status=plan.status.value,
+        posts=[PlannedPostResponse(
+            date=p["date"],
+            day_of_week=p["day_of_week"],
+            time=p["time"],
+            topic=p["topic"],
+            caption_draft=p["caption_draft"],
+            hashtags=p["hashtags"],
+            platforms=p["platforms"],
+            media_type=p["media_type"],
+            image_prompt=p.get("image_prompt"),
+            call_to_action=p.get("call_to_action")
+        ) for p in plan.plan_data],
+        total_posts=len(plan.plan_data),
+        posts_created=0,
+        posts_published=0
+    )

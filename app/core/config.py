@@ -1,5 +1,5 @@
 """
-Configuration management for SoVAni Crosspost.
+Configuration management for SalesWhisper Crosspost.
 
 This module provides:
 - Pydantic Settings for environment variable loading
@@ -25,7 +25,7 @@ class DatabaseConfig(BaseSettings):
     )
 
     database_url: str = Field(
-        default="postgresql://sovani:sovani_pass@localhost:5432/sovani_crosspost",
+        default="postgresql://saleswhisper:saleswhisper_pass@localhost:5432/saleswhisper_crosspost",
         validation_alias="DATABASE_URL",
         description="PostgreSQL database connection URL"
     )
@@ -76,7 +76,7 @@ class S3Config(BaseSettings):
     endpoint: str = Field(default="http://localhost:9000")
     access_key: str = Field(default="minioadmin")
     secret_key: SecretStr = Field(default="minioadmin123")
-    bucket_name: str = Field(default="sovani-media")
+    bucket_name: str = Field(default="saleswhisper-media")
     region: str = Field(default="us-east-1")
 
     # Upload settings
@@ -257,7 +257,7 @@ class AppConfig(BaseSettings):
     )
 
     # App metadata
-    app_name: str = Field(default="SoVAni Crosspost", validation_alias="APP_NAME")
+    app_name: str = Field(default="SalesWhisper Crosspost", validation_alias="APP_NAME")
     version: str = Field(default="1.0.0", validation_alias="APP_VERSION")
     environment: str = Field(default="development", validation_alias="ENVIRONMENT")
     debug: bool = Field(default=True, validation_alias="DEBUG")
@@ -271,8 +271,8 @@ class AppConfig(BaseSettings):
     api_rate_limit_per_minute: int = Field(default=100, validation_alias="API_RATE_LIMIT_PER_MINUTE")
 
     # Brand settings
-    brand_name: str = Field(default="SoVAni", validation_alias="BRAND_NAME")
-    brand_handle: str = Field(default="@sovani_official", validation_alias="BRAND_HANDLE")
+    brand_name: str = Field(default="SalesWhisper", validation_alias="BRAND_NAME")
+    brand_handle: str = Field(default="@saleswhisper_official", validation_alias="BRAND_HANDLE")
     brand_timezone: str = Field(default="Europe/Moscow", validation_alias="BRAND_TZ")
 
     # Logging
@@ -304,6 +304,59 @@ class AppConfig(BaseSettings):
         return self.environment == 'production'
 
 
+class EmailConfig(BaseSettings):
+    """Email/SMTP configuration for notifications and auth codes."""
+    model_config = SettingsConfigDict(
+        env_prefix="SMTP_",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+    host: str = Field(default="smtp.yandex.ru", validation_alias="SMTP_HOST")
+    port: int = Field(default=465, validation_alias="SMTP_PORT")
+    user: str = Field(default="", validation_alias="SMTP_USER")
+    password: SecretStr = Field(default="", validation_alias="SMTP_PASSWORD")
+    from_email: str = Field(
+        default="SalesWhisper <auth@saleswhisper.pro>",
+        validation_alias="SMTP_FROM"
+    )
+    use_ssl: bool = Field(default=True, validation_alias="SMTP_USE_SSL")
+    timeout: int = Field(default=30, validation_alias="SMTP_TIMEOUT")
+
+    # Auth code settings
+    auth_code_ttl: int = Field(default=300, description="Auth code TTL in seconds")
+    auth_code_length: int = Field(default=6, description="Auth code length")
+
+
+class PaymentConfig(BaseSettings):
+    """Payment provider configuration (Tochka Bank)."""
+    model_config = SettingsConfigDict(
+        env_prefix="PAYMENT_",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+    provider: str = Field(default="tochka", validation_alias="PAYMENT_PROVIDER")
+    merchant_id: str = Field(default="", validation_alias="TOCHKA_MERCHANT_ID")
+    secret_key: SecretStr = Field(default="", validation_alias="TOCHKA_SECRET_KEY")
+    api_url: str = Field(
+        default="https://api.tochka.com",
+        validation_alias="TOCHKA_API_URL"
+    )
+    callback_url: str = Field(
+        default="https://crosspost.saleswhisper.pro/api/v1/checkout/webhook/tochka",
+        validation_alias="TOCHKA_CALLBACK_URL"
+    )
+    success_url: str = Field(
+        default="https://saleswhisper.pro/payment/success",
+        validation_alias="PAYMENT_SUCCESS_URL"
+    )
+    fail_url: str = Field(
+        default="https://saleswhisper.pro/payment/fail",
+        validation_alias="PAYMENT_FAIL_URL"
+    )
+
+
 class Settings:
     """Main settings container with all configuration sections."""
 
@@ -317,6 +370,8 @@ class Settings:
         self.social_media = SocialMediaConfig()
         self.media = MediaConfig()
         self.celery = CeleryConfig()
+        self.email = EmailConfig()
+        self.payment = PaymentConfig()
 
     def get_database_url(self, async_driver: bool = False) -> str:
         """Get database URL with optional async driver."""
@@ -352,7 +407,7 @@ settings = Settings()
 if __name__ == "__main__":
     """Example usage and configuration validation."""
 
-    print("=' SoVAni Crosspost Configuration")
+    print("=' SalesWhisper Crosspost Configuration")
     print(f"Environment: {settings.app.environment}")
     print(f"Debug mode: {settings.app.debug}")
     print(f"Database URL: {settings.get_database_url()}")

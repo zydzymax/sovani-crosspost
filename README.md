@@ -1,6 +1,6 @@
-# SoVAni Crosspost
+# SalesWhisper Crosspost
 
-[![CI](https://github.com/zydzymax/sovani-crosspost/actions/workflows/ci.yml/badge.svg)](https://github.com/zydzymax/sovani-crosspost/actions/workflows/ci.yml)
+[![CI](https://github.com/zydzymax/saleswhisper-crosspost/actions/workflows/ci.yml/badge.svg)](https://github.com/zydzymax/saleswhisper-crosspost/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -38,7 +38,7 @@
 ```bash
 # 1. Клонирование и переход в директорию
 git clone <repository-url>
-cd sovani_crosspost
+cd saleswhisper_crosspost
 
 # 2. Настройка переменных окружения
 cp .env.example .env
@@ -58,7 +58,7 @@ docker-compose ps
 
 - **API**: http://localhost:8000/docs (Swagger UI)
 - **MinIO Console**: http://localhost:9001 (admin/minioadmin123)
-- **PostgreSQL**: localhost:5432 (sovani/sovani_pass)
+- **PostgreSQL**: localhost:5432 (saleswhisper/saleswhisper_pass)
 - **Redis**: localhost:6379
 
 ## Миграции базы данных
@@ -177,7 +177,7 @@ docker-compose exec worker celery -A app.workers.celery_app events
 3. **Ошибки подключения к MinIO**
    ```bash
    # Создание bucket вручную
-   docker-compose exec minio mc mb local/sovani-media
+   docker-compose exec minio mc mb local/saleswhisper-media
    ```
 
 4. **Проблемы с правами доступа**

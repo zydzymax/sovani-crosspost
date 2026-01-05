@@ -1,5 +1,5 @@
 [project]
-name = "sovani-crosspost"
+name = "saleswhisper-crosspost"
 version = "0.1.0"
 description = "Crosspost Backend API - multi-platform social media posting"
 readme = "README.md"

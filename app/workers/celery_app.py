@@ -1,5 +1,5 @@
 """
-Celery application configuration for SoVAni Crosspost.
+Celery application configuration for SalesWhisper Crosspost.
 
 This module provides:
 - Celery application instance with proper configuration
@@ -42,7 +42,7 @@ def make_celery() -> Celery:
     
     # Create Celery instance
     celery_app = Celery(
-        "sovani_crosspost",
+        "saleswhisper_crosspost",
         broker=settings.get_redis_url(db=settings.redis.celery_broker_db),
         backend=settings.get_redis_url(db=settings.redis.celery_backend_db),
         include=[

@@ -1,5 +1,5 @@
 """
-Smart Media Adapter for SoVAni Crosspost.
+Smart Media Adapter for SalesWhisper Crosspost.
 
 Intelligent content adaptation for social media platforms:
 - Face-aware cropping (keeps faces in frame)

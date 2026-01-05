@@ -1,5 +1,5 @@
 """
-Preflight Rules Service for SoVAni Crosspost.
+Preflight Rules Service for SalesWhisper Crosspost.
 
 This module loads and validates publishing rules for different platforms,
 ensuring content meets platform requirements before publishing.

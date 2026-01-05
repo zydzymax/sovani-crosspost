@@ -3,7 +3,7 @@
 ## ШАГ 1: НА MAC - ПОДГОТОВКА (скопировать и выполнить)
 
 ```bash
-cd /Users/fbi/sovani_crosspost
+cd /Users/fbi/saleswhisper_crosspost
 
 # Обновляем существующий .env файл для продакшн
 cp .env .env.backup
@@ -19,10 +19,10 @@ ENVIRONMENT=production
 DEBUG=false
 
 # Database Configuration для Docker
-DATABASE_URL=postgresql://sovani:sovani_production_pass@postgres:5432/sovani_crosspost
-POSTGRES_DB=sovani_crosspost
-POSTGRES_USER=sovani
-POSTGRES_PASSWORD=sovani_production_pass
+DATABASE_URL=postgresql://saleswhisper:saleswhisper_production_pass@postgres:5432/saleswhisper_crosspost
+POSTGRES_DB=saleswhisper_crosspost
+POSTGRES_USER=saleswhisper
+POSTGRES_PASSWORD=saleswhisper_production_pass
 POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
 
@@ -41,16 +41,16 @@ SECRET_KEY=$(openssl rand -hex 32)
 EOF
 
 # Создаем архив
-tar -czf sovani_crosspost_production.tar.gz --exclude='*.pyc' --exclude='.git' --exclude='venv' --exclude='node_modules' --exclude='*.log' .
+tar -czf saleswhisper_crosspost_production.tar.gz --exclude='*.pyc' --exclude='.git' --exclude='venv' --exclude='node_modules' --exclude='*.log' .
 
 echo "✅ Архив создан. Теперь замените YOUR_VPS_IP на реальный IP и выполните:"
-echo "scp sovani_crosspost_production.tar.gz root@YOUR_VPS_IP:/root/"
+echo "scp saleswhisper_crosspost_production.tar.gz root@YOUR_VPS_IP:/root/"
 ```
 
 ## ШАГ 2: ПЕРЕДАЧА НА VPS (замените YOUR_VPS_IP)
 
 ```bash
-scp sovani_crosspost_production.tar.gz root@YOUR_VPS_IP:/root/
+scp saleswhisper_crosspost_production.tar.gz root@YOUR_VPS_IP:/root/
 ```
 
 ## ШАГ 3: НА VPS - УСТАНОВКА ВСЕГО (одной командой)
@@ -64,22 +64,22 @@ curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh && rm get
 curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && \
 chmod +x /usr/local/bin/docker-compose && \
 apt install -y nginx certbot python3-certbot-nginx ufw && \
-useradd -m -s /bin/bash sovani && \
-usermod -aG docker sovani && \
+useradd -m -s /bin/bash saleswhisper && \
+usermod -aG docker saleswhisper && \
 cd /root && \
-tar -xzf sovani_crosspost_production.tar.gz && \
-mv /root/sovani_crosspost /home/sovani/crosspost_app && \
-mkdir -p /home/sovani/{data/{postgres,redis,minio},logs,backups} && \
-chown -R sovani:sovani /home/sovani && \
+tar -xzf saleswhisper_crosspost_production.tar.gz && \
+mv /root/saleswhisper_crosspost /home/saleswhisper/crosspost_app && \
+mkdir -p /home/saleswhisper/{data/{postgres,redis,minio},logs,backups} && \
+chown -R saleswhisper:saleswhisper /home/saleswhisper && \
 echo "✅ Установка завершена!"
 ```
 
 ## ШАГ 4: ЗАПУСК ПРОЕКТА
 
 ```bash
-# Переключаемся на пользователя sovani и запускаем
-su - sovani
-cd /home/sovani/crosspost_app
+# Переключаемся на пользователя saleswhisper и запускаем
+su - saleswhisper
+cd /home/saleswhisper/crosspost_app
 docker-compose up -d
 sleep 60
 docker-compose ps
@@ -92,7 +92,7 @@ exit
 
 ```bash
 # Создаем конфигурацию Nginx (замените your-domain.com)
-cat > /etc/nginx/sites-available/sovani-crosspost << 'EOF'
+cat > /etc/nginx/sites-available/saleswhisper-crosspost << 'EOF'
 server {
     listen 80;
     server_name your-domain.com www.your-domain.com;
@@ -119,7 +119,7 @@ server {
 }
 EOF
 
-ln -s /etc/nginx/sites-available/sovani-crosspost /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/saleswhisper-crosspost /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl restart nginx
@@ -133,29 +133,29 @@ systemctl enable nginx
 certbot --nginx -d your-domain.com -d www.your-domain.com
 
 # Автозапуск
-cat > /etc/systemd/system/sovani-crosspost.service << 'EOF'
+cat > /etc/systemd/system/saleswhisper-crosspost.service << 'EOF'
 [Unit]
-Description=SoVAni Crosspost Application
+Description=SalesWhisper Crosspost Application
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/sovani/crosspost_app
+WorkingDirectory=/home/saleswhisper/crosspost_app
 ExecStart=/usr/local/bin/docker-compose up -d
 ExecStop=/usr/local/bin/docker-compose down
 ExecReload=/usr/local/bin/docker-compose restart
-User=sovani
-Group=sovani
+User=saleswhisper
+Group=saleswhisper
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable sovani-crosspost.service
-systemctl start sovani-crosspost.service
+systemctl enable saleswhisper-crosspost.service
+systemctl start saleswhisper-crosspost.service
 ```
 
 ## ШАГ 7: ФАЙРВОЛ И БЭКАПЫ
@@ -167,25 +167,25 @@ ufw allow 'Nginx Full'
 ufw --force enable
 
 # Скрипт автобэкапа
-cat > /home/sovani/backup.sh << 'EOF'
+cat > /home/saleswhisper/backup.sh << 'EOF'
 #!/bin/bash
-BACKUP_DIR="/home/sovani/backups"
+BACKUP_DIR="/home/saleswhisper/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p "${BACKUP_DIR}"
-docker-compose -f /home/sovani/crosspost_app/docker-compose.yml exec -T postgres pg_dump -U sovani sovani_crosspost > "${BACKUP_DIR}/database_${DATE}.sql"
-cp /home/sovani/crosspost_app/.env "${BACKUP_DIR}/env_${DATE}.backup"
+docker-compose -f /home/saleswhisper/crosspost_app/docker-compose.yml exec -T postgres pg_dump -U saleswhisper saleswhisper_crosspost > "${BACKUP_DIR}/database_${DATE}.sql"
+cp /home/saleswhisper/crosspost_app/.env "${BACKUP_DIR}/env_${DATE}.backup"
 cd "${BACKUP_DIR}"
-tar -czf "sovani_backup_${DATE}.tar.gz" database_${DATE}.sql env_${DATE}.backup
+tar -czf "saleswhisper_backup_${DATE}.tar.gz" database_${DATE}.sql env_${DATE}.backup
 rm database_${DATE}.sql env_${DATE}.backup
 find "${BACKUP_DIR}" -name "*.tar.gz" -mtime +7 -delete
-echo "Backup completed: sovani_backup_${DATE}.tar.gz"
+echo "Backup completed: saleswhisper_backup_${DATE}.tar.gz"
 EOF
 
-chmod +x /home/sovani/backup.sh
-chown sovani:sovani /home/sovani/backup.sh
+chmod +x /home/saleswhisper/backup.sh
+chown saleswhisper:saleswhisper /home/saleswhisper/backup.sh
 
 # Добавляем в cron
-(crontab -u sovani -l 2>/dev/null; echo "0 3 * * * /home/sovani/backup.sh >> /home/sovani/logs/backup.log 2>&1") | crontab -u sovani -
+(crontab -u saleswhisper -l 2>/dev/null; echo "0 3 * * * /home/saleswhisper/backup.sh >> /home/saleswhisper/logs/backup.log 2>&1") | crontab -u saleswhisper -
 ```
 
 ## ШАГ 8: ФИНАЛЬНЫЙ ТЕСТ
@@ -200,15 +200,15 @@ curl -X POST "https://your-domain.com/api/posts" \
   -d '{
     "source_type": "manual",
     "source_data": {
-      "message": "🚀 Тестовый пост из SoVAni Crosspost!",
-      "hashtags": ["#sovani", "#test"]
+      "message": "🚀 Тестовый пост из SalesWhisper Crosspost!",
+      "hashtags": ["#saleswhisper", "#test"]
     },
     "platforms": ["instagram"]
   }'
 
 # Проверка статуса
-systemctl status sovani-crosspost
-su - sovani -c "cd /home/sovani/crosspost_app && docker-compose ps"
+systemctl status saleswhisper-crosspost
+su - saleswhisper -c "cd /home/saleswhisper/crosspost_app && docker-compose ps"
 ```
 
 ---
@@ -217,21 +217,21 @@ su - sovani -c "cd /home/sovani/crosspost_app && docker-compose ps"
 
 ```bash
 # Перезапуск системы
-systemctl restart sovani-crosspost
+systemctl restart saleswhisper-crosspost
 
 # Статус
-systemctl status sovani-crosspost
+systemctl status saleswhisper-crosspost
 
 # Логи
-su - sovani -c "cd /home/sovani/crosspost_app && docker-compose logs -f"
+su - saleswhisper -c "cd /home/saleswhisper/crosspost_app && docker-compose logs -f"
 
 # Ручной бэкап
-su - sovani -c "/home/sovani/backup.sh"
+su - saleswhisper -c "/home/saleswhisper/backup.sh"
 
 # Обновление проекта (если нужно)
-systemctl stop sovani-crosspost
+systemctl stop saleswhisper-crosspost
 # ... загрузить новую версию ...
-systemctl start sovani-crosspost
+systemctl start saleswhisper-crosspost
 ```
 
 ---
@@ -240,9 +240,9 @@ systemctl start sovani-crosspost
 
 ```bash
 # Если что-то сломалось
-systemctl stop sovani-crosspost
-su - sovani -c "cd /home/sovani/crosspost_app && docker-compose down && docker-compose up -d"
-systemctl start sovani-crosspost
+systemctl stop saleswhisper-crosspost
+su - saleswhisper -c "cd /home/saleswhisper/crosspost_app && docker-compose down && docker-compose up -d"
+systemctl start saleswhisper-crosspost
 ```
 
 **✅ Готово! Просто копируйте команды по шагам.**

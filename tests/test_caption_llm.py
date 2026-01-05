@@ -46,7 +46,7 @@ class TestMockProvider:
         
         prompt = """Создай привлекательную подпись для INSTAGRAM.
         
-        БРЕНД: SoVAni
+        БРЕНД: SalesWhisper
         ГОЛОС БРЕНДА: Элегантный, стильный
         АУДИТОРИЯ: Женщины 25-45 лет
         
@@ -61,7 +61,7 @@ class TestMockProvider:
         result = await provider.generate_text(prompt, max_tokens=500)
         
         assert "Новая коллекция платьев" in result
-        assert "#SoVAni" in result
+        assert "#SalesWhisper" in result
         assert "#Fashion" in result or "#Style" in result
         assert len(result) < 200  # Mock keeps it short
     
@@ -78,7 +78,7 @@ class TestMockProvider:
         result = await provider.generate_text(prompt, max_tokens=500)
         
         assert "Стильные аксессуары" in result
-        assert "#SoVAni" in result
+        assert "#SalesWhisper" in result
         assert "#Мода" in result
     
     @pytest.mark.asyncio
@@ -118,19 +118,19 @@ class TestPlatformInput:
         platform_input = PlatformInput(
             platform="instagram",
             content_text="Красивое платье",
-            product_context="Платье SoVAni Classic, цена 5990 руб",
+            product_context="Платье SalesWhisper Classic, цена 5990 руб",
             media_type="photo",
             media_count=3,
-            hashtags=["#SoVAni", "#Fashion"],
+            hashtags=["#SalesWhisper", "#Fashion"],
             call_to_action="Купить сейчас"
         )
         
         assert platform_input.platform == "instagram"
         assert platform_input.content_text == "Красивое платье"
-        assert platform_input.product_context == "Платье SoVAni Classic, цена 5990 руб"
+        assert platform_input.product_context == "Платье SalesWhisper Classic, цена 5990 руб"
         assert platform_input.media_type == "photo"
         assert platform_input.media_count == 3
-        assert platform_input.hashtags == ["#SoVAni", "#Fashion"]
+        assert platform_input.hashtags == ["#SalesWhisper", "#Fashion"]
         assert platform_input.call_to_action == "Купить сейчас"
 
 
@@ -141,14 +141,14 @@ class TestCaptionOutput:
         """Test basic CaptionOutput creation."""
         output = CaptionOutput(
             platform="instagram",
-            caption="Красивый текст с хэштегами #SoVAni",
-            hashtags=["#SoVAni", "#Fashion"],
+            caption="Красивый текст с хэштегами #SalesWhisper",
+            hashtags=["#SalesWhisper", "#Fashion"],
             character_count=35
         )
         
         assert output.platform == "instagram"
-        assert output.caption == "Красивый текст с хэштегами #SoVAni"
-        assert output.hashtags == ["#SoVAni", "#Fashion"]
+        assert output.caption == "Красивый текст с хэштегами #SalesWhisper"
+        assert output.hashtags == ["#SalesWhisper", "#Fashion"]
         assert output.character_count == 35
         assert output.is_truncated is False  # Default
         assert output.confidence_score == 1.0  # Default
@@ -211,8 +211,8 @@ class TestCaptionLLMService:
         """Test generating single caption for Instagram."""
         platform_input = PlatformInput(
             platform="instagram",
-            content_text="Новая коллекция SoVAni",
-            hashtags=["#SoVAni", "#Fashion"]
+            content_text="Новая коллекция SalesWhisper",
+            hashtags=["#SalesWhisper", "#Fashion"]
         )
         
         result = await llm_service._generate_single_caption("instagram", platform_input)
@@ -233,17 +233,17 @@ class TestCaptionLLMService:
             "instagram": PlatformInput(
                 platform="instagram",
                 content_text="Элегантное платье",
-                hashtags=["#SoVAni"]
+                hashtags=["#SalesWhisper"]
             ),
             "vk": PlatformInput(
                 platform="vk", 
                 content_text="Стильная одежда",
-                hashtags=["#SoVAni", "#Мода"]
+                hashtags=["#SalesWhisper", "#Мода"]
             ),
             "tiktok": PlatformInput(
                 platform="tiktok",
                 content_text="Модный тренд",
-                hashtags=["#sovani"]
+                hashtags=["#saleswhisper"]
             )
         }
         
@@ -267,18 +267,18 @@ class TestCaptionLLMService:
         platform_input = PlatformInput(
             platform="instagram",
             content_text="Красивое платье",
-            product_context="Платье SoVAni Classic, размеры S-XL",
-            hashtags=["#SoVAni", "#Fashion"]
+            product_context="Платье SalesWhisper Classic, размеры S-XL",
+            hashtags=["#SalesWhisper", "#Fashion"]
         )
         
         config = llm_service.platform_configs["instagram"]
         prompt = llm_service._build_prompt("instagram", platform_input, config)
         
         assert "INSTAGRAM" in prompt
-        assert "SoVAni" in prompt
+        assert "SalesWhisper" in prompt
         assert "Красивое платье" in prompt
-        assert "Платье SoVAni Classic" in prompt
-        assert "#SoVAni #Fashion" in prompt
+        assert "Платье SalesWhisper Classic" in prompt
+        assert "#SalesWhisper #Fashion" in prompt
         assert "2200 символов" in prompt
     
     def test_validate_caption_length_normal(self, llm_service):
@@ -304,13 +304,13 @@ class TestCaptionLLMService:
     
     def test_parse_llm_response(self, llm_service):
         """Test parsing LLM response for hashtags."""
-        generated_text = "Красивое платье от SoVAni! #SoVAni #Fashion #Style"
+        generated_text = "Красивое платье от SalesWhisper! #SalesWhisper #Fashion #Style"
         existing_hashtags = ["#Brand"]
         
         caption, hashtags = llm_service._parse_llm_response(generated_text, existing_hashtags)
         
         assert caption == generated_text.strip()
-        assert "#SoVAni" in hashtags
+        assert "#SalesWhisper" in hashtags
         assert "#Fashion" in hashtags
         assert "#Style" in hashtags
         assert "#Brand" in hashtags  # Existing hashtag preserved
@@ -327,7 +327,7 @@ class TestCaptionLLMService:
         assert isinstance(fallback, str)
         assert len(fallback) > 0
         assert "Тестовый контент" in fallback
-        assert "#SoVAni" in fallback
+        assert "#SalesWhisper" in fallback
     
     @pytest.mark.asyncio
     async def test_error_handling_with_fallback(self, llm_service):
@@ -372,7 +372,7 @@ class TestCaptionLLMService:
         assert "target_audience" in guidelines
         assert "prohibited_words" in guidelines
         
-        assert guidelines["brand_name"] == "SoVAni"
+        assert guidelines["brand_name"] == "SalesWhisper"
         assert isinstance(guidelines["brand_voice"], str)
         assert isinstance(guidelines["target_audience"], str)
         assert isinstance(guidelines["prohibited_words"], list)

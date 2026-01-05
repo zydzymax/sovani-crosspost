@@ -56,3 +56,11 @@ httpx==0.25.2
 
 # Type checking (dev)
 mypy==1.7.1
+
+# Email & Notifications
+aiosmtplib==3.0.1
+jinja2==3.1.2
+
+# Date/Time utilities
+python-dateutil==2.8.2
+email-validator==2.1.0

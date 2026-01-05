@@ -1,4 +1,4 @@
-"""Captionize stage tasks for SoVAni Crosspost."""
+"""Captionize stage tasks for SalesWhisper Crosspost."""
 
 import time
 from typing import Dict, Any
@@ -21,10 +21,10 @@ def generate_captions(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
             # Placeholder caption generation
             captions = {
-                "instagram": "( >20O :>;;5:F8O SoVAni C65 745AL! #SoVAni #Style",
-                "vk": "@54AB02;O5< =>2CN :>;;5:F8N AB8;L=>9 >4564K >B SoVAni",
-                "tiktok": "SoVAni style ( #fashion #SoVAni",
-                "youtube": "17>@ =>2>9 :>;;5:F88 SoVAni - AB8;L 8 M;530=B=>ABL"
+                "instagram": "( >20O :>;;5:F8O SalesWhisper C65 745AL! #SalesWhisper #Style",
+                "vk": "@54AB02;O5< =>2CN :>;;5:F8N AB8;L=>9 >4564K >B SalesWhisper",
+                "tiktok": "SalesWhisper style ( #fashion #SalesWhisper",
+                "youtube": "17>@ =>2>9 :>;;5:F88 SalesWhisper - AB8;L 8 M;530=B=>ABL"
             }
             
             processing_time = time.time() - task_start_time

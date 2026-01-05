@@ -1,5 +1,5 @@
 """
-User API routes for SoVAni Crosspost.
+User API routes for SalesWhisper Crosspost.
 CRUD for user data: accounts, posts, topics, schedules.
 """
 
@@ -8,7 +8,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,10 +23,35 @@ router = APIRouter(prefix="/user", tags=["User API"])
 # ==================== SCHEMAS ====================
 
 class AccountCreate(BaseModel):
-    platform: str = Field(..., description="Platform: telegram, vk, instagram, tiktok, youtube")
-    access_token: str = Field(..., description="Platform access token")
+    platform: str = Field(..., description="Platform: telegram, vk, instagram, tiktok, youtube, rutube, facebook, dzen")
+    access_token: Optional[str] = Field(None, description="Platform access token")
     platform_user_id: Optional[str] = Field(None, description="Platform user ID")
     username: Optional[str] = Field(None, description="Platform username")
+    display_name: Optional[str] = Field(None, description="Display name")
+    credentials: Optional[dict] = Field(None, description="Platform-specific credentials")
+
+    @model_validator(mode='after')
+    def validate_and_extract_credentials(self):
+        # If credentials provided, extract tokens from it
+        if self.credentials:
+            # Extract access_token
+            if not self.access_token:
+                for key in ['access_token', 'bot_token', 'api_key', 'refresh_token', 'client_secret']:
+                    if key in self.credentials:
+                        self.access_token = str(self.credentials[key])
+                        break
+            # Extract platform_user_id
+            if not self.platform_user_id:
+                for key in ['chat_id', 'group_id', 'page_id', 'instagram_business_id', 'open_id', 'channel_id']:
+                    if key in self.credentials:
+                        self.platform_user_id = str(self.credentials[key])
+                        break
+        
+        # Validation: must have access_token
+        if not self.access_token:
+            raise ValueError('access_token is required (either directly or in credentials)')
+        
+        return self
 
 
 class AccountResponse(BaseModel):
@@ -463,7 +488,7 @@ async def update_settings(
 
 class ImageGenerateRequest(BaseModel):
     prompt: str = Field(..., min_length=3, max_length=1000)
-    size: str = Field(default="1024x1024", pattern="^\d+x\d+$")
+    size: str = Field(default="1024x1024", pattern=r"^\d+x\d+$")
 
 
 class ImageGenerateResponse(BaseModel):

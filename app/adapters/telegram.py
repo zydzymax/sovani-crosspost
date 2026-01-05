@@ -1,5 +1,5 @@
 """
-Telegram Bot API adapter for SoVAni Crosspost.
+Telegram Bot API adapter for SalesWhisper Crosspost.
 
 This module handles outbound Telegram publishing through the Telegram Bot API,
 including sending photos, videos, media groups, and text messages.
@@ -137,7 +137,7 @@ class TelegramAdapter:
             timeout=httpx.Timeout(60.0),  # Telegram uploads can be slow
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
             headers={
-                "User-Agent": "SoVAni-Crosspost/1.0"
+                "User-Agent": "SalesWhisper-Crosspost/1.0"
             }
         )
         

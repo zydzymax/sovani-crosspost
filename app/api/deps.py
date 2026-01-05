@@ -1,5 +1,5 @@
 """
-FastAPI dependency providers for SoVAni Crosspost.
+FastAPI dependency providers for SalesWhisper Crosspost.
 
 This module provides:
 - Database session dependencies
@@ -497,7 +497,13 @@ async def get_current_user(
     
     # Decode JWT
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+        secret_key = settings.security.jwt_secret_key.get_secret_value()
+        payload = jwt.decode(
+            token,
+            secret_key,
+            algorithms=["HS256"],
+            options={"verify_aud": False}  # Cross-service SSO
+        )
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -567,6 +573,9 @@ def check_subscription_active(user):
         HTTPException: If subscription expired
     """
     from ..models.entities import SubscriptionPlan
+    # Master accounts bypass all subscription checks
+    if getattr(user, "is_master", False):
+        return
     
     if user.subscription_plan == SubscriptionPlan.DEMO:
         if user.demo_started_at:

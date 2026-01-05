@@ -9,8 +9,8 @@
 ## 1. Clone & Setup
 
 ```bash
-git clone https://github.com/zydzymax/sovani-crosspost.git
-cd sovani-crosspost
+git clone https://github.com/zydzymax/saleswhisper-crosspost.git
+cd saleswhisper-crosspost
 
 # Create virtual environment
 python -m venv venv
@@ -79,7 +79,7 @@ pm2 logs crosspost-api
 pm2 restart all
 
 # Database shell
-PGPASSWORD=your_pass psql -h localhost -p 5433 -U sovani -d sovani_crosspost
+PGPASSWORD=your_pass psql -h localhost -p 5433 -U saleswhisper -d saleswhisper_crosspost
 
 # Redis CLI
 redis-cli -p 6380

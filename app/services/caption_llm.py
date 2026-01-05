@@ -1,4 +1,4 @@
-"""Caption LLM service for SoVAni Crosspost."""
+"""Caption LLM service for SalesWhisper Crosspost."""
 
 import asyncio
 import json
@@ -84,7 +84,7 @@ class OpenAIProvider(LLMProviderBase):
                 json={
                     "model": self.model,
                     "messages": [
-                        {"role": "system", "content": ""K ?@>D5AA8>=0;L=K9 :>?8@09B5@ 4;O 1@5=40 SoVAni."},
+                        {"role": "system", "content": "You are a professional copywriter for the SalesWhisper brand."},
                         {"role": "user", "content": prompt}
                     ],
                     "max_tokens": max_tokens,
@@ -103,16 +103,11 @@ class OpenAIProvider(LLMProviderBase):
 class MockProvider(LLMProviderBase):
     def __init__(self):
         self.response_templates = {
-            "instagram": "{content} New collection SoVAni is here! #SoVAni #Fashion #Style",
-            "vk": "{content} Presenting the new SoVAni collection. #SoVAni #Fashion",
-            "tiktok": "{content} SoVAni style #sovani #fashion #style",
-            "youtube": "{content} More about SoVAni in our video!",
-            "telegram": "{content} SoVAni - style for you."
-        } >20O :>;;5:F8O SoVAni C65 745AL! =� #SoVAni #Fashion #Style",
-            "vk": "{content} @54AB02;O5< =>2CN :>;;5:F8N SoVAni. #SoVAni #>40",
-            "tiktok": "{content} SoVAni style ( #sovani #fashion #style",
-            "youtube": "{content} >4@>1=55 > SoVAni A<>B@8B5 2 =0H5< 2845>!",
-            "telegram": "{content} < SoVAni - AB8;L 4;O 20A."
+            "instagram": "{content} New SalesWhisper collection is here! #SalesWhisper #Fashion #Style",
+            "vk": "{content} Presenting the new SalesWhisper collection. #SalesWhisper #Fashion",
+            "tiktok": "{content} SalesWhisper style #saleswhisper #fashion #style",
+            "youtube": "{content} More about SalesWhisper in our video!",
+            "telegram": "{content} SalesWhisper - style for you."
         }
     
     async def generate_text(self, prompt: str, max_tokens: int = 500) -> str:
@@ -128,8 +123,8 @@ class MockProvider(LLMProviderBase):
         elif "for Telegram" in prompt or "telegram" in prompt.lower():
             platform = "telegram"
         
-        content_match = re.search(r'!%+ "!": "(.*?)"', prompt)
-        content = content_match.group(1) if content_match else ">20O :>;;5:F8O"
+        content_match = re.search(r'CONTENT TEXT: "(.*?)"', prompt)
+        content = content_match.group(1) if content_match else "New collection"
         
         if len(content) > 50:
             content = content[:50] + "..."
@@ -153,10 +148,10 @@ class CaptionLLMService:
         }
         
         self.brand_guidelines = {
-            "brand_name": "SoVAni",
-            "brand_voice": "M;530=B=K9, AB8;L=K9",
-            "target_audience": "65=I8=K 25-45 ;5B",
-            "prohibited_words": ["45H52K9", "1N465B=K9"]
+            "brand_name": "SalesWhisper",
+            "brand_voice": "Elegant, stylish",
+            "target_audience": "Women 25-45 years old",
+            "prohibited_words": ["cheap", "budget"]
         }
     
     def _create_provider(self) -> LLMProviderBase:
@@ -222,47 +217,47 @@ class CaptionLLMService:
     
     def _build_prompt(self, platform: str, platform_input: PlatformInput, config: Dict[str, Any]) -> str:
         prompt_parts = [
-            f"!>7409 ?@82;5:0B5;L=CN ?>4?8AL 4;O {platform.upper()}.",
+            f"Create an engaging caption for {platform.upper()}.",
             "",
-            f" : {self.brand_guidelines['brand_name']}",
-            f"!  : {self.brand_guidelines['brand_voice']}",
-            f"#" /: {self.brand_guidelines['target_audience']}",
+            f"Brand: {self.brand_guidelines['brand_name']}",
+            f"Brand voice: {self.brand_guidelines['brand_voice']}",
+            f"Target audience: {self.brand_guidelines['target_audience']}",
             "",
-            f'!%+ "!": "{platform_input.content_text}"'
+            f'CONTENT TEXT: "{platform_input.content_text}"'
         ]
         
         if platform_input.product_context:
-            prompt_parts.extend(["", ""!" " :", platform_input.product_context])
+            prompt_parts.extend(["", "Product context:", platform_input.product_context])
         
         platform_guidelines = {
             "instagram": [
-                "- A?>;L7C9 M<>468 C<5@5==>",
-                "- >102L ?@87K2 : 459AB28N",
-                f"- 0:A8<C< {config['max_length']} A8<2>;>2"
+                "- Use emojis moderately",
+                "- Add a call to action",
+                f"- Maximum {config['max_length']} characters"
             ],
             "vk": [
-                "- 8=8<C< M<>468",
-                "- @O<>9 ?@87K2 : 459AB28N",
-                f"- 0:A8<C< {config['max_length']} A8<2>;>2"
+                "- Minimal emojis",
+                "- Direct call to action",
+                f"- Maximum {config['max_length']} characters"
             ],
             "tiktok": [
-                "- =>3> M<>468 8 B@5=4>2KE EMHB53>2",
-                "- -=5@38G=K9 B>=",
-                f"- 0:A8<C< {config['max_length']} A8<2>;>2"
+                "- Use trending hashtags and emojis",
+                "- Energetic tone",
+                f"- Maximum {config['max_length']} characters"
             ]
         }
         
         guidelines = platform_guidelines.get(platform, platform_guidelines["instagram"])
-        prompt_parts.extend(["", f"" /:", *guidelines])
+        prompt_parts.extend(["", "Platform guidelines:", *guidelines])
         
         if platform_input.hashtags:
-            prompt_parts.extend(["", f"/",+ %-(": {' '.join(platform_input.hashtags)}"])
+            prompt_parts.extend(["", f"Include hashtags: {' '.join(platform_input.hashtags)}"])
         
         return "\n".join(prompt_parts)
     
     def _parse_llm_response(self, generated_text: str, existing_hashtags: List[str]) -> tuple[str, List[str]]:
         hashtags = set(existing_hashtags)
-        hashtags.update(re.findall(r'#[\w0-O-O]+', generated_text))
+        hashtags.update(re.findall(r'#[\w]+', generated_text))
         return generated_text.strip(), list(hashtags)
     
     def _validate_caption_length(self, caption: str, max_length: int) -> tuple[str, bool]:
@@ -278,11 +273,11 @@ class CaptionLLMService:
     
     def _create_fallback_caption(self, platform: str, platform_input: PlatformInput) -> str:
         fallback_templates = {
-            "instagram": "( {content}\n\n#SoVAni #Fashion",
-            "vk": "{content}\n\n#SoVAni #>40",
-            "tiktok": "{content} ( #SoVAni",
-            "youtube": "{content}\n\n>4?8AK209B5AL =0 :0=0;!",
-            "telegram": "< {content}\n\nSoVAni - 20H AB8;L!"
+            "instagram": "{content}\n\n#SalesWhisper #Fashion",
+            "vk": "{content}\n\n#SalesWhisper #Fashion",
+            "tiktok": "{content} #SalesWhisper",
+            "youtube": "{content}\n\nSubscribe to the channel!",
+            "telegram": "{content}\n\nSalesWhisper - your style!"
         }
         
         template = fallback_templates.get(platform, fallback_templates["instagram"])

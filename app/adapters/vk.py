@@ -1,4 +1,4 @@
-"""VK API adapter for SoVAni Crosspost."""
+"""VK API adapter for SalesWhisper Crosspost."""
 
 import asyncio
 import mimetypes
@@ -131,7 +131,7 @@ class VKAdapter:
             timeout=httpx.Timeout(60.0),  # VK uploads can be slow
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
             headers={
-                "User-Agent": "SoVAni-Crosspost/1.0"
+                "User-Agent": "SalesWhisper-Crosspost/1.0"
             }
         )
         

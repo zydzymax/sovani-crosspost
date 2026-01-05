@@ -1,5 +1,5 @@
 """
-Telegram Bot API intake adapter for SoVAni Crosspost.
+Telegram Bot API intake adapter for SalesWhisper Crosspost.
 
 This module handles:
 - Parsing Telegram Bot API updates (photos, videos, captions)
@@ -726,8 +726,8 @@ if __name__ == "__main__":
             },
             "chat": {
                 "id": -1001234567890,
-                "title": "SoVAni Test Channel",
-                "username": "sovani_test",
+                "title": "SalesWhisper Test Channel",
+                "username": "saleswhisper_test",
                 "type": "channel"
             },
             "date": int(time.time()),
@@ -740,7 +740,7 @@ if __name__ == "__main__":
                     "height": 960
                 }
             ],
-            "caption": "( >20O :>;;5:F8O SoVAni C65 2 ?@>4065! !B8;L=K5 ?;0BLO 4;O A>2@5<5==KE 65=I8=. #SoVAni #Fashion #Style"
+            "caption": "( >20O :>;;5:F8O SalesWhisper C65 2 ?@>4065! !B8;L=K5 ?;0BLO 4;O A>2@5<5==KE 65=I8=. #SalesWhisper #Fashion #Style"
         }
     }
     

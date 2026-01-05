@@ -1,5 +1,5 @@
 """
-Database connection and session management for SoVAni Crosspost.
+Database connection and session management for SalesWhisper Crosspost.
 
 This module provides:
 - SQLAlchemy database connection setup
@@ -38,7 +38,7 @@ class DatabaseConfig(BaseSettings):
         extra="ignore"
     )
 
-    database_url: str = "postgresql://sovani:sovani_pass@localhost:5432/sovani_crosspost"
+    database_url: str = "postgresql://saleswhisper:saleswhisper_pass@localhost:5432/saleswhisper_crosspost"
     database_url_async: Optional[str] = None
 
     # Connection pool settings
@@ -81,6 +81,7 @@ class DatabaseManager:
                 max_overflow=self.config.max_overflow,
                 pool_timeout=self.config.pool_timeout,
                 pool_recycle=self.config.pool_recycle,
+                pool_pre_ping=True,  # Check connection health before use
                 echo=False  # Set to True for SQL debugging
             )
         return self._sync_engine
@@ -95,6 +96,7 @@ class DatabaseManager:
                 max_overflow=self.config.max_overflow,
                 pool_timeout=self.config.pool_timeout,
                 pool_recycle=self.config.pool_recycle,
+                pool_pre_ping=True,  # Check connection health before use
                 echo=False  # Set to True for SQL debugging
             )
         return self._async_engine
@@ -160,6 +162,13 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Async database health check failed: {e}")
             return False
+
+    async def close_async_session(self) -> None:
+        """Close async database connections."""
+        if self._async_engine is not None:
+            await self._async_engine.dispose()
+            self._async_engine = None
+            logger.info("Async database connections closed")
 
 
 # Global database manager instance

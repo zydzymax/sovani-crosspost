@@ -1,5 +1,5 @@
 """
-Media processing module for SoVAni Crosspost.
+Media processing module for SalesWhisper Crosspost.
 
 This module provides intelligent media adaptation for social platforms:
 - SmartMediaAdapter: Face-aware, content-aware cropping

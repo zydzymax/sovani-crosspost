@@ -1,5 +1,5 @@
 """
-Enrich stage tasks for SoVAni Crosspost.
+Enrich stage tasks for SalesWhisper Crosspost.
 
 This module handles:
 - Content enrichment with metadata
@@ -33,8 +33,8 @@ def enrich_post_content(self, stage_data: Dict[str, Any]) -> Dict[str, Any]:
             # Placeholder enrichment logic
             enriched_data = {
                 "original_text": stage_data.get("text_content", ""),
-                "brand_context": {"brand": "SoVAni", "voice": "elegant"},
-                "hashtags": ["#SoVAni", "#Style"],
+                "brand_context": {"brand": "SalesWhisper", "voice": "elegant"},
+                "hashtags": ["#SalesWhisper", "#Style"],
                 "platform_adaptations": {
                     "instagram": {"text": "Adapted for IG"},
                     "vk": {"text": "Adapted for VK"}

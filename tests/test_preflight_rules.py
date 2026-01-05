@@ -949,7 +949,7 @@ class TestAdvancedValidationCases:
                     },
                     "content": {
                         "forbidden_words": ["competitor", "cheap", "fake"],
-                        "required_words": ["SoVAni", "premium", "quality"],  # Brand requirements
+                        "required_words": ["SalesWhisper", "premium", "quality"],  # Brand requirements
                         "forbidden_patterns": [
                             "\\b(?:buy|purchase)\\s+now\\b",  # Aggressive sales language
                             "\\b\\d+%\\s+off\\b"  # Discount patterns

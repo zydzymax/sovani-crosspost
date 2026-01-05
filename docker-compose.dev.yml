@@ -6,25 +6,25 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: sovani_postgres_dev
+    container_name: saleswhisper_postgres_dev
     environment:
-      POSTGRES_DB: sovani_crosspost
-      POSTGRES_USER: sovani
-      POSTGRES_PASSWORD: sovani_dev_pass
+      POSTGRES_DB: saleswhisper_crosspost
+      POSTGRES_USER: saleswhisper
+      POSTGRES_PASSWORD: saleswhisper_dev_pass
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5433:5432"
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sovani"]
+      test: ["CMD-SHELL", "pg_isready -U saleswhisper"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: sovani_redis_dev
+    container_name: saleswhisper_redis_dev
     ports:
       - "6380:6379"
     volumes:
@@ -38,7 +38,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: sovani_minio_dev
+    container_name: saleswhisper_minio_dev
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
@@ -58,9 +58,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: sovani_api_dev
+    container_name: saleswhisper_api_dev
     environment:
-      - DATABASE_URL=postgresql://sovani:sovani_dev_pass@postgres:5432/sovani_crosspost
+      - DATABASE_URL=postgresql://saleswhisper:saleswhisper_dev_pass@postgres:5432/saleswhisper_crosspost
       - REDIS_URL=redis://redis:6379/0
       - S3_ENDPOINT=http://minio:9000
       - S3_ACCESS_KEY=minioadmin
@@ -88,9 +88,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: sovani_worker_dev
+    container_name: saleswhisper_worker_dev
     environment:
-      - DATABASE_URL=postgresql://sovani:sovani_dev_pass@postgres:5432/sovani_crosspost
+      - DATABASE_URL=postgresql://saleswhisper:saleswhisper_dev_pass@postgres:5432/saleswhisper_crosspost
       - REDIS_URL=redis://redis:6379/0
       - S3_ENDPOINT=http://minio:9000
       - S3_ACCESS_KEY=minioadmin

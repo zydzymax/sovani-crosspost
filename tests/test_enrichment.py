@@ -39,8 +39,8 @@ class TestProductEnrichmentService:
         assert product is not None
         assert product.external_id == "dress_001"
         assert product.source == "local"
-        assert product.title == "Элегантное платье SoVAni Classic"
-        assert product.brand == "SoVAni"
+        assert product.title == "Элегантное платье SalesWhisper Classic"
+        assert product.brand == "SalesWhisper"
         assert product.price == 5990.0
         assert product.original_price == 7990.0
         assert product.currency == "RUB"
@@ -92,8 +92,8 @@ class TestProductEnrichmentService:
         # Test existing product
         context = await enrichment_service.get_enriched_context_for_llm("local", "dress_001")
         
-        assert "Товар: Элегантное платье SoVAni Classic" in context
-        assert "Бренд: SoVAni" in context
+        assert "Товар: Элегантное платье SalesWhisper Classic" in context
+        assert "Бренд: SalesWhisper" in context
         assert "Категория: Платья" in context
         assert "Цена: 5990.0 RUB (было 7990.0 RUB)" in context
         assert "Цвета: Черный, Синий, Бордовый" in context
@@ -194,11 +194,11 @@ class TestProductEnrichmentService:
         # Test get_product_attrs function
         product = await get_product_attrs("local", "dress_001")
         assert product is not None
-        assert product.title == "Элегантное платье SoVAni Classic"
+        assert product.title == "Элегантное платье SalesWhisper Classic"
         
         # Test get_llm_context function  
         context = await get_llm_context("local", "dress_001")
-        assert "Товар: Элегантное платье SoVAni Classic" in context
+        assert "Товар: Элегантное платье SalesWhisper Classic" in context
         
         # Test with non-existent product
         context = await get_llm_context("local", "nonexistent")
