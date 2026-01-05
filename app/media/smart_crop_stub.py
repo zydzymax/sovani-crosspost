@@ -1,5 +1,5 @@
 """
-Smart Crop Stub for SoVAni Crosspost.
+Smart Crop Stub for SalesWhisper Crosspost.
 
 This module provides a stub interface for intelligent video cropping.
 Currently returns pad strategy as the default safe option to avoid distortions.

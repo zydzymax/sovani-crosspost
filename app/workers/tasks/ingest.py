@@ -1,5 +1,5 @@
 """
-Ingest stage tasks for SoVAni Crosspost.
+Ingest stage tasks for SalesWhisper Crosspost.
 
 This module handles:
 - Processing incoming Telegram webhook data

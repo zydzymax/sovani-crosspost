@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database migration script for SoVAni Crosspost.
+Database migration script for SalesWhisper Crosspost.
 
 Usage:
     python scripts/migrate.py          # Run all migrations
@@ -30,7 +30,7 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(
-        description="Database migration utility for SoVAni Crosspost"
+        description="Database migration utility for SalesWhisper Crosspost"
     )
     parser.add_argument(
         "--init", 

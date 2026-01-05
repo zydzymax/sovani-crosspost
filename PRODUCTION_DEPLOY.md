@@ -1,4 +1,4 @@
-# 🏭 Продакшн развертывание SoVAni Crosspost на VPS Ubuntu
+# 🏭 Продакшн развертывание SalesWhisper Crosspost на VPS Ubuntu
 
 ## ⚠️ ВАЖНО: Это инструкция для рабочего развертывания!
 
@@ -12,7 +12,7 @@
 
 ```bash
 # Переходим в проект
-cd /Users/fbi/sovani_crosspost
+cd /Users/fbi/saleswhisper_crosspost
 
 # Копируем шаблон
 cp env.example .env
@@ -38,15 +38,15 @@ SECRET_KEY=$(openssl rand -hex 32)
 JWT_SECRET_KEY=$(openssl rand -hex 32)
 
 # Database - используем сильный пароль
-POSTGRES_DB=sovani_crosspost
-POSTGRES_USER=sovani
+POSTGRES_DB=saleswhisper_crosspost
+POSTGRES_USER=saleswhisper
 POSTGRES_PASSWORD=$(openssl rand -hex 20)
-DATABASE_URL=postgresql://sovani:${POSTGRES_PASSWORD}@postgres:5432/sovani_crosspost
+DATABASE_URL=postgresql://saleswhisper:${POSTGRES_PASSWORD}@postgres:5432/saleswhisper_crosspost
 
 # MinIO - генерируем безопасные ключи
 S3_ACCESS_KEY=admin$(openssl rand -hex 8)
 S3_SECRET_KEY=$(openssl rand -hex 24)
-S3_BUCKET_NAME=sovani-media
+S3_BUCKET_NAME=saleswhisper-media
 
 # =============================================================================
 # API КЛЮЧИ - ПОЛУЧИТЕ РЕАЛЬНЫЕ КЛЮЧИ ОТ СЕРВИСОВ!
@@ -106,7 +106,7 @@ CAPTION_MAX_LENGTH_INSTAGRAM=2200
 CAPTION_MAX_LENGTH_VK=15000
 HASHTAGS_COUNT_MIN=5
 HASHTAGS_COUNT_MAX=30
-REQUIRED_HASHTAGS="#sovani,#fashion"
+REQUIRED_HASHTAGS="#saleswhisper,#fashion"
 
 # Media Processing
 MAX_FILE_SIZE_MB=500
@@ -129,10 +129,10 @@ BACKUP_SCHEDULE="0 2 * * *"
 
 ```bash
 # В директории проекта
-cd /Users/fbi/sovani_crosspost
+cd /Users/fbi/saleswhisper_crosspost
 
 # Создаем продакшн архив (включая настроенный .env)
-tar -czf sovani_crosspost_prod_$(date +%Y%m%d_%H%M).tar.gz \
+tar -czf saleswhisper_crosspost_prod_$(date +%Y%m%d_%H%M).tar.gz \
   --exclude='__pycache__' \
   --exclude='*.pyc' \
   --exclude='.git' \
@@ -145,7 +145,7 @@ tar -czf sovani_crosspost_prod_$(date +%Y%m%d_%H%M).tar.gz \
   .
 
 # Проверяем размер архива
-ls -lh sovani_crosspost_prod_*.tar.gz
+ls -lh saleswhisper_crosspost_prod_*.tar.gz
 
 echo "✅ Продакшн архив готов к передаче на VPS"
 ```
@@ -192,21 +192,21 @@ docker-compose --version
 
 ```bash
 # Создаем пользователя для приложения
-useradd -m -s /bin/bash sovani
-usermod -aG docker sovani
-usermod -aG sudo sovani
+useradd -m -s /bin/bash saleswhisper
+usermod -aG docker saleswhisper
+usermod -aG sudo saleswhisper
 
 # Устанавливаем пароль
-passwd sovani
+passwd saleswhisper
 
 # Создаем SSH директорию для пользователя
-mkdir -p /home/sovani/.ssh
-cp /root/.ssh/authorized_keys /home/sovani/.ssh/
-chown -R sovani:sovani /home/sovani/.ssh
-chmod 700 /home/sovani/.ssh
-chmod 600 /home/sovani/.ssh/authorized_keys
+mkdir -p /home/saleswhisper/.ssh
+cp /root/.ssh/authorized_keys /home/saleswhisper/.ssh/
+chown -R saleswhisper:saleswhisper /home/saleswhisper/.ssh
+chmod 700 /home/saleswhisper/.ssh
+chmod 600 /home/saleswhisper/.ssh/authorized_keys
 
-echo "✅ Пользователь sovani создан"
+echo "✅ Пользователь saleswhisper создан"
 ```
 
 ---
@@ -217,19 +217,19 @@ echo "✅ Пользователь sovani создан"
 
 ```bash
 # Передаем архив (замените на IP вашего VPS)
-scp sovani_crosspost_prod_$(date +%Y%m%d)*.tar.gz sovani@your-vps-ip:/home/sovani/
+scp saleswhisper_crosspost_prod_$(date +%Y%m%d)*.tar.gz saleswhisper@your-vps-ip:/home/saleswhisper/
 
-# Подключаемся к VPS как пользователь sovani
-ssh sovani@your-vps-ip
+# Подключаемся к VPS как пользователь saleswhisper
+ssh saleswhisper@your-vps-ip
 ```
 
 ### На VPS - распаковка и настройка
 
 ```bash
 # Распаковываем проект
-cd /home/sovani
-tar -xzf sovani_crosspost_prod_*.tar.gz
-mv sovani_crosspost crosspost_prod
+cd /home/saleswhisper
+tar -xzf saleswhisper_crosspost_prod_*.tar.gz
+mv saleswhisper_crosspost crosspost_prod
 cd crosspost_prod
 
 # Проверяем что .env файл на месте
@@ -248,7 +248,7 @@ chmod 755 logs backups
 ### Создание продакшн Docker Compose
 
 ```bash
-cd /home/sovani/crosspost_prod
+cd /home/saleswhisper/crosspost_prod
 
 # Создаем продакшн compose файл
 cat > docker-compose.prod.yml << 'EOF'
@@ -257,7 +257,7 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: sovani_postgres_prod
+    container_name: saleswhisper_postgres_prod
     env_file: .env
     ports:
       - "127.0.0.1:5432:5432"
@@ -280,7 +280,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: sovani_redis_prod
+    container_name: saleswhisper_redis_prod
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -295,7 +295,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: sovani_minio_prod
+    container_name: saleswhisper_minio_prod
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
@@ -316,7 +316,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: sovani_api_prod
+    container_name: saleswhisper_api_prod
     env_file: .env
     ports:
       - "127.0.0.1:8000:8000"
@@ -347,7 +347,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: sovani_worker_prod
+    container_name: saleswhisper_worker_prod
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -381,7 +381,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: sovani_beat_prod
+    container_name: saleswhisper_beat_prod
     env_file: .env
     volumes:
       - ./logs:/app/logs
@@ -401,7 +401,7 @@ volumes:
 
 networks:
   default:
-    name: sovani_network
+    name: saleswhisper_network
 EOF
 
 echo "✅ Продакшн compose файл создан"
@@ -414,7 +414,7 @@ echo "✅ Продакшн compose файл создан"
 docker-compose -f docker-compose.prod.yml config
 
 # Создаем сети и тома
-docker network create sovani_network || true
+docker network create saleswhisper_network || true
 
 # Запускаем базовые сервисы
 docker-compose -f docker-compose.prod.yml up -d postgres redis minio
@@ -428,8 +428,8 @@ docker-compose -f docker-compose.prod.yml ps
 # Инициализация MinIO bucket
 docker-compose -f docker-compose.prod.yml exec minio sh -c "
 mc alias set local http://localhost:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
-mc mb local/sovani-media --ignore-existing
-mc policy set download local/sovani-media
+mc mb local/saleswhisper-media --ignore-existing
+mc policy set download local/saleswhisper-media
 "
 
 # Запускаем приложение
@@ -446,7 +446,7 @@ sleep 30
 ### Проверка всех сервисов
 
 ```bash
-cd /home/sovani/crosspost_prod
+cd /home/saleswhisper/crosspost_prod
 
 # Статус всех контейнеров
 docker-compose -f docker-compose.prod.yml ps
@@ -497,7 +497,7 @@ curl -X POST "http://localhost:8000/api/posts" \
   -d '{
     "source_type": "manual",
     "source_data": {
-      "message": "🎉 SoVAni Crosspost успешно развернут на продакшн VPS!",
+      "message": "🎉 SalesWhisper Crosspost успешно развернут на продакшн VPS!",
       "article": "TEST001"
     },
     "platforms": ["telegram"]
@@ -541,22 +541,22 @@ sudo ufw status numbered
 
 ```bash
 # Создаем systemd службу
-sudo tee /etc/systemd/system/sovani-crosspost.service << EOF
+sudo tee /etc/systemd/system/saleswhisper-crosspost.service << EOF
 [Unit]
-Description=SoVAni Crosspost Production
+Description=SalesWhisper Crosspost Production
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/sovani/crosspost_prod
+WorkingDirectory=/home/saleswhisper/crosspost_prod
 ExecStart=/usr/local/bin/docker-compose -f docker-compose.prod.yml up -d
 ExecStop=/usr/local/bin/docker-compose -f docker-compose.prod.yml down
 ExecReload=/usr/local/bin/docker-compose -f docker-compose.prod.yml restart
 TimeoutStartSec=300
-User=sovani
-Group=sovani
+User=saleswhisper
+Group=saleswhisper
 
 [Install]
 WantedBy=multi-user.target
@@ -564,21 +564,21 @@ EOF
 
 # Включаем службу
 sudo systemctl daemon-reload
-sudo systemctl enable sovani-crosspost
-sudo systemctl start sovani-crosspost
+sudo systemctl enable saleswhisper-crosspost
+sudo systemctl start saleswhisper-crosspost
 
 # Проверяем статус
-sudo systemctl status sovani-crosspost
+sudo systemctl status saleswhisper-crosspost
 ```
 
 ### Настройка мониторинга
 
 ```bash
 # Создаем скрипт мониторинга
-tee /home/sovani/monitor_prod.sh << 'EOF'
+tee /home/saleswhisper/monitor_prod.sh << 'EOF'
 #!/bin/bash
 
-cd /home/sovani/crosspost_prod
+cd /home/saleswhisper/crosspost_prod
 
 echo "=== $(date) ==="
 echo "🖥️  System Resources:"
@@ -603,22 +603,22 @@ docker-compose -f docker-compose.prod.yml exec worker celery -A app.workers.cele
 echo "==========================================\n"
 EOF
 
-chmod +x /home/sovani/monitor_prod.sh
+chmod +x /home/saleswhisper/monitor_prod.sh
 
 # Добавляем мониторинг каждые 5 минут
-(crontab -l 2>/dev/null; echo "*/5 * * * * /home/sovani/monitor_prod.sh >> /home/sovani/logs/monitor.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "*/5 * * * * /home/saleswhisper/monitor_prod.sh >> /home/saleswhisper/logs/monitor.log 2>&1") | crontab -
 ```
 
 ### Настройка бэкапов
 
 ```bash
 # Создаем скрипт автобэкапа
-tee /home/sovani/backup_prod.sh << 'EOF'
+tee /home/saleswhisper/backup_prod.sh << 'EOF'
 #!/bin/bash
 
-BACKUP_DIR="/home/sovani/backups"
+BACKUP_DIR="/home/saleswhisper/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
-cd /home/sovani/crosspost_prod
+cd /home/saleswhisper/crosspost_prod
 
 echo "🔄 Starting backup at $(date)"
 
@@ -640,16 +640,16 @@ find $BACKUP_DIR -name "*.gz" -mtime +7 -delete
 if [ ! -z "$TELEGRAM_BOT_TOKEN" ]; then
   curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
     -d "chat_id=$TELEGRAM_ADMIN_CHAT_ID" \
-    -d "text=✅ SoVAni Crosspost backup completed: $DATE"
+    -d "text=✅ SalesWhisper Crosspost backup completed: $DATE"
 fi
 
 echo "✅ Backup completed at $(date)"
 EOF
 
-chmod +x /home/sovani/backup_prod.sh
+chmod +x /home/saleswhisper/backup_prod.sh
 
 # Ежедневный бэкап в 3:00
-(crontab -l 2>/dev/null; echo "0 3 * * * /home/sovani/backup_prod.sh >> /home/sovani/logs/backup.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "0 3 * * * /home/saleswhisper/backup_prod.sh >> /home/saleswhisper/logs/backup.log 2>&1") | crontab -
 ```
 
 ---
@@ -657,7 +657,7 @@ chmod +x /home/sovani/backup_prod.sh
 ## 🎉 7. Финальная проверка продакшн системы
 
 ```bash
-cd /home/sovani/crosspost_prod
+cd /home/saleswhisper/crosspost_prod
 
 echo "🔍 Финальная проверка продакшн развертывания..."
 
@@ -669,7 +669,7 @@ echo "🔍 Проверка логов на критические ошибки:
 docker-compose -f docker-compose.prod.yml logs --tail=100 | grep -i "error\|critical\|failed" || echo "✅ Критических ошибок не найдено"
 
 # Проверяем автозапуск
-sudo systemctl is-enabled sovani-crosspost && echo "✅ Автозапуск настроен"
+sudo systemctl is-enabled saleswhisper-crosspost && echo "✅ Автозапуск настроен"
 
 # Проверяем cron задачи
 crontab -l | grep -E "(monitor|backup)" && echo "✅ Автоматические задачи настроены"
@@ -681,12 +681,12 @@ echo "📋 Информация о системе:"
 echo "   🌐 API: http://localhost:8000"
 echo "   📊 Health: http://localhost:8000/health"
 echo "   📖 Docs: http://localhost:8000/docs"
-echo "   📁 Logs: /home/sovani/crosspost_prod/logs/"
-echo "   💾 Backups: /home/sovani/backups/"
+echo "   📁 Logs: /home/saleswhisper/crosspost_prod/logs/"
+echo "   💾 Backups: /home/saleswhisper/backups/"
 echo ""
 echo "⚙️  Управление:"
-echo "   sudo systemctl status sovani-crosspost"
-echo "   sudo systemctl restart sovani-crosspost"
+echo "   sudo systemctl status saleswhisper-crosspost"
+echo "   sudo systemctl restart saleswhisper-crosspost"
 echo "   docker-compose -f docker-compose.prod.yml logs -f"
 echo ""
 echo "🔐 Безопасность:"
@@ -706,7 +706,7 @@ echo "✅ Система готова к работе!"
 
 ```bash
 # Перезапуск всей системы
-sudo systemctl restart sovani-crosspost
+sudo systemctl restart saleswhisper-crosspost
 
 # Перезапуск отдельного сервиса
 docker-compose -f docker-compose.prod.yml restart api
@@ -737,10 +737,10 @@ docker system prune -f
 Для обновления системы создайте новый архив на Mac и повторите процесс развертывания с предварительной остановкой текущей системы:
 
 ```bash
-sudo systemctl stop sovani-crosspost
+sudo systemctl stop saleswhisper-crosspost
 docker-compose -f docker-compose.prod.yml down
 # ... обновление ...
-sudo systemctl start sovani-crosspost
+sudo systemctl start saleswhisper-crosspost
 ```
 
-**🚀 Продакшн система SoVAni Crosspost готова к работе!**
+**🚀 Продакшн система SalesWhisper Crosspost готова к работе!**

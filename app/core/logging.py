@@ -1,5 +1,5 @@
 """
-Structured logging configuration for SoVAni Crosspost.
+Structured logging configuration for SalesWhisper Crosspost.
 
 This module provides:
 - JSON structured logging with structlog
@@ -409,7 +409,7 @@ if __name__ == "__main__":
     # Get loggers
     app_logger = get_logger("app")
     
-    print("= Testing SoVAni Logging System")
+    print("= Testing SalesWhisper Logging System")
     
     # Test basic logging
     app_logger.info("Application starting", version=settings.app.version)

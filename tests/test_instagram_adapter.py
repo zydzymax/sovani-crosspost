@@ -684,7 +684,7 @@ class TestMediaHandling:
         """Test media file upload with local path."""
         url = await mock_adapter._upload_media_file("/local/image.jpg", ContainerType.IMAGE)
         
-        assert url.startswith("https://cdn.sovani.ru/uploads/")
+        assert url.startswith("https://cdn.saleswhisper.ru/uploads/")
         assert url.endswith("image.jpg")
     
     @pytest.mark.asyncio

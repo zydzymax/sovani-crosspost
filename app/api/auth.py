@@ -1,6 +1,6 @@
 """
-Authentication API routes for SoVAni Crosspost.
-Telegram Login + JWT authentication + Code-based auth.
+Authentication API routes for SalesWhisper Crosspost.
+Email-based authentication with JWT tokens.
 """
 
 import hashlib
@@ -8,34 +8,51 @@ import hmac
 import time
 import random
 import string
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 import jwt
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
 from .deps import get_db_async_session, get_redis_client
+from ..services.email_service import EmailService, EmailConfig, get_email_service, init_email_service
 
 logger = get_logger("api.auth")
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # Code storage prefix
-AUTH_CODE_PREFIX = "auth:code:"
+AUTH_CODE_PREFIX = "auth:code:email:"
 AUTH_CODE_TTL = 300  # 5 minutes
+
+# Initialize email service
+try:
+    email_config = EmailConfig(
+        smtp_host=settings.email.host,
+        smtp_port=settings.email.port,
+        smtp_user=settings.email.user,
+        smtp_password=settings.email.password.get_secret_value() if settings.email.password else "",
+        from_email=settings.email.from_email,
+        use_ssl=settings.email.use_ssl,
+        timeout=settings.email.timeout
+    )
+    init_email_service(email_config)
+except Exception as e:
+    logger.warning(f"Email service not initialized: {e}")
 
 
 # ==================== SCHEMAS ====================
 
 class TelegramAuthData(BaseModel):
-    """Telegram Login Widget data."""
+    """Telegram Login Widget data (legacy support)."""
     id: int = Field(..., description="Telegram user ID")
     first_name: str = Field(..., description="User first name")
     last_name: Optional[str] = Field(None, description="User last name")
@@ -55,39 +72,52 @@ class AuthResponse(BaseModel):
 
 
 class SendCodeRequest(BaseModel):
-    """Request to send auth code."""
-    username: str = Field(..., description="Telegram username (with or without @)")
+    """Request to send auth code via email."""
+    email: EmailStr = Field(..., description="User email address")
 
 
 class SendCodeResponse(BaseModel):
     """Response after sending code."""
     success: bool
     message: str
+    expires_in: int = 300
 
 
 class VerifyCodeRequest(BaseModel):
     """Request to verify auth code."""
-    username: str = Field(..., description="Telegram username")
+    email: EmailStr = Field(..., description="User email address")
     code: str = Field(..., description="6-digit verification code")
 
 
 class UserResponse(BaseModel):
     """User info response."""
     id: str
-    telegram_id: int
+    email: Optional[str]
+    email_verified: bool = False
+    telegram_id: Optional[int]
     telegram_username: Optional[str]
     first_name: Optional[str]
     last_name: Optional[str]
+    company_name: Optional[str]
     photo_url: Optional[str]
-    subscription_plan: str
-    subscription_expires_at: Optional[datetime]
-    demo_started_at: Optional[datetime]
-    demo_days_left: Optional[int]
-    image_gen_provider: str
-    posts_count_this_month: int
-    images_generated_this_month: int
     is_active: bool
     created_at: datetime
+
+
+class SubscriptionInfo(BaseModel):
+    """User subscription info."""
+    product_code: str
+    product_name: str
+    plan_code: str
+    plan_name: str
+    status: str
+    expires_at: Optional[datetime]
+
+
+class MeResponse(BaseModel):
+    """Full user info with subscriptions."""
+    user: UserResponse
+    subscriptions: list[SubscriptionInfo] = []
 
 
 # ==================== HELPERS ====================
@@ -130,8 +160,24 @@ def verify_telegram_auth(data: TelegramAuthData) -> bool:
     return calculated_hash == data.hash
 
 
-def create_jwt_token(user_id: str, telegram_id: int) -> tuple[str, int]:
-    """Create JWT access token."""
+def create_jwt_token(user_id: str, email: str) -> tuple[str, int]:
+    """Create JWT access token for email-based auth."""
+    expires_in = 60 * 60 * 24 * 7  # 7 days
+    payload = {
+        "sub": user_id,
+        "email": email,
+        "exp": datetime.utcnow() + timedelta(seconds=expires_in),
+        "iat": datetime.utcnow(),
+        "iss": "saleswhisper.pro",
+        "aud": ["crosspost", "headofsales", "saleswhisper"],
+    }
+    secret_key = settings.security.jwt_secret_key.get_secret_value()
+    token = jwt.encode(payload, secret_key, algorithm="HS256")
+    return token, expires_in
+
+
+def create_jwt_token_legacy(user_id: str, telegram_id: int) -> tuple[str, int]:
+    """Create JWT access token (legacy Telegram-based)."""
     expires_in = 60 * 60 * 24 * 7  # 7 days
     payload = {
         "sub": user_id,
@@ -139,14 +185,21 @@ def create_jwt_token(user_id: str, telegram_id: int) -> tuple[str, int]:
         "exp": datetime.utcnow() + timedelta(seconds=expires_in),
         "iat": datetime.utcnow(),
     }
-    token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm="HS256")
+    secret_key = settings.security.jwt_secret_key.get_secret_value()
+    token = jwt.encode(payload, secret_key, algorithm="HS256")
     return token, expires_in
 
 
 def decode_jwt_token(token: str) -> Optional[dict]:
     """Decode and verify JWT token."""
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+        secret_key = settings.security.jwt_secret_key.get_secret_value()
+        payload = jwt.decode(
+            token,
+            secret_key,
+            algorithms=["HS256"],
+            options={"verify_aud": False}  # Allow any audience for cross-service
+        )
         return payload
     except jwt.ExpiredSignatureError:
         return None
@@ -212,37 +265,38 @@ async def telegram_login(
         days_passed = (datetime.utcnow() - user.demo_started_at).days
         demo_days_left = max(0, 7 - days_passed)
     
-    # Create JWT token
-    token, expires_in = create_jwt_token(str(user.id), user.telegram_id)
-    
+    # Create JWT token (use email if available, else legacy telegram)
+    if user.email:
+        token, expires_in = create_jwt_token(str(user.id), user.email)
+    else:
+        token, expires_in = create_jwt_token_legacy(str(user.id), user.telegram_id)
+
     return AuthResponse(
         success=True,
         access_token=token,
         expires_in=expires_in,
         user={
             "id": str(user.id),
+            "email": user.email,
             "telegram_id": user.telegram_id,
             "telegram_username": user.telegram_username,
             "first_name": user.telegram_first_name,
             "last_name": user.telegram_last_name,
             "photo_url": user.telegram_photo_url,
-            "subscription_plan": user.subscription_plan.value,
-            "demo_days_left": demo_days_left,
-            "image_gen_provider": user.image_gen_provider.value,
         }
     )
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=MeResponse)
 async def get_me(
     db: AsyncSession = Depends(get_db_async_session),
-    token: str = None  # Will be extracted from header in deps
+    # Will add proper auth dependency later
 ):
-    """Get current authenticated user info."""
+    """Get current authenticated user info with subscriptions."""
     # This will be implemented with proper auth dependency
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Use Authorization header"
+        detail="Use Authorization header with Bearer token"
     )
 
 
@@ -303,62 +357,76 @@ async def send_auth_code(
     redis = Depends(get_redis_client)
 ):
     """
-    Send authentication code to user's Telegram.
-    User must have previously interacted with the bot.
+    Send authentication code to user's email.
+    Works for both new and existing users.
     """
-    # Clean username
-    username = request.username.lstrip('@').lower()
+    email = request.email.lower().strip()
 
-    if not username:
+    if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username is required"
+            detail="Email is required"
         )
 
-    # Try to get user info from Telegram
-    tg_user = await get_telegram_user_by_username(username)
-
-    if not tg_user:
+    # Basic email validation
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Пользователь не найден. Убедитесь, что вы отправили /start боту @login_SalesWhisper_bot"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email format"
         )
 
-    chat_id = tg_user.get("id")
-    if not chat_id:
+    # Check rate limiting (max 5 codes per email per hour)
+    rate_key = f"auth:rate:{email}"
+    rate_count = await redis.get(rate_key)
+    if rate_count and int(rate_count) >= 5:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Не удалось получить ID пользователя"
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Слишком много запросов. Попробуйте через час."
         )
 
     # Generate code
     code = generate_auth_code()
 
-    # Store in Redis
-    redis_key = f"{AUTH_CODE_PREFIX}{username}"
-    await redis.setex(redis_key, AUTH_CODE_TTL, f"{code}:{chat_id}")
+    # Store in Redis with email as key
+    redis_key = f"{AUTH_CODE_PREFIX}{email}"
+    await redis.setex(redis_key, AUTH_CODE_TTL, code)
 
-    # Send code via Telegram
-    message = (
-        f"🔐 <b>Код авторизации</b>\n\n"
-        f"Ваш код: <code>{code}</code>\n\n"
-        f"Код действителен 5 минут.\n"
-        f"Не сообщайте его никому!"
-    )
+    # Increment rate limit counter
+    await redis.incr(rate_key)
+    await redis.expire(rate_key, 3600)  # 1 hour expiry
 
-    sent = await send_telegram_message(chat_id, message)
-
-    if not sent:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось отправить код. Попробуйте позже."
+    # Send code via email
+    sent = False
+    try:
+        email_service = get_email_service()
+        sent = await email_service.send_auth_code(
+            to_email=email,
+            code=code,
+            expires_minutes=5
         )
+    except RuntimeError:
+        # Email service not configured
+        logger.warning(f"Email service not configured")
+    except Exception as e:
+        logger.error(f"Email sending error: {e}")
 
-    logger.info(f"Auth code sent to @{username} (chat_id: {chat_id})")
+    # In development mode, log the code if email wasn't sent
+    if not sent:
+        if settings.app.is_development:
+            logger.warning(f"DEV MODE: Auth code for {email}: {code}")
+            sent = True  # Allow login in dev mode
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Не удалось отправить код. Попробуйте позже."
+            )
+
+    logger.info(f"Auth code {'sent' if sent else 'generated'} for {email}")
 
     return SendCodeResponse(
         success=True,
-        message=f"Код отправлен в Telegram @{username}"
+        message=f"Код отправлен на {email}",
+        expires_in=AUTH_CODE_TTL
     )
 
 
@@ -369,36 +437,27 @@ async def verify_auth_code(
     redis = Depends(get_redis_client)
 ):
     """
-    Verify authentication code and return JWT token.
+    Verify email authentication code and return JWT token.
+    Creates new user if not exists.
     """
     # Clean inputs
-    username = request.username.lstrip('@').lower()
+    email = request.email.lower().strip()
     code = request.code.strip()
 
-    if not username or not code:
+    if not email or not code:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username and code are required"
+            detail="Email and code are required"
         )
 
     # Get stored code from Redis
-    redis_key = f"{AUTH_CODE_PREFIX}{username}"
-    stored_data = await redis.get(redis_key)
+    redis_key = f"{AUTH_CODE_PREFIX}{email}"
+    stored_code = await redis.get(redis_key)
 
-    if not stored_data:
+    if not stored_code:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Код истёк или не существует. Запросите новый код."
-        )
-
-    # Parse stored data (code:chat_id)
-    try:
-        stored_code, chat_id_str = stored_data.split(":")
-        chat_id = int(chat_id_str)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ошибка данных. Запросите новый код."
         )
 
     # Verify code
@@ -414,54 +473,35 @@ async def verify_auth_code(
     # Import here to avoid circular imports
     from ..models.entities import User, SubscriptionPlan
 
-    # Find or create user
+    # Find user by email
     result = await db.execute(
-        select(User).where(User.telegram_id == chat_id)
+        select(User).where(User.email == email)
     )
     user = result.scalar_one_or_none()
-
-    # Get fresh user info from Telegram
-    tg_user = await get_telegram_user_by_username(username)
-    first_name = tg_user.get("first_name", "") if tg_user else ""
-    last_name = tg_user.get("last_name") if tg_user else None
-    photo_url = None
-    if tg_user and tg_user.get("photo"):
-        photo_url = tg_user["photo"].get("small_file_id")
 
     if user is None:
         # Create new user with demo subscription
         user = User(
-            telegram_id=chat_id,
-            telegram_username=username,
-            telegram_first_name=first_name,
-            telegram_last_name=last_name,
-            telegram_photo_url=photo_url,
+            email=email,
+            email_verified=True,  # Verified by code
             subscription_plan=SubscriptionPlan.DEMO,
             demo_started_at=datetime.utcnow(),
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
-        logger.info(f"New user created via code auth: {user.id} (tg: {chat_id})")
+        logger.info(f"New user created via email auth: {user.id} ({email})")
     else:
-        # Update user info
-        user.telegram_username = username
-        if first_name:
-            user.telegram_first_name = first_name
-        if last_name:
-            user.telegram_last_name = last_name
+        # Update user - mark email as verified
+        if not user.email_verified:
+            user.email_verified = True
+        user.last_login_at = datetime.utcnow()
         user.updated_at = datetime.utcnow()
         await db.commit()
-        logger.info(f"User logged in via code auth: {user.id} (tg: {chat_id})")
-
-    # Calculate demo days left
-    demo_days_left = None
-    if user.subscription_plan == SubscriptionPlan.DEMO and user.demo_started_at:
-        days_passed = (datetime.utcnow() - user.demo_started_at).days
-        demo_days_left = max(0, 7 - days_passed)
+        logger.info(f"User logged in via email auth: {user.id} ({email})")
 
     # Create JWT token
-    token, expires_in = create_jwt_token(str(user.id), user.telegram_id)
+    token, expires_in = create_jwt_token(str(user.id), email)
 
     return AuthResponse(
         success=True,
@@ -469,13 +509,13 @@ async def verify_auth_code(
         expires_in=expires_in,
         user={
             "id": str(user.id),
+            "email": user.email,
+            "email_verified": user.email_verified,
             "telegram_id": user.telegram_id,
             "telegram_username": user.telegram_username,
-            "first_name": user.telegram_first_name,
-            "last_name": user.telegram_last_name,
-            "photo_url": user.telegram_photo_url,
-            "subscription_plan": user.subscription_plan.value,
-            "demo_days_left": demo_days_left,
-            "image_gen_provider": user.image_gen_provider.value,
+            "first_name": user.telegram_first_name or user.first_name,
+            "last_name": user.telegram_last_name or user.last_name,
+            "company_name": user.company_name,
+            "is_active": user.is_active,
         }
     )

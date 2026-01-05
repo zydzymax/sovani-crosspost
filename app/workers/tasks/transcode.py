@@ -1,5 +1,5 @@
 """
-Transcode stage tasks for SoVAni Crosspost.
+Transcode stage tasks for SalesWhisper Crosspost.
 
 This module handles intelligent media adaptation for different platforms:
 - Smart cropping (face-aware, content-aware)

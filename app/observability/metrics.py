@@ -1,5 +1,5 @@
 """
-Prometheus metrics collection for SoVAni Crosspost.
+Prometheus metrics collection for SalesWhisper Crosspost.
 
 This module provides:
 - Application metrics (requests, errors, response times)
@@ -36,7 +36,7 @@ class MetricsCollector:
         
         # Application info
         self.app_info = Info(
-            'sovani_crosspost_info',
+            'saleswhisper_crosspost_info',
             'Application information',
             registry=self.registry
         )
@@ -48,14 +48,14 @@ class MetricsCollector:
         
         # HTTP request metrics
         self.http_requests_total = Counter(
-            'sovani_http_requests_total',
+            'saleswhisper_http_requests_total',
             'Total HTTP requests',
             ['method', 'endpoint', 'status_code'],
             registry=self.registry
         )
         
         self.http_request_duration = Histogram(
-            'sovani_http_request_duration_seconds',
+            'saleswhisper_http_request_duration_seconds',
             'HTTP request duration in seconds',
             ['method', 'endpoint'],
             buckets=[0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
@@ -63,7 +63,7 @@ class MetricsCollector:
         )
         
         self.http_request_size = Histogram(
-            'sovani_http_request_size_bytes',
+            'saleswhisper_http_request_size_bytes',
             'HTTP request size in bytes',
             ['method', 'endpoint'],
             buckets=[64, 256, 1024, 4096, 16384, 65536, 262144],
@@ -71,7 +71,7 @@ class MetricsCollector:
         )
         
         self.http_response_size = Histogram(
-            'sovani_http_response_size_bytes',
+            'saleswhisper_http_response_size_bytes',
             'HTTP response size in bytes', 
             ['method', 'endpoint'],
             buckets=[64, 256, 1024, 4096, 16384, 65536, 262144],
@@ -80,28 +80,28 @@ class MetricsCollector:
         
         # Business metrics - Posts
         self.posts_created_total = Counter(
-            'sovani_posts_created_total',
+            'saleswhisper_posts_created_total',
             'Total posts created',
             ['platform', 'source_type'],
             registry=self.registry
         )
         
         self.posts_published_total = Counter(
-            'sovani_posts_published_total',
+            'saleswhisper_posts_published_total',
             'Total posts successfully published',
             ['platform'],
             registry=self.registry
         )
         
         self.posts_failed_total = Counter(
-            'sovani_posts_failed_total',
+            'saleswhisper_posts_failed_total',
             'Total posts that failed to publish',
             ['platform', 'error_type'],
             registry=self.registry
         )
         
         self.active_posts = Gauge(
-            'sovani_active_posts',
+            'saleswhisper_active_posts',
             'Number of active posts by status',
             ['status', 'platform'],
             registry=self.registry
@@ -109,14 +109,14 @@ class MetricsCollector:
         
         # Media processing metrics
         self.media_processed_total = Counter(
-            'sovani_media_processed_total',
+            'saleswhisper_media_processed_total',
             'Total media files processed',
             ['media_type', 'platform', 'success'],
             registry=self.registry
         )
         
         self.media_processing_duration = Histogram(
-            'sovani_media_processing_duration_seconds',
+            'saleswhisper_media_processing_duration_seconds',
             'Media processing duration in seconds',
             ['media_type', 'platform', 'operation'],
             buckets=[1, 5, 10, 30, 60, 180, 300, 600],
@@ -124,7 +124,7 @@ class MetricsCollector:
         )
         
         self.media_file_size = Histogram(
-            'sovani_media_file_size_bytes',
+            'saleswhisper_media_file_size_bytes',
             'Media file sizes in bytes',
             ['media_type', 'platform'],
             buckets=[1024, 10240, 102400, 1048576, 10485760, 104857600, 524288000],
@@ -133,14 +133,14 @@ class MetricsCollector:
         
         # Celery task metrics
         self.celery_tasks_total = Counter(
-            'sovani_celery_tasks_total',
+            'saleswhisper_celery_tasks_total',
             'Total Celery tasks executed',
             ['task_name', 'queue', 'status'],
             registry=self.registry
         )
         
         self.celery_task_duration = Histogram(
-            'sovani_celery_task_duration_seconds',
+            'saleswhisper_celery_task_duration_seconds',
             'Celery task execution duration',
             ['task_name', 'queue'],
             buckets=[0.1, 0.5, 1, 5, 10, 30, 60, 180, 300],
@@ -148,14 +148,14 @@ class MetricsCollector:
         )
         
         self.celery_active_tasks = Gauge(
-            'sovani_celery_active_tasks',
+            'saleswhisper_celery_active_tasks',
             'Number of active Celery tasks',
             ['queue'],
             registry=self.registry
         )
         
         self.celery_queue_size = Gauge(
-            'sovani_celery_queue_size',
+            'saleswhisper_celery_queue_size',
             'Number of tasks in queue',
             ['queue'],
             registry=self.registry
@@ -163,14 +163,14 @@ class MetricsCollector:
         
         # Database metrics
         self.database_queries_total = Counter(
-            'sovani_database_queries_total',
+            'saleswhisper_database_queries_total',
             'Total database queries',
             ['operation', 'table', 'status'],
             registry=self.registry
         )
         
         self.database_query_duration = Histogram(
-            'sovani_database_query_duration_seconds',
+            'saleswhisper_database_query_duration_seconds',
             'Database query duration',
             ['operation', 'table'],
             buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
@@ -178,7 +178,7 @@ class MetricsCollector:
         )
         
         self.database_connections = Gauge(
-            'sovani_database_connections',
+            'saleswhisper_database_connections',
             'Number of database connections',
             ['pool', 'state'],
             registry=self.registry
@@ -186,14 +186,14 @@ class MetricsCollector:
         
         # External API metrics
         self.external_api_calls_total = Counter(
-            'sovani_external_api_calls_total',
+            'saleswhisper_external_api_calls_total',
             'Total external API calls',
             ['service', 'endpoint', 'status_code'],
             registry=self.registry
         )
         
         self.external_api_duration = Histogram(
-            'sovani_external_api_duration_seconds',
+            'saleswhisper_external_api_duration_seconds',
             'External API call duration',
             ['service', 'endpoint'],
             buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0],
@@ -202,7 +202,7 @@ class MetricsCollector:
         
         # Circuit breaker metrics
         self.circuit_breaker_state = Enum(
-            'sovani_circuit_breaker_state',
+            'saleswhisper_circuit_breaker_state',
             'Circuit breaker state',
             ['service'],
             states=['closed', 'open', 'half_open'],
@@ -210,7 +210,7 @@ class MetricsCollector:
         )
         
         self.circuit_breaker_failures = Counter(
-            'sovani_circuit_breaker_failures_total',
+            'saleswhisper_circuit_breaker_failures_total',
             'Circuit breaker failures',
             ['service'],
             registry=self.registry
@@ -218,14 +218,14 @@ class MetricsCollector:
         
         # Storage metrics
         self.storage_operations_total = Counter(
-            'sovani_storage_operations_total',
+            'saleswhisper_storage_operations_total',
             'Total storage operations',
             ['operation', 'bucket', 'status'],
             registry=self.registry
         )
         
         self.storage_operation_duration = Histogram(
-            'sovani_storage_operation_duration_seconds',
+            'saleswhisper_storage_operation_duration_seconds',
             'Storage operation duration',
             ['operation', 'bucket'],
             buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0],
@@ -233,7 +233,7 @@ class MetricsCollector:
         )
         
         self.storage_file_size = Histogram(
-            'sovani_storage_file_size_bytes',
+            'saleswhisper_storage_file_size_bytes',
             'Storage file sizes',
             ['bucket', 'file_type'],
             buckets=[1024, 10240, 102400, 1048576, 10485760, 104857600, 524288000],
@@ -242,14 +242,14 @@ class MetricsCollector:
         
         # Cache metrics (Redis)
         self.cache_operations_total = Counter(
-            'sovani_cache_operations_total',
+            'saleswhisper_cache_operations_total',
             'Total cache operations',
             ['operation', 'status'],
             registry=self.registry
         )
         
         self.cache_hit_ratio = Gauge(
-            'sovani_cache_hit_ratio',
+            'saleswhisper_cache_hit_ratio',
             'Cache hit ratio',
             registry=self.registry
         )
@@ -577,7 +577,7 @@ def get_metrics_response():
 if __name__ == "__main__":
     """Example usage of metrics system."""
     
-    print("=== Testing SoVAni Metrics System ===")
+    print("=== Testing SalesWhisper Metrics System ===")
     
     # Test HTTP request tracking
     print("\n1. Testing HTTP Request Metrics:")

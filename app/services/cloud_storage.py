@@ -1,5 +1,5 @@
 """
-Unified Cloud Storage Service for SoVAni Crosspost.
+Unified Cloud Storage Service for SalesWhisper Crosspost.
 
 Provides a unified interface for working with different cloud storage providers:
 - Google Drive

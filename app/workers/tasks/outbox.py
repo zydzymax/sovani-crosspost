@@ -1,4 +1,4 @@
-"""Outbox processing tasks for SoVAni Crosspost.
+"""Outbox processing tasks for SalesWhisper Crosspost.
 
 This module handles:
 - Outbox event publishing to ensure reliable message delivery

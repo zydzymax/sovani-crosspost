@@ -1,5 +1,5 @@
 """
-Cloud Storage API routes for SoVAni Crosspost.
+Cloud Storage API routes for SalesWhisper Crosspost.
 
 Provides endpoints for:
 - Connecting Google Drive / Yandex Disk accounts

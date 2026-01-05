@@ -1,4 +1,4 @@
-"""YouTube API adapter for SoVAni Crosspost."""
+"""YouTube API adapter for SalesWhisper Crosspost."""
 
 import asyncio
 import os
@@ -195,7 +195,7 @@ class YouTubeAdapter:
             timeout=httpx.Timeout(300.0),  # 5 minutes for uploads
             limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
             headers={
-                "User-Agent": "SoVAni-Crosspost/1.0"
+                "User-Agent": "SalesWhisper-Crosspost/1.0"
             }
         )
 

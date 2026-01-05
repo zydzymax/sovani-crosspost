@@ -1,5 +1,5 @@
 """
-FFmpeg Wrapper for SoVAni Crosspost.
+FFmpeg Wrapper for SalesWhisper Crosspost.
 
 This module provides a Python wrapper around the FFmpeg profiles bash script,
 handling process execution, timeouts, retries, and error handling.

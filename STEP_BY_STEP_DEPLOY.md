@@ -1,10 +1,10 @@
-# 📦 Пошаговая инструкция портирования SoVAni Crosspost на VPS
+# 📦 Пошаговая инструкция портирования SalesWhisper Crosspost на VPS
 
 ## ШАГ 1: ПОДГОТОВКА НА MAC (Терминал Mac)
 
 ```bash
 # Переходим в папку проекта
-cd /Users/fbi/sovani_crosspost
+cd /Users/fbi/saleswhisper_crosspost
 
 # Копируем конфигурацию и заполняем API ключи
 cp env.example .env
@@ -23,10 +23,10 @@ OPENAI_API_KEY=[REVOKED_SECRET_REMOVED]
 
 ```bash
 # Создаем архив со всем проектом включая .env
-tar -czf sovani_crosspost_production.tar.gz --exclude='*.pyc' --exclude='.git' --exclude='venv' --exclude='node_modules' --exclude='*.log' .
+tar -czf saleswhisper_crosspost_production.tar.gz --exclude='*.pyc' --exclude='.git' --exclude='venv' --exclude='node_modules' --exclude='*.log' .
 
 # Передаем архив на VPS (замените YOUR_VPS_IP)
-scp sovani_crosspost_production.tar.gz root@YOUR_VPS_IP:/root/
+scp saleswhisper_crosspost_production.tar.gz root@YOUR_VPS_IP:/root/
 ```
 
 ---
@@ -63,23 +63,23 @@ docker-compose --version
 
 ```bash
 # Создаем пользователя для приложения
-useradd -m -s /bin/bash sovani
-usermod -aG docker sovani
+useradd -m -s /bin/bash saleswhisper
+usermod -aG docker saleswhisper
 
 # Распаковываем проект
 cd /root
-tar -xzf sovani_crosspost_production.tar.gz
-mv /root/sovani_crosspost /home/sovani/crosspost_app
-chown -R sovani:sovani /home/sovani/crosspost_app
+tar -xzf saleswhisper_crosspost_production.tar.gz
+mv /root/saleswhisper_crosspost /home/saleswhisper/crosspost_app
+chown -R saleswhisper:saleswhisper /home/saleswhisper/crosspost_app
 
 # Создаем директории для данных
-mkdir -p /home/sovani/{data,logs,backups}
-mkdir -p /home/sovani/data/{postgres,redis,minio}
-chown -R sovani:sovani /home/sovani/data /home/sovani/logs /home/sovani/backups
+mkdir -p /home/saleswhisper/{data,logs,backups}
+mkdir -p /home/saleswhisper/data/{postgres,redis,minio}
+chown -R saleswhisper:saleswhisper /home/saleswhisper/data /home/saleswhisper/logs /home/saleswhisper/backups
 
-# Переключаемся на пользователя sovani
-su - sovani
-cd /home/sovani/crosspost_app
+# Переключаемся на пользователя saleswhisper
+su - saleswhisper
+cd /home/saleswhisper/crosspost_app
 ```
 
 ---
@@ -149,14 +149,14 @@ docker-compose logs worker
 ## ШАГ 7: НАСТРОЙКА NGINX (возвращаемся к root)
 
 ```bash
-# Выходим от пользователя sovani
+# Выходим от пользователя saleswhisper
 exit
 
 # Устанавливаем Nginx
 apt install -y nginx
 
 # Создаем конфигурацию (замените your-domain.com на ваш домен)
-cat > /etc/nginx/sites-available/sovani-crosspost << 'EOF'
+cat > /etc/nginx/sites-available/saleswhisper-crosspost << 'EOF'
 server {
     listen 80;
     server_name your-domain.com www.your-domain.com;
@@ -184,7 +184,7 @@ server {
 EOF
 
 # Активируем сайт
-ln -s /etc/nginx/sites-available/sovani-crosspost /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/saleswhisper-crosspost /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 
 # Проверяем и перезапускаем Nginx
@@ -214,21 +214,21 @@ certbot renew --dry-run
 
 ```bash
 # Создаем systemd сервис
-cat > /etc/systemd/system/sovani-crosspost.service << 'EOF'
+cat > /etc/systemd/system/saleswhisper-crosspost.service << 'EOF'
 [Unit]
-Description=SoVAni Crosspost Application
+Description=SalesWhisper Crosspost Application
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/sovani/crosspost_app
+WorkingDirectory=/home/saleswhisper/crosspost_app
 ExecStart=/usr/local/bin/docker-compose up -d
 ExecStop=/usr/local/bin/docker-compose down
 ExecReload=/usr/local/bin/docker-compose restart
-User=sovani
-Group=sovani
+User=saleswhisper
+Group=saleswhisper
 
 [Install]
 WantedBy=multi-user.target
@@ -236,11 +236,11 @@ EOF
 
 # Активируем сервис
 systemctl daemon-reload
-systemctl enable sovani-crosspost.service
-systemctl start sovani-crosspost.service
+systemctl enable saleswhisper-crosspost.service
+systemctl start saleswhisper-crosspost.service
 
 # Проверяем статус
-systemctl status sovani-crosspost.service
+systemctl status saleswhisper-crosspost.service
 ```
 
 ---
@@ -274,15 +274,15 @@ curl -X POST "https://your-domain.com/api/posts" \
   -d '{
     "source_type": "manual",
     "source_data": {
-      "message": "Тестовый пост из SoVAni!",
-      "hashtags": ["#sovani", "#test"]
+      "message": "Тестовый пост из SalesWhisper!",
+      "hashtags": ["#saleswhisper", "#test"]
     },
     "platforms": ["instagram"]
   }'
 
 # Смотрим логи обработки
-su - sovani
-cd /home/sovani/crosspost_app
+su - saleswhisper
+cd /home/saleswhisper/crosspost_app
 docker-compose logs -f worker
 ```
 
@@ -292,37 +292,37 @@ docker-compose logs -f worker
 
 ```bash
 # Создаем скрипт бэкапа
-cat > /home/sovani/backup.sh << 'EOF'
+cat > /home/saleswhisper/backup.sh << 'EOF'
 #!/bin/bash
-BACKUP_DIR="/home/sovani/backups"
+BACKUP_DIR="/home/saleswhisper/backups"
 DATE=$(date +%Y%m%d_%H%M%S)
 mkdir -p "${BACKUP_DIR}"
 
 # Бэкап базы данных
-docker-compose -f /home/sovani/crosspost_app/docker-compose.yml \
-  exec -T postgres pg_dump -U sovani sovani_crosspost \
+docker-compose -f /home/saleswhisper/crosspost_app/docker-compose.yml \
+  exec -T postgres pg_dump -U saleswhisper saleswhisper_crosspost \
   > "${BACKUP_DIR}/database_${DATE}.sql"
 
 # Бэкап конфигурации
-cp /home/sovani/crosspost_app/.env "${BACKUP_DIR}/env_${DATE}.backup"
+cp /home/saleswhisper/crosspost_app/.env "${BACKUP_DIR}/env_${DATE}.backup"
 
 # Архивируем
 cd "${BACKUP_DIR}"
-tar -czf "sovani_backup_${DATE}.tar.gz" database_${DATE}.sql env_${DATE}.backup
+tar -czf "saleswhisper_backup_${DATE}.tar.gz" database_${DATE}.sql env_${DATE}.backup
 rm database_${DATE}.sql env_${DATE}.backup
 
 # Удаляем старые бэкапы (старше 7 дней)
 find "${BACKUP_DIR}" -name "*.tar.gz" -mtime +7 -delete
 
-echo "Backup completed: sovani_backup_${DATE}.tar.gz"
+echo "Backup completed: saleswhisper_backup_${DATE}.tar.gz"
 EOF
 
-chmod +x /home/sovani/backup.sh
-chown sovani:sovani /home/sovani/backup.sh
+chmod +x /home/saleswhisper/backup.sh
+chown saleswhisper:saleswhisper /home/saleswhisper/backup.sh
 
 # Добавляем в cron (бэкап каждый день в 3:00)
-crontab -u sovani << 'EOF'
-0 3 * * * /home/sovani/backup.sh >> /home/sovani/logs/backup.log 2>&1
+crontab -u saleswhisper << 'EOF'
+0 3 * * * /home/saleswhisper/backup.sh >> /home/saleswhisper/logs/backup.log 2>&1
 EOF
 ```
 
@@ -334,8 +334,8 @@ EOF
 
 - [ ] Архив передан на VPS
 - [ ] Docker и Docker Compose установлены  
-- [ ] Пользователь sovani создан
-- [ ] Проект распакован в /home/sovani/crosspost_app
+- [ ] Пользователь saleswhisper создан
+- [ ] Проект распакован в /home/saleswhisper/crosspost_app
 - [ ] .env файл заполнен API ключами
 - [ ] `docker-compose ps` показывает все контейнеры в статусе Up
 - [ ] `curl http://localhost:8000/health` возвращает {"status":"healthy"}
@@ -353,8 +353,8 @@ EOF
 
 **Если контейнеры не запустились:**
 ```bash
-su - sovani
-cd /home/sovani/crosspost_app
+su - saleswhisper
+cd /home/saleswhisper/crosspost_app
 docker-compose down
 docker-compose up -d
 docker-compose logs
@@ -376,8 +376,8 @@ docker-compose restart
 
 **Перезапуск всей системы:**
 ```bash
-systemctl restart sovani-crosspost
-systemctl status sovani-crosspost
+systemctl restart saleswhisper-crosspost
+systemctl status saleswhisper-crosspost
 ```
 
 ---
@@ -387,14 +387,14 @@ systemctl status sovani-crosspost
 **Управление системой:**
 ```bash
 # Перезапуск
-systemctl restart sovani-crosspost
+systemctl restart saleswhisper-crosspost
 
 # Статус
-systemctl status sovani-crosspost
+systemctl status saleswhisper-crosspost
 
 # Логи
-su - sovani
-cd /home/sovani/crosspost_app
+su - saleswhisper
+cd /home/saleswhisper/crosspost_app
 docker-compose logs -f
 ```
 

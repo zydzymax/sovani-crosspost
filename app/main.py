@@ -1,5 +1,5 @@
 """
-FastAPI application entry point for SoVAni Crosspost.
+FastAPI application entry point for SalesWhisper Crosspost.
 
 This module provides:
 - FastAPI application setup with middleware
@@ -35,10 +35,17 @@ from .api.routes import router as api_router
 from .api.auth import router as auth_router
 from .api.user_routes import router as user_router
 from .api.content_plan import router as content_plan_router
+from .api.generation_progress import router as progress_router
 from .api.video_gen import router as video_gen_router
+from .api.tts import router as tts_router
 from .api.pricing import router as pricing_router
 from .api.cloud_storage import router as cloud_storage_router
 from .api.admin_fraud import router as admin_fraud_router
+from .api.cart import router as cart_router
+from .api.checkout import router as checkout_router
+from .api.account import router as account_router
+from .api.tiktok_oauth import router as tiktok_oauth_router
+from .api.analytics import router as analytics_router
 from .middleware.antifraud import AntifraudMiddleware, IPBlockMiddleware
 
 
@@ -48,7 +55,7 @@ async def lifespan(app: FastAPI):
     logger = get_logger("app.lifespan")
     
     # Startup
-    logger.info("Starting SoVAni Crosspost application")
+    logger.info("Starting SalesWhisper Crosspost application")
     
     try:
         # Initialize database connection
@@ -73,7 +80,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
-    logger.info("Shutting down SoVAni Crosspost application")
+    logger.info("Shutting down SalesWhisper Crosspost application")
     
     try:
         # Close database connections
@@ -95,7 +102,7 @@ def create_application() -> FastAPI:
     
     # Create FastAPI app
     app = FastAPI(
-        title="SoVAni Crosspost API",
+        title="SalesWhisper Crosspost API",
         description="Cross-platform content publishing system from Telegram to social media platforms",
         version=settings.app.version,
         debug=settings.app.debug,
@@ -112,11 +119,24 @@ def create_application() -> FastAPI:
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(user_router, prefix="/api/v1")
     app.include_router(content_plan_router, prefix="/api/v1")
+    app.include_router(progress_router, prefix="/api/v1")
     app.include_router(video_gen_router, prefix="/api/v1")
+    app.include_router(tts_router, prefix="/api/v1")
     app.include_router(pricing_router, prefix="/api/v1")
     app.include_router(cloud_storage_router, prefix="/api/v1")
     app.include_router(admin_fraud_router, prefix="/api/v1")
-    
+    app.include_router(cart_router, prefix="/api/v1")
+    app.include_router(checkout_router, prefix="/api/v1")
+    app.include_router(account_router, prefix="/api/v1")
+    app.include_router(tiktok_oauth_router, prefix="/api/v1")
+    app.include_router(analytics_router, prefix="/api/v1")
+
+    # Health check endpoint for Docker/Kubernetes
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint for container orchestration."""
+        return {"status": "healthy", "service": "saleswhisper-crosspost"}
+
     # Add metrics endpoint
     @app.get("/metrics", response_class=Response)
     async def metrics_endpoint():
@@ -175,8 +195,12 @@ def setup_middleware(app: FastAPI):
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"] if settings.app.is_development else [
-            "https://admin.sovani.ru",
-            "https://app.sovani.ru"
+            "https://admin.saleswhisper.ru",
+            "https://app.saleswhisper.ru",
+            "https://saleswhisper.pro",
+            "https://crosspost.saleswhisper.pro",
+            "https://headofsales.saleswhisper.pro",
+            "https://sites.saleswhisper.pro",
         ],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -195,7 +219,7 @@ def setup_middleware(app: FastAPI):
     if not settings.app.is_development:
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["api.sovani.ru", "*.sovani.ru"]
+            allowed_hosts=["api.saleswhisper.ru", "*.saleswhisper.ru", "*.saleswhisper.pro", "saleswhisper.pro"]
         )
 
     # Anti-fraud middleware (rate limiting + bot detection)

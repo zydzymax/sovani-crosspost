@@ -1,14 +1,11 @@
 """Dynamic pricing service for Crosspost.
 
-Calculates subscription costs based on:
-- Selected social networks
-- Number of posts per month
-- Image generation provider
-- Video generation usage
+Credit-based system where expensive providers consume more credits.
+Each subscription tier includes a fixed number of credits.
 """
 
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from ..core.logging import get_logger
@@ -17,387 +14,545 @@ from ..core.logging import get_logger
 logger = get_logger("services.pricing")
 
 
-class PlatformCost(str, Enum):
-    """Platform cost tiers."""
-    FREE = "free"
-    BASIC = "basic"
-    PREMIUM = "premium"
+# =============================================================================
+# PLATFORMS
+# =============================================================================
 
-
-class ImageProvider(str, Enum):
-    """Image generation providers."""
-    OPENAI = "openai"      # DALL-E 3
-    MIDJOURNEY = "midjourney"
-    NANOBANA = "nanobana"
-    NONE = "none"
-
-
-class VideoProvider(str, Enum):
-    """Video generation providers."""
-    RUNWAY = "runway"
-    NONE = "none"
-
-
-# Platform posting costs per post (actual cost × 3 markup)
-# Free platforms have zero API cost, but we still charge for convenience
 PLATFORM_COSTS = {
     "telegram": {
-        "cost_per_post": 0.00,  # Free API
+        "cost_per_post": 0.00,
         "display_name": "Telegram",
-        "description": "Каналы и группы"
+        "description": "Каналы и группы",
+        "icon": "telegram"
     },
     "vk": {
-        "cost_per_post": 0.00,  # Free API
+        "cost_per_post": 0.00,
         "display_name": "ВКонтакте",
-        "description": "Группы и паблики"
+        "description": "Группы и паблики",
+        "icon": "vk"
     },
     "instagram": {
-        "cost_per_post": 0.03,  # ~$0.01 API cost × 3
+        "cost_per_post": 0.03,
         "display_name": "Instagram",
-        "description": "Посты, Stories, Reels"
+        "description": "Посты, Stories, Reels",
+        "icon": "instagram"
     },
     "facebook": {
-        "cost_per_post": 0.03,  # ~$0.01 API cost × 3
+        "cost_per_post": 0.03,
         "display_name": "Facebook",
-        "description": "Страницы и группы"
+        "description": "Страницы и группы",
+        "icon": "facebook"
     },
     "tiktok": {
-        "cost_per_post": 0.06,  # ~$0.02 API cost × 3 (complex API)
+        "cost_per_post": 0.06,
         "display_name": "TikTok",
-        "description": "Видео контент"
+        "description": "Видео контент",
+        "icon": "tiktok"
     },
     "youtube": {
-        "cost_per_post": 0.09,  # ~$0.03 API cost × 3
+        "cost_per_post": 0.09,
         "display_name": "YouTube",
-        "description": "Видео и Shorts"
+        "description": "Видео и Shorts",
+        "icon": "youtube"
     },
     "rutube": {
-        "cost_per_post": 0.03,  # ~$0.01 API cost × 3
+        "cost_per_post": 0.03,
         "display_name": "RuTube",
-        "description": "Российский видеохостинг"
+        "description": "Российский видеохостинг",
+        "icon": "rutube"
     }
 }
 
-# Image generation costs per image (actual cost × 3 markup)
-IMAGE_GEN_COSTS = {
+
+# =============================================================================
+# IMAGE PROVIDERS - credits per image
+# Base: 1 credit = 1 Nanobana Flash image (~/bin/bash.02 actual)
+# =============================================================================
+
+IMAGE_PROVIDERS = {
+    "nanobana": {
+        "credits_per_image": 1,
+        "cost_usd": 0.06,  # with 3x markup
+        "display_name": "Nano Banana Flash",
+        "quality": "standard",
+        "description": "Быстрая генерация, низкая цена",
+        "strengths": ["Скорость", "Низкая цена", "Большие объёмы"],
+        "best_for": "Массовая генерация, тесты идей",
+        "speed": "fast",
+        "max_resolution": "1024x1024"
+    },
     "openai": {
-        "cost_per_image": 0.12,  # $0.04 actual × 3
+        "credits_per_image": 2,
+        "cost_usd": 0.12,
         "display_name": "DALL-E 3",
         "quality": "high",
-        "description": "OpenAI's flagship model"
+        "description": "Высокое качество, реалистичные изображения",
+        "strengths": ["Фотореализм", "Текст на изображениях", "Сложные сцены"],
+        "best_for": "Реалистичные фото, продуктовые изображения",
+        "speed": "medium",
+        "max_resolution": "1024x1024"
     },
     "midjourney": {
-        "cost_per_image": 0.24,  # $0.08 actual × 3
+        "credits_per_image": 4,
+        "cost_usd": 0.24,
         "display_name": "Midjourney",
         "quality": "premium",
-        "description": "Лучшее качество для маркетинга"
+        "description": "Лучшее для маркетинга и арта",
+        "strengths": ["Художественный стиль", "Эстетика", "Маркетинговые материалы"],
+        "best_for": "Арт, иллюстрации, креативные посты",
+        "speed": "slow",
+        "max_resolution": "1024x1024"
     },
-    "nanobana": {
-        "cost_per_image": 0.03,  # $0.01 actual × 3
-        "display_name": "Nanobana",
-        "quality": "standard",
-        "description": "Бюджетный вариант"
-    },
-    "none": {
-        "cost_per_image": 0.00,
-        "display_name": "Без генерации",
-        "quality": "none",
-        "description": "Только свои изображения"
+    "nanobana-pro": {
+        "credits_per_image": 6,
+        "cost_usd": 0.36,
+        "display_name": "Nano Banana Pro",
+        "quality": "premium",
+        "description": "Google Gemini 3 Pro - 4K качество",
+        "strengths": ["4K разрешение", "Детализация", "Сложные промпты"],
+        "best_for": "Премиум контент, печать, баннеры",
+        "speed": "medium",
+        "max_resolution": "4096x4096"
     }
 }
 
-# Video generation costs per second (actual cost × 3 markup)
-VIDEO_GEN_COSTS = {
-    "runway": {
-        "cost_per_second": 0.15,  # $0.05 actual × 3
-        "display_name": "Runway ML",
+
+# =============================================================================
+# VIDEO PROVIDERS - credits per 5 seconds
+# Base: 1 credit = 5 sec MiniMax video (~/bin/bash.14 actual)
+# =============================================================================
+
+VIDEO_PROVIDERS = {
+    "minimax": {
+        "credits_per_5sec": 1,
+        "cost_usd_per_5sec": 0.24,
+        "display_name": "MiniMax Hailuo",
         "quality": "high",
-        "description": "Gen-3 Alpha видео"
+        "description": "Отличное соотношение цена/качество",
+        "strengths": ["Реалистичные движения", "Персонажи", "Доступная цена"],
+        "best_for": "Контент для соцсетей, анимация",
+        "duration_options": [6],
+        "aspect_ratios": ["16:9", "9:16", "1:1"]
     },
-    "none": {
-        "cost_per_second": 0.00,
-        "display_name": "Без генерации",
-        "quality": "none",
-        "description": "Только свои видео"
+    "kling": {
+        "credits_per_5sec": 1,
+        "cost_usd_per_5sec": 0.25,
+        "display_name": "Kling AI",
+        "quality": "high",
+        "description": "Image-to-video, быстрая генерация",
+        "strengths": ["Image-to-video", "Низкая цена", "Быстрая генерация"],
+        "best_for": "Анимация изображений, Reels/TikTok",
+        "duration_options": [5, 10],
+        "aspect_ratios": ["16:9", "9:16", "1:1"]
+    },
+    "runway": {
+        "credits_per_5sec": 3,
+        "cost_usd_per_5sec": 0.75,
+        "display_name": "Runway Gen-3",
+        "quality": "premium",
+        "description": "Лучшее качество видео",
+        "strengths": ["Премиум качество", "Контроль движения", "Кинематографичность"],
+        "best_for": "Рекламные ролики, премиум контент",
+        "duration_options": [5, 10],
+        "aspect_ratios": ["16:9", "9:16", "1:1"]
     }
 }
 
-# Base subscription fees (monthly)
-BASE_SUBSCRIPTION = {
-    "demo": {
-        "price": 0.00,
-        "posts_limit": 10,
-        "images_limit": 5,
-        "video_seconds_limit": 0,
-        "duration_days": 7
+
+# =============================================================================
+# TTS PROVIDERS - credits per 1000 characters
+# Base: 1 credit = 1000 chars OpenAI TTS (~/bin/bash.015 actual)
+# =============================================================================
+
+TTS_PROVIDERS = {
+    "openai-tts": {
+        "credits_per_1k_chars": 1,
+        "cost_usd_per_1k": 0.045,
+        "display_name": "OpenAI TTS",
+        "quality": "high",
+        "description": "Естественная речь, 6 голосов",
+        "strengths": ["Натуральность", "Многоязычность", "Быстро"],
+        "best_for": "Озвучка постов, сторис",
+        "voices": [
+            {"id": "alloy", "name": "Alloy", "gender": "neutral"},
+            {"id": "echo", "name": "Echo", "gender": "male"},
+            {"id": "fable", "name": "Fable", "gender": "neutral"},
+            {"id": "onyx", "name": "Onyx", "gender": "male"},
+            {"id": "nova", "name": "Nova", "gender": "female"},
+            {"id": "shimmer", "name": "Shimmer", "gender": "female"}
+        ]
     },
+    "openai-tts-hd": {
+        "credits_per_1k_chars": 2,
+        "cost_usd_per_1k": 0.09,
+        "display_name": "OpenAI TTS HD",
+        "quality": "premium",
+        "description": "HD качество для подкастов",
+        "strengths": ["HD качество", "Подкасты", "Профессиональное аудио"],
+        "best_for": "Подкасты, профессиональная озвучка",
+        "voices": [
+            {"id": "alloy", "name": "Alloy", "gender": "neutral"},
+            {"id": "echo", "name": "Echo", "gender": "male"},
+            {"id": "fable", "name": "Fable", "gender": "neutral"},
+            {"id": "onyx", "name": "Onyx", "gender": "male"},
+            {"id": "nova", "name": "Nova", "gender": "female"},
+            {"id": "shimmer", "name": "Shimmer", "gender": "female"}
+        ]
+    }
+}
+
+
+# =============================================================================
+# SUBSCRIPTION PLANS - credits included
+# =============================================================================
+
+SUBSCRIPTION_PLANS = {
     "starter": {
-        "price": 990,  # ₽
-        "posts_limit": 50,
-        "images_limit": 20,
-        "video_seconds_limit": 30,
-        "platforms_limit": 3
+        "price_rub": 990,
+        "price_usd": 11,
+        "display_name": "Starter",
+        "description": "Для начинающих",
+        "image_credits": 50,      # 50 Nanobana или 25 DALL-E или 12 Midjourney
+        "video_credits": 6,       # 6 MiniMax/Kling клипов или 2 Runway
+        "tts_credits": 20,        # 20K символов TTS или 10K TTS HD
+        "posts_limit": 100,
+        "platforms_limit": 3,
+        "features": [
+            "До 100 постов/мес",
+            "3 соцсети",
+            "50 кредитов на изображения",
+            "6 видео-кредитов",
+            "20K символов озвучки",
+            "AI-подписи"
+        ]
     },
     "pro": {
-        "price": 2990,  # ₽
-        "posts_limit": 200,
-        "images_limit": 100,
-        "video_seconds_limit": 120,
-        "platforms_limit": 5
+        "price_rub": 2990,
+        "price_usd": 33,
+        "display_name": "Pro",
+        "description": "Для активных блогеров",
+        "image_credits": 200,     # 200 Nanobana или 100 DALL-E или 50 Midjourney
+        "video_credits": 24,      # 24 клипа или 8 Runway
+        "tts_credits": 100,       # 100K символов
+        "posts_limit": 500,
+        "platforms_limit": 5,
+        "features": [
+            "До 500 постов/мес",
+            "5 соцсетей",
+            "200 кредитов на изображения",
+            "24 видео-кредита",
+            "100K символов озвучки",
+            "AI-подписи",
+            "Контент-план",
+            "Приоритетная поддержка"
+        ]
     },
     "business": {
-        "price": 9990,  # ₽
-        "posts_limit": -1,  # Unlimited
-        "images_limit": 500,
-        "video_seconds_limit": 600,
-        "platforms_limit": -1  # Unlimited
+        "price_rub": 9990,
+        "price_usd": 111,
+        "display_name": "Business",
+        "description": "Для команд и агентств",
+        "image_credits": 1000,    # 1000 Nanobana или 500 DALL-E или 250 Midjourney
+        "video_credits": 120,     # 120 клипов или 40 Runway
+        "tts_credits": 500,       # 500K символов
+        "posts_limit": -1,        # Unlimited
+        "platforms_limit": -1,    # Unlimited
+        "features": [
+            "Безлимит постов",
+            "Все соцсети",
+            "1000 кредитов на изображения",
+            "120 видео-кредитов",
+            "500K символов озвучки",
+            "AI-подписи",
+            "Контент-план",
+            "API доступ",
+            "Выделенная поддержка"
+        ]
     }
 }
 
-# RUB to USD exchange rate (approximate)
-RUB_TO_USD = 0.011  # 1 RUB = ~$0.011
-USD_TO_RUB = 90  # $1 = ~90 RUB
+
+# =============================================================================
+# OVERAGE PRICING - cost per credit when exceeding limits
+# =============================================================================
+
+OVERAGE_PRICING = {
+    "image_credit": 0.06,    # /bin/bash.06 per image credit
+    "video_credit": 0.25,    # /bin/bash.25 per video credit (5 sec)
+    "tts_credit": 0.045      # /bin/bash.045 per 1K chars
+}
+
+USD_TO_RUB = 90
 
 
-@dataclass
-class PriceBreakdown:
-    """Detailed price breakdown."""
-    platform_cost: float
-    image_gen_cost: float
-    video_gen_cost: float
-    base_subscription: float
-    total_usd: float
-    total_rub: float
-
-    # Details
-    platforms: List[Dict[str, Any]]
-    image_provider: str
-    video_provider: str
-    posts_per_month: int
-    images_per_post: float
-    video_seconds_per_post: float
-
+# =============================================================================
+# DATA CLASSES
+# =============================================================================
 
 @dataclass
-class PriceEstimate:
-    """Price estimate result."""
-    monthly_cost_usd: float
+class CreditsUsage:
+    """Credits usage breakdown."""
+    image_credits_used: int
+    video_credits_used: int
+    tts_credits_used: int
+    
+    image_credits_included: int
+    video_credits_included: int
+    tts_credits_included: int
+    
+    image_overage: int = 0
+    video_overage: int = 0
+    tts_overage: int = 0
+    
+    overage_cost_usd: float = 0.0
+
+
+@dataclass 
+class PlanRecommendation:
+    """Recommended plan with breakdown."""
+    plan_id: str
+    plan_name: str
     monthly_cost_rub: float
-    breakdown: PriceBreakdown
-    recommended_plan: str
-    savings_vs_manual: float  # % savings compared to manual work
+    monthly_cost_usd: float
+    
+    # What you get
+    images_available: Dict[str, int]  # provider -> count
+    videos_available: Dict[str, int]   # provider -> count  
+    tts_chars_available: Dict[str, int] # provider -> chars
+    
+    # Overage if any
+    overage_cost_usd: float = 0.0
+    total_cost_usd: float = 0.0
+    total_cost_rub: float = 0.0
 
+
+# =============================================================================
+# PRICING SERVICE
+# =============================================================================
 
 class PricingService:
     """Service for calculating subscription prices."""
 
     def __init__(self):
-        """Initialize pricing service."""
         logger.info("Pricing service initialized")
 
-    def calculate_price(
-        self,
-        platforms: List[str],
-        posts_per_month: int,
-        image_provider: str = "openai",
-        images_per_post: float = 1.0,
-        video_provider: str = "none",
-        video_seconds_per_post: float = 0.0
-    ) -> PriceEstimate:
-        """
-        Calculate monthly subscription price.
-
-        Args:
-            platforms: List of platform names
-            posts_per_month: Number of posts per month
-            image_provider: Image generation provider name
-            images_per_post: Average images per post (can be fractional)
-            video_provider: Video generation provider name
-            video_seconds_per_post: Average video seconds per post
-
-        Returns:
-            PriceEstimate with breakdown
-        """
-        # Calculate platform costs
-        platform_details = []
-        platform_total = 0.0
-
-        for platform in platforms:
-            if platform in PLATFORM_COSTS:
-                cost_data = PLATFORM_COSTS[platform]
-                platform_cost = cost_data["cost_per_post"] * posts_per_month
-                platform_total += platform_cost
-                platform_details.append({
-                    "name": platform,
-                    "display_name": cost_data["display_name"],
-                    "cost_per_post": cost_data["cost_per_post"],
-                    "posts": posts_per_month,
-                    "total": platform_cost
-                })
-
-        # Calculate image generation costs
-        image_cost = 0.0
-        if image_provider in IMAGE_GEN_COSTS:
-            cost_per_image = IMAGE_GEN_COSTS[image_provider]["cost_per_image"]
-            total_images = posts_per_month * images_per_post
-            image_cost = cost_per_image * total_images
-
-        # Calculate video generation costs
-        video_cost = 0.0
-        if video_provider in VIDEO_GEN_COSTS:
-            cost_per_second = VIDEO_GEN_COSTS[video_provider]["cost_per_second"]
-            total_seconds = posts_per_month * video_seconds_per_post
-            video_cost = cost_per_second * total_seconds
-
-        # Determine recommended plan based on usage
-        recommended_plan = self._recommend_plan(
-            platforms, posts_per_month,
-            int(posts_per_month * images_per_post),
-            int(posts_per_month * video_seconds_per_post)
-        )
-
-        base_subscription_rub = BASE_SUBSCRIPTION[recommended_plan]["price"]
-        base_subscription_usd = base_subscription_rub * RUB_TO_USD
-
-        # Calculate totals
-        variable_costs_usd = platform_total + image_cost + video_cost
-        total_usd = base_subscription_usd + variable_costs_usd
-        total_rub = total_usd * USD_TO_RUB
-
-        # Round to reasonable values
-        total_usd = round(total_usd, 2)
-        total_rub = round(total_rub, -1)  # Round to nearest 10 RUB
-
-        # Calculate savings (assumed 5 minutes per post manual work at $10/hour)
-        manual_hours = (posts_per_month * len(platforms) * 5) / 60
-        manual_cost_usd = manual_hours * 10
-        savings_percent = ((manual_cost_usd - total_usd) / manual_cost_usd * 100) if manual_cost_usd > 0 else 0
-
-        breakdown = PriceBreakdown(
-            platform_cost=round(platform_total, 2),
-            image_gen_cost=round(image_cost, 2),
-            video_gen_cost=round(video_cost, 2),
-            base_subscription=base_subscription_usd,
-            total_usd=total_usd,
-            total_rub=total_rub,
-            platforms=platform_details,
-            image_provider=image_provider,
-            video_provider=video_provider,
-            posts_per_month=posts_per_month,
-            images_per_post=images_per_post,
-            video_seconds_per_post=video_seconds_per_post
-        )
-
-        return PriceEstimate(
-            monthly_cost_usd=total_usd,
-            monthly_cost_rub=total_rub,
-            breakdown=breakdown,
-            recommended_plan=recommended_plan,
-            savings_vs_manual=round(savings_percent, 1)
-        )
-
-    def _recommend_plan(
-        self,
-        platforms: List[str],
-        posts_per_month: int,
-        images_per_month: int,
-        video_seconds_per_month: int
-    ) -> str:
-        """Recommend subscription plan based on usage."""
-        num_platforms = len(platforms)
-
-        # Check limits for each plan
-        for plan_name in ["starter", "pro", "business"]:
-            plan = BASE_SUBSCRIPTION[plan_name]
-
-            # Check platform limit
-            if plan["platforms_limit"] != -1 and num_platforms > plan["platforms_limit"]:
-                continue
-
-            # Check posts limit
-            if plan["posts_limit"] != -1 and posts_per_month > plan["posts_limit"]:
-                continue
-
-            # Check images limit
-            if plan["images_limit"] != -1 and images_per_month > plan["images_limit"]:
-                continue
-
-            # Check video limit
-            if plan["video_seconds_limit"] != -1 and video_seconds_per_month > plan["video_seconds_limit"]:
-                continue
-
-            return plan_name
-
-        return "business"
-
-    def get_platform_info(self) -> List[Dict[str, Any]]:
-        """Get information about all platforms."""
-        return [
-            {
-                "id": platform_id,
-                **platform_data
-            }
-            for platform_id, platform_data in PLATFORM_COSTS.items()
-        ]
+    def get_platforms(self) -> List[Dict[str, Any]]:
+        """Get all available platforms."""
+        return [{"id": k, **v} for k, v in PLATFORM_COSTS.items()]
 
     def get_image_providers(self) -> List[Dict[str, Any]]:
-        """Get information about image providers."""
-        return [
-            {
-                "id": provider_id,
-                **provider_data
+        """Get all image providers with credit costs."""
+        result = []
+        for provider_id, data in IMAGE_PROVIDERS.items():
+            provider = {"id": provider_id, **data}
+            # Calculate images per plan
+            provider["images_per_plan"] = {
+                plan_id: plan["image_credits"] // data["credits_per_image"]
+                for plan_id, plan in SUBSCRIPTION_PLANS.items()
             }
-            for provider_id, provider_data in IMAGE_GEN_COSTS.items()
-        ]
+            result.append(provider)
+        return result
 
     def get_video_providers(self) -> List[Dict[str, Any]]:
-        """Get information about video providers."""
-        return [
-            {
-                "id": provider_id,
-                **provider_data
+        """Get all video providers with credit costs."""
+        result = []
+        for provider_id, data in VIDEO_PROVIDERS.items():
+            provider = {"id": provider_id, **data}
+            # Calculate videos per plan (5-sec clips)
+            provider["clips_per_plan"] = {
+                plan_id: plan["video_credits"] // data["credits_per_5sec"]
+                for plan_id, plan in SUBSCRIPTION_PLANS.items()
             }
-            for provider_id, provider_data in VIDEO_GEN_COSTS.items()
-        ]
+            result.append(provider)
+        return result
+
+    def get_tts_providers(self) -> List[Dict[str, Any]]:
+        """Get all TTS providers with credit costs."""
+        result = []
+        for provider_id, data in TTS_PROVIDERS.items():
+            provider = {"id": provider_id, **data}
+            # Calculate chars per plan
+            provider["chars_per_plan"] = {
+                plan_id: (plan["tts_credits"] // data["credits_per_1k_chars"]) * 1000
+                for plan_id, plan in SUBSCRIPTION_PLANS.items()
+            }
+            result.append(provider)
+        return result
 
     def get_subscription_plans(self) -> List[Dict[str, Any]]:
-        """Get information about subscription plans."""
-        plans = []
-        for plan_id, plan_data in BASE_SUBSCRIPTION.items():
-            if plan_id == "demo":
-                continue  # Skip demo in public listing
-            plans.append({
-                "id": plan_id,
-                "price_rub": plan_data["price"],
-                "price_usd": round(plan_data["price"] * RUB_TO_USD, 2),
-                **{k: v for k, v in plan_data.items() if k != "price"}
-            })
-        return plans
+        """Get all subscription plans."""
+        return [{"id": k, **v} for k, v in SUBSCRIPTION_PLANS.items()]
 
-    def compare_providers(
+    def calculate_usage(
         self,
-        posts_per_month: int,
-        images_per_post: float = 1.0
-    ) -> Dict[str, Dict[str, Any]]:
-        """Compare image providers by cost."""
-        total_images = posts_per_month * images_per_post
+        image_provider: str,
+        images_count: int,
+        video_provider: str,
+        video_clips: int,  # 5-sec clips
+        tts_provider: str,
+        tts_chars: int,
+        plan_id: str = "pro"
+    ) -> CreditsUsage:
+        """Calculate credits usage for given providers and quantities."""
+        plan = SUBSCRIPTION_PLANS.get(plan_id, SUBSCRIPTION_PLANS["pro"])
+        
+        # Image credits
+        img_provider = IMAGE_PROVIDERS.get(image_provider, IMAGE_PROVIDERS["nanobana"])
+        image_credits = images_count * img_provider["credits_per_image"]
+        image_overage = max(0, image_credits - plan["image_credits"])
+        
+        # Video credits
+        vid_provider = VIDEO_PROVIDERS.get(video_provider, VIDEO_PROVIDERS["minimax"])
+        video_credits = video_clips * vid_provider["credits_per_5sec"]
+        video_overage = max(0, video_credits - plan["video_credits"])
+        
+        # TTS credits
+        tts_prov = TTS_PROVIDERS.get(tts_provider, TTS_PROVIDERS["openai-tts"])
+        tts_credits = (tts_chars / 1000) * tts_prov["credits_per_1k_chars"]
+        tts_overage = max(0, tts_credits - plan["tts_credits"])
+        
+        # Calculate overage cost
+        overage_cost = (
+            image_overage * OVERAGE_PRICING["image_credit"] +
+            video_overage * OVERAGE_PRICING["video_credit"] +
+            tts_overage * OVERAGE_PRICING["tts_credit"]
+        )
+        
+        return CreditsUsage(
+            image_credits_used=int(image_credits),
+            video_credits_used=int(video_credits),
+            tts_credits_used=int(tts_credits),
+            image_credits_included=plan["image_credits"],
+            video_credits_included=plan["video_credits"],
+            tts_credits_included=plan["tts_credits"],
+            image_overage=int(image_overage),
+            video_overage=int(video_overage),
+            tts_overage=int(tts_overage),
+            overage_cost_usd=round(overage_cost, 2)
+        )
 
-        comparison = {}
-        for provider_id, provider_data in IMAGE_GEN_COSTS.items():
-            if provider_id == "none":
+    def recommend_plan(
+        self,
+        image_provider: str,
+        images_per_month: int,
+        video_provider: str = None,
+        video_clips_per_month: int = 0,
+        tts_provider: str = None,
+        tts_chars_per_month: int = 0,
+        platforms_count: int = 3
+    ) -> PlanRecommendation:
+        """Recommend best plan for given usage."""
+        img_prov = IMAGE_PROVIDERS.get(image_provider, IMAGE_PROVIDERS["nanobana"])
+        vid_prov = VIDEO_PROVIDERS.get(video_provider, VIDEO_PROVIDERS["minimax"]) if video_provider else None
+        tts_prov = TTS_PROVIDERS.get(tts_provider, TTS_PROVIDERS["openai-tts"]) if tts_provider else None
+        
+        # Calculate required credits
+        image_credits_needed = images_per_month * img_prov["credits_per_image"]
+        video_credits_needed = video_clips_per_month * (vid_prov["credits_per_5sec"] if vid_prov else 0)
+        tts_credits_needed = (tts_chars_per_month / 1000) * (tts_prov["credits_per_1k_chars"] if tts_prov else 0)
+        
+        # Find best plan
+        best_plan = "business"
+        for plan_id in ["starter", "pro", "business"]:
+            plan = SUBSCRIPTION_PLANS[plan_id]
+            
+            # Check platform limit
+            if plan["platforms_limit"] != -1 and platforms_count > plan["platforms_limit"]:
                 continue
+            
+            # Check if credits fit
+            if (image_credits_needed <= plan["image_credits"] and
+                video_credits_needed <= plan["video_credits"] and
+                tts_credits_needed <= plan["tts_credits"]):
+                best_plan = plan_id
+                break
+        
+        plan = SUBSCRIPTION_PLANS[best_plan]
+        
+        # Calculate what you get
+        images_available = {
+            pid: plan["image_credits"] // pdata["credits_per_image"]
+            for pid, pdata in IMAGE_PROVIDERS.items()
+        }
+        
+        videos_available = {
+            pid: plan["video_credits"] // pdata["credits_per_5sec"]
+            for pid, pdata in VIDEO_PROVIDERS.items()
+        }
+        
+        tts_available = {
+            pid: (plan["tts_credits"] // pdata["credits_per_1k_chars"]) * 1000
+            for pid, pdata in TTS_PROVIDERS.items()
+        }
+        
+        # Calculate overage
+        overage_cost = 0.0
+        if image_credits_needed > plan["image_credits"]:
+            overage_cost += (image_credits_needed - plan["image_credits"]) * OVERAGE_PRICING["image_credit"]
+        if video_credits_needed > plan["video_credits"]:
+            overage_cost += (video_credits_needed - plan["video_credits"]) * OVERAGE_PRICING["video_credit"]
+        if tts_credits_needed > plan["tts_credits"]:
+            overage_cost += (tts_credits_needed - plan["tts_credits"]) * OVERAGE_PRICING["tts_credit"]
+        
+        total_usd = plan["price_usd"] + overage_cost
+        total_rub = total_usd * USD_TO_RUB
+        
+        return PlanRecommendation(
+            plan_id=best_plan,
+            plan_name=plan["display_name"],
+            monthly_cost_rub=plan["price_rub"],
+            monthly_cost_usd=plan["price_usd"],
+            images_available=images_available,
+            videos_available=videos_available,
+            tts_chars_available=tts_available,
+            overage_cost_usd=round(overage_cost, 2),
+            total_cost_usd=round(total_usd, 2),
+            total_cost_rub=round(total_rub, -1)
+        )
 
-            total_cost = provider_data["cost_per_image"] * total_images
-            comparison[provider_id] = {
-                "display_name": provider_data["display_name"],
-                "quality": provider_data["quality"],
-                "cost_per_image": provider_data["cost_per_image"],
-                "total_images": int(total_images),
-                "total_cost_usd": round(total_cost, 2),
-                "total_cost_rub": round(total_cost * USD_TO_RUB, -1)
-            }
-
-        return comparison
+    def get_provider_comparison(self, plan_id: str = "pro") -> Dict[str, Any]:
+        """Get comparison of all providers for a plan."""
+        plan = SUBSCRIPTION_PLANS.get(plan_id, SUBSCRIPTION_PLANS["pro"])
+        
+        return {
+            "plan": {"id": plan_id, **plan},
+            "image_providers": [
+                {
+                    "id": pid,
+                    "name": pdata["display_name"],
+                    "quality": pdata["quality"],
+                    "images_included": plan["image_credits"] // pdata["credits_per_image"],
+                    "credits_per_image": pdata["credits_per_image"],
+                    "strengths": pdata["strengths"],
+                    "best_for": pdata["best_for"]
+                }
+                for pid, pdata in IMAGE_PROVIDERS.items()
+            ],
+            "video_providers": [
+                {
+                    "id": pid,
+                    "name": pdata["display_name"],
+                    "quality": pdata["quality"],
+                    "clips_included": plan["video_credits"] // pdata["credits_per_5sec"],
+                    "credits_per_clip": pdata["credits_per_5sec"],
+                    "strengths": pdata["strengths"],
+                    "best_for": pdata["best_for"]
+                }
+                for pid, pdata in VIDEO_PROVIDERS.items()
+            ],
+            "tts_providers": [
+                {
+                    "id": pid,
+                    "name": pdata["display_name"],
+                    "quality": pdata["quality"],
+                    "chars_included": (plan["tts_credits"] // pdata["credits_per_1k_chars"]) * 1000,
+                    "credits_per_1k": pdata["credits_per_1k_chars"],
+                    "strengths": pdata["strengths"],
+                    "best_for": pdata["best_for"]
+                }
+                for pid, pdata in TTS_PROVIDERS.items()
+            ]
+        }
 
 
 # Global instance
@@ -405,35 +560,20 @@ pricing_service = PricingService()
 
 
 # Convenience functions
-def calculate_subscription_price(
-    platforms: List[str],
-    posts_per_month: int,
-    image_provider: str = "openai",
-    images_per_post: float = 1.0,
-    video_provider: str = "none",
-    video_seconds_per_post: float = 0.0
-) -> PriceEstimate:
-    """Calculate subscription price."""
-    return pricing_service.calculate_price(
-        platforms=platforms,
-        posts_per_month=posts_per_month,
-        image_provider=image_provider,
-        images_per_post=images_per_post,
-        video_provider=video_provider,
-        video_seconds_per_post=video_seconds_per_post
-    )
+def get_available_platforms():
+    return pricing_service.get_platforms()
 
-
-def get_available_platforms() -> List[Dict[str, Any]]:
-    """Get list of available platforms."""
-    return pricing_service.get_platform_info()
-
-
-def get_available_image_providers() -> List[Dict[str, Any]]:
-    """Get list of available image providers."""
+def get_available_image_providers():
     return pricing_service.get_image_providers()
 
-
-def get_available_video_providers() -> List[Dict[str, Any]]:
-    """Get list of available video providers."""
+def get_available_video_providers():
     return pricing_service.get_video_providers()
+
+def get_available_tts_providers():
+    return pricing_service.get_tts_providers()
+
+def get_subscription_plans():
+    return pricing_service.get_subscription_plans()
+
+def get_provider_comparison(plan_id: str = "pro"):
+    return pricing_service.get_provider_comparison(plan_id)

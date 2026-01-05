@@ -1,5 +1,5 @@
 """
-S3 Storage Adapter for SoVAni Crosspost.
+S3 Storage Adapter for SalesWhisper Crosspost.
 
 Provides file upload/download functionality to S3-compatible storage (MinIO).
 """

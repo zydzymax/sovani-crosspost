@@ -1,4 +1,4 @@
-"""Product enrichment service for SoVAni Crosspost."""
+"""Product enrichment service for SalesWhisper Crosspost."""
 
 import asyncio
 import time
@@ -65,8 +65,8 @@ class ProductAttributes:
     def to_llm_context(self) -> str:
         """Convert to LLM-friendly text context."""
         context_parts = [
-            f"">20@: {self.title}",
-            f"@5=4: {self.brand or 'SoVAni'}",
+            f"Product: {self.title}",
+            f"@5=4: {self.brand or 'SalesWhisper'}",
             f"0B53>@8O: {self.category or '45640'}"
         ]
         
@@ -74,16 +74,16 @@ class ProductAttributes:
             context_parts.append(f"?8A0=85: {self.description}")
         
         if self.price:
-            price_text = f"&5=0: {self.price} {self.currency}"
+            price_text = f"Price: {self.price} {self.currency}"
             if self.original_price and self.original_price > self.price:
-                price_text += f" (1K;> {self.original_price} {self.currency})"
+                price_text += f" (was {self.original_price} {self.currency})"
             context_parts.append(price_text)
         
         if self.colors:
-            context_parts.append(f"&25B0: {', '.join(self.colors)}")
+            context_parts.append(f"Colors: {', '.join(self.colors)}")
         
         if self.sizes:
-            context_parts.append(f" 07<5@K: {', '.join(self.sizes)}")
+            context_parts.append(f"Sizes: {', '.join(self.sizes)}")
         
         return "\n".join(context_parts)
     
@@ -137,23 +137,23 @@ class LocalProductSource(ProductSource):
             "dress_001": {
                 "external_id": "dress_001",
                 "source": "local",
-                "title": "-;530=B=>5 ?;0BL5 SoVAni Classic",
-                "description": "!B8;L=>5 ?;0BL5 87 :0G5AB25==>3> B@8:>B060",
-                "category": ";0BLO",
-                "brand": "SoVAni",
+                "title": "Elegant dress SalesWhisper Classic",
+                "description": "Stylish dress from quality knitwear",
+                "category": "Dresses",
+                "brand": "SalesWhisper",
                 "price": 5990.0,
                 "original_price": 7990.0,
                 "currency": "RUB",
-                "colors": ["'5@=K9", "!8=89", ">@4>2K9"],
+                "colors": ["Black", "Blue", "Burgundy"],
                 "sizes": ["XS", "S", "M", "L", "XL"],
-                "materials": [""@8:>B06", "-;0AB0="],
-                "image_urls": ["https://sovani.ru/images/dress_001_1.jpg"],
+                "materials": ["Knitwear", "Elastane"],
+                "image_urls": ["https://saleswhisper.ru/images/dress_001_1.jpg"],
                 "in_stock": True,
-                "tags": [">D8A", "M;530=B=>ABL"],
-                "keywords": ["?;0BL5", "B@8:>B06", "SoVAni"],
+                "tags": ["office", "elegance"],
+                "keywords": ["dress", "knitwear", "SalesWhisper"],
                 "collection": "Classic 2024",
                 "sku": "SOV-DR-001",
-                "product_url": "https://sovani.ru/products/dress_001",
+                "product_url": "https://saleswhisper.ru/products/dress_001",
                 "confidence_score": 1.0
             }
         }
@@ -170,13 +170,13 @@ class WildberriesSource(ProductSource):
             return ProductAttributes(
                 external_id=external_id,
                 source=self.source_name,
-                title="">20@ A Wildberries",
-                description="?8A0=85 B>20@0 A <0@:5B?;59A0",
+                title="Product from Wildberries",
+                description="Marketplace product description",
                 category="45640",
                 brand="Test Brand",
                 price=1500.0,
                 currency="RUB",
-                colors=["5;K9"],
+                colors=["White"],
                 sizes=["M", "L"],
                 confidence_score=0.8
             )
@@ -256,12 +256,12 @@ class ProductEnrichmentService:
             if product:
                 return product.to_llm_context()
             else:
-                return f"">20@ {external_id} =5 =0945= 2 8AB>G=8:5 {source}"
+                return f"Product {external_id} not found in source {source}"
         except ProductNotFoundError:
-            return f"">20@ {external_id} =5 =0945="
+            return f"Product {external_id} not found"
         except Exception as e:
             logger.error(f"Error getting LLM context: {e}")
-            return f"H81:0 ?>;CG5=8O 40==KE > B>20@5: {str(e)}"
+            return f"Error getting product data: {str(e)}"
     
     def get_available_sources(self) -> List[str]:
         return list(self.sources.keys())

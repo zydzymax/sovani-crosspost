@@ -1,8 +1,8 @@
-# SoVAni Crosspost - Техническая документация
+# SalesWhisper Crosspost - Техническая документация
 
 ## 🎯 Обзор проекта
 
-**SoVAni Crosspost** - это MVP-система автоматической кроссплатформенной публикации контента из Telegram в социальные сети с интеллектуальной обработкой медиа.
+**SalesWhisper Crosspost** - это MVP-система автоматической кроссплатформенной публикации контента из Telegram в социальные сети с интеллектуальной обработкой медиа.
 
 ### Основные возможности
 - 📱 **5 платформ**: Instagram, VK, Telegram, TikTok, YouTube
@@ -51,7 +51,7 @@
 ## 📋 Структура проекта
 
 ```
-sovani_crosspost/
+saleswhisper_crosspost/
 ├── 📁 app/                          # Основной код приложения
 │   ├── 📁 adapters/                 # Интеграции с внешними API
 │   │   ├── instagram.py             # Meta Graph API
@@ -372,8 +372,8 @@ LIMITS = {
 ```bash
 # Database
 DATABASE_URL=postgresql://user:[REVOKED_SECRET_REMOVED]@host:5432/db
-POSTGRES_DB=sovani_crosspost
-POSTGRES_USER=sovani  
+POSTGRES_DB=saleswhisper_crosspost
+POSTGRES_USER=saleswhisper  
 POSTGRES_PASSWORD=[REVOKED_SECRET_REMOVED]
 
 # Redis & Celery
@@ -385,7 +385,7 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 S3_ENDPOINT=http://localhost:9000
 S3_ACCESS_KEY=[REVOKED_SECRET_REMOVED]
 S3_SECRET_KEY=[REVOKED_SECRET_REMOVED]
-S3_BUCKET_NAME=sovani-media
+S3_BUCKET_NAME=saleswhisper-media
 S3_REGION=us-east-1
 
 # Platform API Keys (обязательно задать)
@@ -450,7 +450,7 @@ content_rules:
   min_video_quality: 720p
   max_file_size: 100MB
   forbidden_words: ["спам", "реклама"]
-  required_hashtags: ["#sovani"]
+  required_hashtags: ["#saleswhisper"]
 ```
 
 ---
@@ -519,7 +519,7 @@ def test_services_health():
     assert redis.ping() is True
     
     # MinIO
-    assert s3_client.bucket_exists("sovani-media") is True
+    assert s3_client.bucket_exists("saleswhisper-media") is True
     
     # Celery
     inspect = celery_app.control.inspect()
@@ -638,7 +638,7 @@ docker-compose exec worker ffmpeg -version
 ```bash
 # Создание bucket
 docker-compose exec minio mc alias set local http://localhost:9000 [REVOKED_SECRET_REMOVED] [REVOKED_SECRET_REMOVED]
-docker-compose exec minio mc mb local/sovani-media
+docker-compose exec minio mc mb local/saleswhisper-media
 
 # Проверка доступа
 curl http://localhost:9000/minio/health/live
@@ -686,13 +686,13 @@ docker-compose logs api > api.log 2>&1
 docker stats
 
 # Подключение к PostgreSQL
-docker-compose exec postgres psql -U sovani -d sovani_crosspost
+docker-compose exec postgres psql -U saleswhisper -d saleswhisper_crosspost
 
 # Подключение к Redis CLI
 docker-compose exec redis redis-cli
 
 # Просмотр содержимого MinIO
-docker-compose exec minio mc ls local/sovani-media
+docker-compose exec minio mc ls local/saleswhisper-media
 ```
 
 ---

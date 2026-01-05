@@ -1,5 +1,5 @@
 """
-SQLAlchemy models for SoVAni Crosspost.
+SQLAlchemy models for SalesWhisper Crosspost.
 
 This module defines all database entities:
 - Post: Main content entity
@@ -16,7 +16,7 @@ from enum import Enum
 from typing import Optional, List, Dict, Any
 
 from sqlalchemy import (
-    Column, String, Integer, BigInteger, Text, Boolean, DateTime,
+    Column, String, Integer, BigInteger, Text, Boolean, DateTime, Date,
     ForeignKey, JSON, Enum as SQLEnum, Float, Index, UniqueConstraint
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
@@ -57,6 +57,7 @@ class Platform(str, Enum):
     YOUTUBE = "youtube"
     FACEBOOK = "facebook"
     RUTUBE = "rutube"
+    DZEN = "dzen"
 
 
 class TaskStage(str, Enum):
@@ -471,7 +472,11 @@ class ImageGenProvider(str, Enum):
 
 class VideoGenProvider(str, Enum):
     """Video generation providers."""
-    RUNWAY = "runway"  # Runway ML Gen-3
+    RUNWAY = "runway"        # Runway ML Gen-3
+    KLING = "kling"          # Kling AI
+    MINIMAX = "minimax"      # MiniMax Hailuo
+    LUMA = "luma"            # Luma Dream Machine
+    REPLICATE = "replicate"  # Replicate (Stable Video Diffusion)
 
 
 class User(Base):
@@ -481,21 +486,32 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # Telegram auth
-    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
+    # Email auth (primary for new users)
+    email = Column(String(255), unique=True, nullable=True, index=True)
+    email_verified = Column(Boolean, default=False)
+    email_verified_at = Column(DateTime, nullable=True)
+
+    # Telegram auth (legacy, optional)
+    telegram_id = Column(BigInteger, unique=True, nullable=True, index=True)
     telegram_username = Column(String(255), nullable=True)
     telegram_first_name = Column(String(255), nullable=True)
     telegram_last_name = Column(String(255), nullable=True)
     telegram_photo_url = Column(Text, nullable=True)
 
-    # Subscription
-    subscription_plan = Column(SQLEnum(SubscriptionPlan), default=SubscriptionPlan.DEMO)
+    # Profile
+    first_name = Column(String(255), nullable=True)
+    last_name = Column(String(255), nullable=True)
+    company_name = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+
+    # Subscription (legacy - use user_subscriptions for new system)
+    subscription_plan = Column(SQLEnum(SubscriptionPlan, name="subscription_plan", create_type=False), default=SubscriptionPlan.DEMO)
     subscription_expires_at = Column(DateTime, nullable=True)
     demo_started_at = Column(DateTime, default=datetime.utcnow)
 
     # Settings
-    image_gen_provider = Column(SQLEnum(ImageGenProvider), default=ImageGenProvider.OPENAI)
-    video_gen_provider = Column(SQLEnum(VideoGenProvider), default=VideoGenProvider.RUNWAY)
+    image_gen_provider = Column(SQLEnum(ImageGenProvider, name="image_gen_provider", create_type=False), default=ImageGenProvider.OPENAI)
+    video_gen_provider = Column(SQLEnum(VideoGenProvider, name="video_gen_provider", create_type=False), default=VideoGenProvider.RUNWAY)
 
     # Usage tracking
     posts_count_this_month = Column(Integer, default=0)
@@ -504,6 +520,7 @@ class User(Base):
 
     # Status
     is_active = Column(Boolean, default=True)
+    last_login_at = Column(DateTime, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -521,7 +538,7 @@ class UserSocialAccount(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("social_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Permissions
     can_publish = Column(Boolean, default=True)
@@ -536,6 +553,49 @@ class UserSocialAccount(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "account_id", name="uq_user_social_account"),
+    )
+
+
+class MarketplacePlatform(str, Enum):
+    """Supported marketplace platforms."""
+    WILDBERRIES = "wildberries"
+    OZON = "ozon"
+    YANDEX_MARKET = "yandex_market"
+    ALIEXPRESS = "aliexpress"
+
+
+class MarketplaceCredential(Base):
+    """User's marketplace API credentials for enrichment."""
+
+    __tablename__ = "marketplace_credentials"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Marketplace info
+    platform = Column(SQLEnum(MarketplacePlatform), nullable=False)
+
+    # Credentials (encrypted)
+    api_key = Column(Text, nullable=True)  # Encrypted - main API token
+    client_id = Column(Text, nullable=True)  # Encrypted - for Ozon
+
+    # Optional seller info
+    seller_id = Column(String(255), nullable=True)
+    campaign_id = Column(String(255), nullable=True)  # For Yandex Market
+
+    # Status
+    is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)
+    last_verified_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "platform", name="uq_user_marketplace"),
+        Index("ix_marketplace_user_platform", "user_id", "platform"),
     )
 
 
@@ -633,6 +693,78 @@ class ContentPlan(Base):
             "posts_published": self.posts_published,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+
+
+class GenerationStepStatus(str, Enum):
+    """Generation step status."""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class GenerationStep(str, Enum):
+    """Steps in content generation process."""
+    # Plan creation
+    PLAN_CREATED = "plan_created"
+    # Per-post steps
+    CAPTION_GENERATED = "caption_generated"
+    HASHTAGS_GENERATED = "hashtags_generated"
+    IMAGE_PROMPT_GENERATED = "image_prompt_generated"
+    IMAGE_GENERATED = "image_generated"
+    VIDEO_GENERATED = "video_generated"
+    AUDIO_GENERATED = "audio_generated"
+    # Publishing
+    POST_SCHEDULED = "post_scheduled"
+    POST_PUBLISHED = "post_published"
+    # Quality checks
+    CONTENT_REVIEWED = "content_reviewed"
+    COMPLIANCE_CHECKED = "compliance_checked"
+
+
+class PostGenerationProgress(Base):
+    """Tracks generation progress for each post in a content plan."""
+    
+    __tablename__ = "post_generation_progress"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    content_plan_id = Column(UUID(as_uuid=True), ForeignKey("content_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    post_index = Column(Integer, nullable=False)
+    
+    post_date = Column(Date, nullable=False)
+    post_topic = Column(String(500), nullable=True)
+    
+    steps = Column(JSONB, nullable=False, default=dict)
+    overall_status = Column(SQLEnum(GenerationStepStatus), default=GenerationStepStatus.PENDING)
+    progress_percent = Column(Integer, default=0)
+    
+    last_error = Column(Text, nullable=True)
+    error_count = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": str(self.id),
+            "content_plan_id": str(self.content_plan_id),
+            "post_index": self.post_index,
+            "post_date": self.post_date.isoformat() if self.post_date else None,
+            "post_topic": self.post_topic,
+            "steps": self.steps,
+            "overall_status": self.overall_status.value if self.overall_status else None,
+            "progress_percent": self.progress_percent,
+            "last_error": self.last_error,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None
+        }
+
 
 
 class VideoGenTask(Base):
@@ -1012,7 +1144,532 @@ class RateLimitOverride(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+# ============================================
+# UNIFIED AUTH AND CART SYSTEM MODELS
+# ============================================
+
+class UserSubscriptionStatus(str, Enum):
+    """User subscription status."""
+    ACTIVE = "active"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+    PAUSED = "paused"
+    TRIAL = "trial"
+
+
+class OrderStatus(str, Enum):
+    """Order status."""
+    PENDING = "pending"
+    AWAITING_PAYMENT = "awaiting_payment"
+    PAID = "paid"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+    CANCELLED = "cancelled"
+
+
+class PaymentStatus(str, Enum):
+    """Payment status."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
+class BillingPeriod(str, Enum):
+    """Billing period types."""
+    MONTHLY = "monthly"
+    YEARLY = "yearly"
+    LIFETIME = "lifetime"
+
+
+class SaaSProduct(Base):
+    """SaaS Product catalog (Crosspost, HeadOfSales, etc.)."""
+
+    __tablename__ = "saas_products"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String(50), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    plans = relationship("SaaSProductPlan", back_populates="product", cascade="all, delete-orphan")
+
+
+class SaaSProductPlan(Base):
+    """SaaS Product pricing plans (Demo, Starter, Pro, Business)."""
+
+    __tablename__ = "saas_product_plans"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("saas_products.id", ondelete="CASCADE"), nullable=False, index=True)
+    code = Column(String(50), nullable=False)
+    name = Column(String(255), nullable=False)
+    price_rub = Column(Float, nullable=False)
+    billing_period = Column(SQLEnum(BillingPeriod, name="billing_period", create_type=False), default=BillingPeriod.MONTHLY)
+    limits = Column(JSONB, default=dict)
+    features = Column(JSONB, default=list)
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    product = relationship("SaaSProduct", back_populates="plans")
+
+    __table_args__ = (
+        UniqueConstraint("product_id", "code", name="uq_saas_product_plan"),
+    )
+
+
+class UserSubscription(Base):
+    """User subscriptions to SaaS products."""
+
+    __tablename__ = "user_subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("saas_products.id", ondelete="RESTRICT"), nullable=False)
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("saas_product_plans.id", ondelete="RESTRICT"), nullable=False)
+
+    status = Column(SQLEnum(UserSubscriptionStatus, name="subscription_status", create_type=False), default=UserSubscriptionStatus.ACTIVE)
+
+    started_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+
+    current_period_start = Column(DateTime, default=datetime.utcnow)
+    current_period_end = Column(DateTime, nullable=True)
+
+    payment_provider = Column(String(50), nullable=True)
+    external_subscription_id = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    product = relationship("SaaSProduct")
+    plan = relationship("SaaSProductPlan")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "product_id", name="uq_user_product_subscription"),
+        Index("idx_subscriptions_expires", "expires_at"),
+        Index("idx_subscriptions_status", "status"),
+    )
+
+
+class Cart(Base):
+    """Shopping cart for users."""
+
+    __tablename__ = "carts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+
+    items = Column(JSONB, default=list)
+    # Format: [{"product_id": "...", "plan_id": "...", "product_code": "...", "plan_code": "...", "price_rub": 990}]
+
+    subtotal_rub = Column(Float, default=0)
+    discount_rub = Column(Float, default=0)
+    total_rub = Column(Float, default=0)
+
+    promo_code = Column(String(50), nullable=True)
+    promo_discount_percent = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Order(Base):
+    """Orders for product purchases."""
+
+    __tablename__ = "orders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    order_number = Column(String(50), unique=True, nullable=False)
+    status = Column(SQLEnum(OrderStatus, name="order_status", create_type=False), default=OrderStatus.PENDING)
+
+    items = Column(JSONB, nullable=False)
+
+    subtotal_rub = Column(Float, nullable=False)
+    discount_rub = Column(Float, default=0)
+    total_rub = Column(Float, nullable=False)
+
+    promo_code = Column(String(50), nullable=True)
+
+    customer_email = Column(String(255), nullable=False)
+    customer_name = Column(String(255), nullable=True)
+    customer_company = Column(String(255), nullable=True)
+    customer_phone = Column(String(50), nullable=True)
+
+    payment_provider = Column(String(50), nullable=True)
+    payment_method = Column(String(50), nullable=True)
+
+    notes = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    paid_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    payments = relationship("Payment", back_populates="order", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("idx_orders_status", "status"),
+        Index("idx_orders_created", "created_at"),
+    )
+
+
+class Payment(Base):
+    """Payment records for orders."""
+
+    __tablename__ = "payments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id = Column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    amount_rub = Column(Float, nullable=False)
+    currency = Column(String(3), default="RUB")
+
+    status = Column(SQLEnum(PaymentStatus, name="payment_status", create_type=False), default=PaymentStatus.PENDING)
+
+    provider = Column(String(50), nullable=False)
+    provider_payment_id = Column(String(255), nullable=True)
+    provider_response = Column(JSONB, nullable=True)
+
+    invoice_number = Column(String(50), nullable=True)
+    invoice_pdf_url = Column(Text, nullable=True)
+
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    order = relationship("Order", back_populates="payments")
+
+    __table_args__ = (
+        Index("idx_payments_provider", "provider", "provider_payment_id"),
+        Index("idx_payments_status", "status"),
+    )
+
+
+class PromoCode(Base):
+    """Promotional codes for discounts."""
+
+    __tablename__ = "promo_codes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code = Column(String(50), unique=True, nullable=False)
+
+    discount_percent = Column(Integer, nullable=True)
+    discount_amount_rub = Column(Float, nullable=True)
+
+    valid_from = Column(DateTime, default=datetime.utcnow)
+    valid_until = Column(DateTime, nullable=True)
+
+    max_uses = Column(Integer, nullable=True)
+    current_uses = Column(Integer, default=0)
+
+    product_id = Column(UUID(as_uuid=True), ForeignKey("saas_products.id", ondelete="SET NULL"), nullable=True)
+    plan_id = Column(UUID(as_uuid=True), ForeignKey("saas_product_plans.id", ondelete="SET NULL"), nullable=True)
+
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # Update exports
+
+
+# =============================================================================
+# ANALYTICS & INSIGHTS MODELS
+# =============================================================================
+
+class InsightType(str, Enum):
+    """Types of AI-generated insights."""
+    PERFORMANCE_ANALYSIS = "performance_analysis"
+    CONTENT_RECOMMENDATION = "content_recommendation"
+    TIMING_SUGGESTION = "timing_suggestion"
+    AUDIENCE_INSIGHT = "audience_insight"
+    TREND_ALERT = "trend_alert"
+    OPTIMIZATION_ACTION = "optimization_action"
+
+
+class InsightPriority(str, Enum):
+    """Priority levels for insights."""
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class InsightStatus(str, Enum):
+    """Status of an insight."""
+    PENDING = "pending"
+    SHOWN = "shown"
+    APPLIED = "applied"
+    DISMISSED = "dismissed"
+    AUTO_APPLIED = "auto_applied"
+
+
+class OptimizationMode(str, Enum):
+    """AI optimization modes."""
+    DISABLED = "disabled"
+    HINTS_ONLY = "hints_only"
+    CONFIRM = "confirm"
+    AUTO = "auto"
+
+
+class PostMetrics(Base):
+    """Time-series engagement metrics for published posts."""
+    
+    __tablename__ = "post_metrics"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    publish_result_id = Column(UUID(as_uuid=True), ForeignKey("publish_results.id", ondelete="CASCADE"), nullable=False)
+    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
+    platform = Column(String(50), nullable=False, index=True)
+    
+    # Core metrics
+    views = Column(Integer, default=0)
+    likes = Column(Integer, default=0)
+    comments = Column(Integer, default=0)
+    shares = Column(Integer, default=0)
+    saves = Column(Integer, default=0)
+    
+    # Calculated metrics
+    engagement_rate = Column(Float, default=0)  # (likes+comments+shares)/views
+    click_through_rate = Column(Float, default=0)
+    
+    # Platform-specific (JSONB)
+    platform_metrics = Column(JSONB, default=dict)
+    audience_data = Column(JSONB, default=dict)
+    
+    # Growth tracking
+    followers_before = Column(Integer, nullable=True)
+    followers_after = Column(Integer, nullable=True)
+    followers_gained = Column(Integer, default=0)
+    
+    # Time tracking
+    hours_since_publish = Column(Integer, default=0)
+    measured_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    post = relationship("Post", backref="metrics")
+    publish_result = relationship("PublishResult", backref="metrics")
+    
+    def calculate_engagement_rate(self):
+        """Calculate engagement rate from metrics."""
+        if self.views and self.views > 0:
+            self.engagement_rate = (self.likes + self.comments + self.shares) / self.views
+        return self.engagement_rate
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": str(self.id),
+            "post_id": str(self.post_id),
+            "platform": self.platform,
+            "views": self.views,
+            "likes": self.likes,
+            "comments": self.comments,
+            "shares": self.shares,
+            "saves": self.saves,
+            "engagement_rate": self.engagement_rate,
+            "followers_gained": self.followers_gained,
+            "hours_since_publish": self.hours_since_publish,
+            "measured_at": self.measured_at.isoformat() if self.measured_at else None,
+            "platform_metrics": self.platform_metrics
+        }
+
+
+class ContentInsight(Base):
+    """AI-generated insights and recommendations."""
+    
+    __tablename__ = "content_insights"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Scope
+    post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=True)
+    platform = Column(String(50), nullable=True)
+    
+    # Insight details
+    insight_type = Column(SQLEnum(InsightType), nullable=False)
+    priority = Column(SQLEnum(InsightPriority), default=InsightPriority.MEDIUM)
+    status = Column(SQLEnum(InsightStatus), default=InsightStatus.PENDING)
+    
+    # Content
+    title = Column(String(255), nullable=False)
+    summary = Column(Text, nullable=False)
+    detailed_analysis = Column(Text, nullable=True)
+    
+    # Recommendations
+    recommendations = Column(JSONB, default=list)
+    confidence_score = Column(Float, default=0.8)
+    ai_reasoning = Column(Text, nullable=True)
+    supporting_data = Column(JSONB, default=dict)
+    
+    # Auto-action
+    auto_action_type = Column(String(50), nullable=True)
+    auto_action_payload = Column(JSONB, nullable=True)
+    auto_action_executed = Column(Boolean, default=False)
+    auto_action_result = Column(JSONB, nullable=True)
+    
+    # User interaction
+    user_feedback = Column(String(20), nullable=True)
+    user_notes = Column(Text, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    shown_at = Column(DateTime, nullable=True)
+    applied_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    
+    # Relationships
+    post = relationship("Post", backref="insights")
+    
+    def mark_shown(self):
+        self.status = InsightStatus.SHOWN
+        self.shown_at = datetime.utcnow()
+    
+    def mark_applied(self, feedback: str = None):
+        self.status = InsightStatus.APPLIED
+        self.applied_at = datetime.utcnow()
+        if feedback:
+            self.user_feedback = feedback
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": str(self.id),
+            "post_id": str(self.post_id) if self.post_id else None,
+            "platform": self.platform,
+            "insight_type": self.insight_type.value,
+            "priority": self.priority.value,
+            "status": self.status.value,
+            "title": self.title,
+            "summary": self.summary,
+            "detailed_analysis": self.detailed_analysis,
+            "recommendations": self.recommendations,
+            "confidence_score": self.confidence_score,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None
+        }
+
+
+class AnalyticsSettings(Base):
+    """User preferences for analytics and optimization."""
+    
+    __tablename__ = "analytics_settings"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    
+    # Collection settings
+    collect_metrics = Column(Boolean, default=True)
+    metrics_frequency_hours = Column(Integer, default=24)
+    
+    # Optimization mode
+    optimization_mode = Column(SQLEnum(OptimizationMode), default=OptimizationMode.HINTS_ONLY)
+    
+    # Feature toggles
+    auto_adjust_timing = Column(Boolean, default=False)
+    auto_optimize_hashtags = Column(Boolean, default=False)
+    auto_adjust_content_length = Column(Boolean, default=False)
+    auto_suggest_topics = Column(Boolean, default=True)
+    
+    # Notifications
+    notify_on_viral = Column(Boolean, default=True)
+    notify_on_drop = Column(Boolean, default=True)
+    notify_weekly_report = Column(Boolean, default=True)
+    
+    # Thresholds
+    viral_threshold_multiplier = Column(Float, default=3.0)
+    drop_threshold_percent = Column(Integer, default=50)
+    benchmark_period_days = Column(Integer, default=30)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "optimization_mode": self.optimization_mode.value,
+            "collect_metrics": self.collect_metrics,
+            "auto_adjust_timing": self.auto_adjust_timing,
+            "auto_optimize_hashtags": self.auto_optimize_hashtags,
+            "auto_suggest_topics": self.auto_suggest_topics,
+            "notify_on_viral": self.notify_on_viral,
+            "notify_weekly_report": self.notify_weekly_report
+        }
+
+
+class PerformanceBenchmark(Base):
+    """Aggregated performance data for comparison."""
+    
+    __tablename__ = "performance_benchmarks"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    platform = Column(String(50), nullable=False)
+    
+    # Period
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    
+    # Aggregated metrics
+    total_posts = Column(Integer, default=0)
+    avg_views = Column(Float, default=0)
+    avg_likes = Column(Float, default=0)
+    avg_comments = Column(Float, default=0)
+    avg_shares = Column(Float, default=0)
+    avg_engagement_rate = Column(Float, default=0)
+    
+    # Best/worst performers
+    best_performing_post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=True)
+    worst_performing_post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id"), nullable=True)
+    
+    # Patterns
+    best_posting_times = Column(JSONB, default=list)
+    best_days_of_week = Column(JSONB, default=list)
+    top_hashtags = Column(JSONB, default=list)
+    top_content_types = Column(JSONB, default=list)
+    
+    # Growth
+    followers_start = Column(Integer, nullable=True)
+    followers_end = Column(Integer, nullable=True)
+    followers_growth_rate = Column(Float, nullable=True)
+    
+    # AI summary
+    period_summary = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": str(self.id),
+            "platform": self.platform,
+            "period_start": self.period_start.isoformat() if self.period_start else None,
+            "period_end": self.period_end.isoformat() if self.period_end else None,
+            "total_posts": self.total_posts,
+            "avg_views": self.avg_views,
+            "avg_likes": self.avg_likes,
+            "avg_engagement_rate": self.avg_engagement_rate,
+            "best_posting_times": self.best_posting_times,
+            "best_days_of_week": self.best_days_of_week,
+            "top_hashtags": self.top_hashtags,
+            "period_summary": self.period_summary
+        }
+
+
 __all__.extend([
     "User",
     "UserSocialAccount",
@@ -1033,4 +1690,29 @@ __all__.extend([
     "FraudEvent",
     "BlockedIP",
     "RateLimitOverride",
+    # Unified Auth & Cart
+    "UserSubscriptionStatus",
+    "OrderStatus",
+    "PaymentStatus",
+    "BillingPeriod",
+    "SaaSProduct",
+    "SaaSProductPlan",
+    "UserSubscription",
+    "Cart",
+    "Order",
+    "Payment",
+    "PromoCode",
+    # Generation progress tracking
+    "GenerationStepStatus",
+    "GenerationStep",
+    "PostGenerationProgress",
+    # Analytics & AI Insights
+    "InsightType",
+    "InsightPriority",
+    "InsightStatus",
+    "OptimizationMode",
+    "PostMetrics",
+    "ContentInsight",
+    "AnalyticsSettings",
+    "PerformanceBenchmark",
 ])

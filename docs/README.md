@@ -1,4 +1,4 @@
-# 📚 Документация SoVAni Crosspost
+# 📚 Документация SalesWhisper Crosspost
 
 Полная документация проекта автоматического кросс-постинга из Telegram в социальные сети.
 
@@ -255,7 +255,7 @@ docker-compose logs -f worker | grep ERROR
 docker-compose exec worker celery -A app.workers.celery_app inspect active
 
 # Database
-docker-compose exec postgres psql -U sovani -d sovani_crosspost
+docker-compose exec postgres psql -U saleswhisper -d saleswhisper_crosspost
 ```
 
 ---

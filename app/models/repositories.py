@@ -1,5 +1,5 @@
 """
-Repository classes for SoVAni Crosspost.
+Repository classes for SalesWhisper Crosspost.
 
 This module provides:
 - CRUD operations for all entities

@@ -1,4 +1,4 @@
-"""Preflight stage tasks for SoVAni Crosspost."""
+"""Preflight stage tasks for SalesWhisper Crosspost."""
 
 import time
 from typing import Dict, Any, List

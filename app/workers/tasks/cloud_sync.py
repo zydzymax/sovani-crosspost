@@ -1,5 +1,5 @@
 """
-Cloud Storage Sync tasks for SoVAni Crosspost.
+Cloud Storage Sync tasks for SalesWhisper Crosspost.
 
 This module handles:
 - Periodic sync of cloud storage folders

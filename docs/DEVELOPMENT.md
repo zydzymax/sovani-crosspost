@@ -1,6 +1,6 @@
 # 🛠️ Руководство для разработчиков
 
-Полное руководство по разработке и работе с кодовой базой SoVAni Crosspost.
+Полное руководство по разработке и работе с кодовой базой SalesWhisper Crosspost.
 
 ---
 
@@ -30,7 +30,7 @@
 ```bash
 # 1. Клонировать репозиторий
 git clone <repo-url>
-cd sovani_crosspost
+cd saleswhisper_crosspost
 
 # 2. Создать виртуальное окружение
 python3 -m venv venv
@@ -50,7 +50,7 @@ cp .env.example .env
 docker-compose up -d postgres redis minio
 
 # 6. Применить миграции
-docker-compose exec postgres psql -U sovani -d sovani_crosspost -f /docker-entrypoint-initdb.d/0001_init.sql
+docker-compose exec postgres psql -U saleswhisper -d saleswhisper_crosspost -f /docker-entrypoint-initdb.d/0001_init.sql
 ```
 
 ### Запуск для разработки
@@ -89,7 +89,7 @@ open http://localhost:9001  # admin / [REVOKED_SECRET_REMOVED]
 ### Обзор директорий
 
 ```
-sovani_crosspost/
+saleswhisper_crosspost/
 ├── app/                      # Основной код приложения
 │   ├── adapters/            # Интеграции с внешними API
 │   ├── api/                 # FastAPI endpoints
@@ -579,7 +579,7 @@ class NewPlatformAdapter:
             timeout=httpx.Timeout(30.0),
             headers={
                 "Authorization": f"Bearer {self.access_token}",
-                "User-Agent": "SoVAni-Crosspost/1.0"
+                "User-Agent": "SalesWhisper-Crosspost/1.0"
             }
         )
 
@@ -893,7 +893,7 @@ DB_ECHO_SQL=true
 **2. Подключиться к БД напрямую:**
 
 ```bash
-docker-compose exec postgres psql -U sovani -d sovani_crosspost
+docker-compose exec postgres psql -U saleswhisper -d saleswhisper_crosspost
 
 # SQL команды:
 \dt                    # Список таблиц
@@ -1127,7 +1127,7 @@ docker-compose exec api alembic upgrade head
 docker-compose exec api alembic downgrade -1
 
 # SQL напрямую
-docker-compose exec postgres psql -U sovani -d sovani_crosspost -c "SELECT COUNT(*) FROM posts;"
+docker-compose exec postgres psql -U saleswhisper -d saleswhisper_crosspost -c "SELECT COUNT(*) FROM posts;"
 ```
 
 ### Celery

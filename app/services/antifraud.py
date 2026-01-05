@@ -1,5 +1,5 @@
 """
-Comprehensive Anti-Fraud System for SoVAni Crosspost.
+Comprehensive Anti-Fraud System for SalesWhisper Crosspost.
 
 Provides protection against:
 1. Demo abuse (multiple registrations, IP/device limits)

@@ -1,5 +1,5 @@
 """
-TikTok API adapter for SoVAni Crosspost.
+TikTok API adapter for SalesWhisper Crosspost.
 
 This module handles TikTok video publishing through the TikTok for Business API,
 including direct posting for approved apps and draft creation with webhook callbacks.
@@ -150,7 +150,7 @@ class TikTokAdapter:
             timeout=httpx.Timeout(300.0),  # TikTok uploads can take a long time
             limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
             headers={
-                "User-Agent": "SoVAni-Crosspost/1.0"
+                "User-Agent": "SalesWhisper-Crosspost/1.0"
             }
         )
         

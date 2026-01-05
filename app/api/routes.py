@@ -1,5 +1,5 @@
 """
-API routes for SoVAni Crosspost.
+API routes for SalesWhisper Crosspost.
 
 This module provides:
 - Health check endpoint

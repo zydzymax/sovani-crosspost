@@ -1,5 +1,5 @@
 """
-Scheduler service for SoVAni Crosspost.
+Scheduler service for SalesWhisper Crosspost.
 
 This module provides:
 - Content scheduling and queue management

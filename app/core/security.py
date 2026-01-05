@@ -1,5 +1,5 @@
 """
-Security utilities for SoVAni Crosspost.
+Security utilities for SalesWhisper Crosspost.
 
 This module provides:
 - AES-GCM encryption/decryption for sensitive data
@@ -435,7 +435,7 @@ def verify_password(password: str, hashed: str) -> bool:
 if __name__ == "__main__":
     """Example usage of security utilities."""
     
-    print("= Testing SoVAni Security System")
+    print("= Testing SalesWhisper Security System")
     
     # Test AES encryption
     print("\n1. Testing AES-GCM Encryption:")

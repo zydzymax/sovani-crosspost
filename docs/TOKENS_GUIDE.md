@@ -1,6 +1,6 @@
 # 🔑 Полное руководство по получению API токенов
 
-Это подробное пошаговое руководство по получению всех необходимых API токенов и доступов для работы SoVAni Crosspost.
+Это подробное пошаговое руководство по получению всех необходимых API токенов и доступов для работы SalesWhisper Crosspost.
 
 ## 📊 Текущий статус токенов
 
@@ -60,8 +60,8 @@ TG_PUBLISHING_BOT_TOKEN=[REVOKED_TOKEN_REMOVED]
 
 1. Откройте Telegram и найдите **@BotFather**
 2. Отправьте команду `/newbot`
-3. Введите имя бота: `SoVAni Crosspost Bot`
-4. Введите username: `sovani_crosspost_bot` (должен заканчиваться на `_bot`)
+3. Введите имя бота: `SalesWhisper Crosspost Bot`
+4. Введите username: `saleswhisper_crosspost_bot` (должен заканчиваться на `_bot`)
 5. Скопируйте токен из ответа BotFather
 
 ### Настройка webhook (после деплоя):
@@ -92,7 +92,7 @@ VK_GROUP_ID=123456789
 1. Откройте https://vk.com/apps?act=manage
 2. Нажмите **"Создать приложение"**
 3. Тип: **"Standalone приложение"**
-4. Название: `SoVAni Crosspost`
+4. Название: `SalesWhisper Crosspost`
 5. Перейдите в **"Настройки"** → скопируйте **App ID**
 6. Получите токен через:
    ```
@@ -129,7 +129,7 @@ VK_GROUP_ID=123456789
 3. Нажмите **"Создать приложение"**
 4. Выберите тип: **"Бизнес"**
 5. Заполните форму:
-   - Отображаемое название: `SoVAni Crosspost`
+   - Отображаемое название: `SalesWhisper Crosspost`
    - Контактный email: ваш email
    - Бизнес-менеджер: можно пропустить
 6. Нажмите **"Создать приложение"**
@@ -274,7 +274,7 @@ INSTAGRAM_BUSINESS_ACCOUNT_ID=ваш_ig_business_id
 
 1. Откройте https://console.cloud.google.com/
 2. В верхнем меню нажмите **"Select a project"** → **"New Project"**
-3. Название проекта: `SoVAni Crosspost`
+3. Название проекта: `SalesWhisper Crosspost`
 4. Location: можно оставить "No organization"
 5. Нажмите **"Create"**
 6. Дождитесь создания проекта (появится уведомление)
@@ -299,7 +299,7 @@ INSTAGRAM_BUSINESS_ACCOUNT_ID=ваш_ig_business_id
 3. Нажмите **"Create"**
 
 **Шаг 3.1: App information**
-- App name: `SoVAni Crosspost`
+- App name: `SalesWhisper Crosspost`
 - User support email: ваш email
 - App logo: (можно пропустить)
 - Application home page: ваш сайт или `http://localhost:8000`
@@ -333,7 +333,7 @@ INSTAGRAM_BUSINESS_ACCOUNT_ID=ваш_ig_business_id
 1. В левом меню: **"APIs & Services"** → **"Credentials"**
 2. Нажмите **"+ Create Credentials"** → **"OAuth client ID"**
 3. Application type: выберите **"Web application"**
-4. Name: `SoVAni Crosspost Web Client`
+4. Name: `SalesWhisper Crosspost Web Client`
 5. **Authorized redirect URIs**:
    - Нажмите **"Add URI"**
    - Добавьте: `http://localhost:8000/auth/youtube/callback`
@@ -455,7 +455,7 @@ YOUTUBE_REFRESH_TOKEN=[REVOKED_SECRET_REMOVED]
 2. Нажмите **"Sign up"** или **"Login"**
 3. Войдите через обычный TikTok аккаунт
 4. Заполните профиль разработчика:
-   - Company name: `SoVAni`
+   - Company name: `SalesWhisper`
    - Website: ваш сайт
    - Email: ваш email
 5. Примите Terms of Service
@@ -467,16 +467,16 @@ YOUTUBE_REFRESH_TOKEN=[REVOKED_SECRET_REMOVED]
 1. После входа нажмите **"My apps"**
 2. Нажмите **"Create new app"**
 3. Заполните форму:
-   - **App name**: `SoVAni Crosspost`
+   - **App name**: `SalesWhisper Crosspost`
    - **App type**: Server-to-Server (для автоматической публикации)
    - **Description**: Подробно опишите:
      ```
-     SoVAni Crosspost is an automated content distribution system that helps
-     fashion brand SoVAni publish product videos across multiple social media
+     SalesWhisper Crosspost is an automated content distribution system that helps
+     fashion brand SalesWhisper publish product videos across multiple social media
      platforms. The app will post videos about new clothing collections,
      product launches, and fashion tips from Telegram to TikTok automatically.
 
-     Use case: Publishing 3-5 product videos per day showcasing SoVAni brand
+     Use case: Publishing 3-5 product videos per day showcasing SalesWhisper brand
      fashion items to TikTok audience.
      ```
    - **Category**: Social / Lifestyle
