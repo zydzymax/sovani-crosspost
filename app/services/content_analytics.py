@@ -12,10 +12,10 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any
 
-import structlog
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.logging import get_logger
 from ..models.entities import (
     AnalyticsSettings,
     ContentInsight,
@@ -29,7 +29,7 @@ from ..models.entities import (
     PublishResult,
 )
 
-logger = structlog.get_logger(__name__)
+logger = get_logger("services.content_analytics")
 
 
 class ContentAnalyticsService:
@@ -117,6 +117,14 @@ class ContentAnalyticsService:
         self.ai_client = ai_client  # OpenAI/Claude client
         logger.info("ContentAnalyticsService initialized")
 
+    @staticmethod
+    def _error_result(error: str) -> dict[str, Any]:
+        return {"success": False, "error": error}
+
+    @staticmethod
+    def _utcnow() -> datetime:
+        return datetime.utcnow()
+
     async def collect_metrics_for_post(
         self, db: AsyncSession, publish_result_id: uuid.UUID, metrics_data: dict[str, Any]
     ) -> PostMetrics:
@@ -130,7 +138,7 @@ class ContentAnalyticsService:
         # Calculate hours since publish
         hours_since = 0
         if result.published_at:
-            hours_since = int((datetime.utcnow() - result.published_at).total_seconds() / 3600)
+            hours_since = int((self._utcnow() - result.published_at).total_seconds() / 3600)
 
         # Calculate engagement rate
         views = metrics_data.get("views", 0)
@@ -239,7 +247,7 @@ class ContentAnalyticsService:
                 "benchmarks": benchmarks,
                 "performance_ratio": performance_ratio,
             },
-            expires_at=datetime.utcnow() + timedelta(days=30),
+            expires_at=self._utcnow() + timedelta(days=30),
         )
 
         db.add(insight)
@@ -253,7 +261,7 @@ class ContentAnalyticsService:
         """Generate weekly performance insights for a user."""
 
         insights = []
-        week_ago = datetime.utcnow() - timedelta(days=7)
+        week_ago = self._utcnow() - timedelta(days=7)
 
         # Get all platforms user published to
         platforms_result = await db.execute(
@@ -326,7 +334,7 @@ class ContentAnalyticsService:
                     "best_hours": best_hours,
                     "best_post_id": str(best_post.post_id) if best_post else None,
                 },
-                expires_at=datetime.utcnow() + timedelta(days=7),
+                expires_at=self._utcnow() + timedelta(days=7),
             )
 
             db.add(insight)
@@ -356,13 +364,15 @@ class ContentAnalyticsService:
             select(ContentInsight)
             .where(ContentInsight.user_id == user_id)
             .where(ContentInsight.status == InsightStatus.PENDING)
-            .where(ContentInsight.expires_at > datetime.utcnow())
+            .where(ContentInsight.expires_at > self._utcnow())
             .order_by(desc(ContentInsight.priority), desc(ContentInsight.created_at))
             .limit(10)
         )
         insights = insights_result.scalars().all()
 
         for insight in insights:
+            if platform and insight.platform != platform:
+                continue
             for rec in insight.recommendations or []:
                 suggestions.append(
                     {
@@ -386,14 +396,14 @@ class ContentAnalyticsService:
 
         insight = await db.get(ContentInsight, insight_id)
         if not insight or insight.user_id != user_id:
-            return {"success": False, "error": "Insight not found"}
+            return self._error_result("Insight not found")
 
         # Check user settings
         settings_result = await db.execute(select(AnalyticsSettings).where(AnalyticsSettings.user_id == user_id))
         settings = settings_result.scalars().first()
 
         if auto and (not settings or settings.optimization_mode != OptimizationMode.AUTO):
-            return {"success": False, "error": "Auto-optimization not enabled"}
+            return self._error_result("Auto-optimization not enabled")
 
         # Apply based on insight type
         result = {"success": True, "actions_taken": []}
@@ -408,7 +418,7 @@ class ContentAnalyticsService:
 
         # Mark insight as applied
         insight.status = InsightStatus.AUTO_APPLIED if auto else InsightStatus.APPLIED
-        insight.applied_at = datetime.utcnow()
+        insight.applied_at = self._utcnow()
         insight.auto_action_executed = True
         insight.auto_action_result = result
 
@@ -434,9 +444,13 @@ class ContentAnalyticsService:
             return benchmark.to_dict()
 
         # Calculate from recent metrics
-        month_ago = datetime.utcnow() - timedelta(days=30)
+        month_ago = self._utcnow() - timedelta(days=30)
         metrics_result = await db.execute(
-            select(PostMetrics).where(PostMetrics.platform == platform).where(PostMetrics.created_at >= month_ago)
+            select(PostMetrics)
+            .join(Post, Post.id == PostMetrics.post_id)
+            .where(Post.user_id == user_id if hasattr(Post, "user_id") else True)
+            .where(PostMetrics.platform == platform)
+            .where(PostMetrics.created_at >= month_ago)
         )
         metrics = metrics_result.scalars().all()
 

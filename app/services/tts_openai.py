@@ -118,6 +118,10 @@ class OpenAITTSService:
         cost_per_1k = self.COST_PER_1K_TTS1_HD if model == TTSModel.TTS_1_HD else self.COST_PER_1K_TTS1
         return (char_count / 1000) * cost_per_1k
 
+    @staticmethod
+    def _clamp_speed(speed: float) -> float:
+        return max(0.25, min(4.0, speed))
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
@@ -149,8 +153,7 @@ class OpenAITTSService:
         if not text.strip():
             return TTSResult(success=False, error="Empty text provided")
 
-        # Clamp speed to valid range
-        speed = max(0.25, min(4.0, speed))
+        speed = self._clamp_speed(speed)
 
         logger.info("Starting TTS generation", voice=voice.value, model=model.value, chars=len(text))
 
@@ -167,9 +170,9 @@ class OpenAITTSService:
 
             if response.status_code == 401:
                 raise TTSAuthError("Invalid API credentials")
-            elif response.status_code == 429:
+            if response.status_code == 429:
                 raise TTSRateLimitError("Rate limit exceeded")
-            elif response.status_code != 200:
+            if response.status_code != 200:
                 error_data = (
                     response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
                 )
@@ -189,7 +192,7 @@ class OpenAITTSService:
         except (TTSAuthError, TTSRateLimitError, TTSGenerationError):
             raise
         except Exception as e:
-            logger.error(f"TTS generation error: {e}")
+            logger.error("TTS generation error", error=str(e))
             return TTSResult(success=False, error=str(e))
 
     async def generate_speech_to_file(
@@ -230,16 +233,16 @@ class OpenAITTSService:
         # Save to file
         try:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "wb") as f:
+            with Path(output_path).open("wb") as f:
                 f.write(result.audio_data)
 
             result.file_path = output_path
-            logger.info(f"Audio saved to {output_path}")
+            logger.info("Audio saved", output_path=output_path)
 
         except Exception as e:
-            logger.error(f"Failed to save audio file: {e}")
+            logger.error("Failed to save audio file", output_path=output_path, error=str(e))
             result.success = False
-            result.error = f"Failed to save file: {e}"
+            result.error = f"Failed to save file: {str(e)}"
 
         return result
 
@@ -275,7 +278,7 @@ class OpenAITTSService:
         audio_parts = []
         total_cost = 0.0
 
-        logger.info(f"Generating long speech in {len(chunks)} chunks")
+        logger.info("Generating long speech", chunk_count=len(chunks))
 
         for i, chunk in enumerate(chunks):
             result = await self.generate_speech(
@@ -283,7 +286,7 @@ class OpenAITTSService:
             )
 
             if not result.success:
-                return TTSResult(success=False, error=f"Failed at chunk {i+1}: {result.error}")
+                return TTSResult(success=False, error=f"Failed at chunk {i + 1}: {result.error}")
 
             audio_parts.append(result.audio_data)
             total_cost += result.cost_estimate

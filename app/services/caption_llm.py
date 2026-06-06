@@ -106,27 +106,20 @@ class OpenAIProvider(LLMProviderBase):
 class MockProvider(LLMProviderBase):
     def __init__(self):
         self.response_templates = {
-            "instagram": "{content} New SalesWhisper collection is here! #SalesWhisper #Fashion #Style",
-            "vk": "{content} Presenting the new SalesWhisper collection. #SalesWhisper #Fashion",
-            "tiktok": "{content} SalesWhisper style #saleswhisper #fashion #style",
-            "youtube": "{content} More about SalesWhisper in our video!",
-            "telegram": "{content} SalesWhisper - style for you.",
+            "instagram": "{content} Новая коллекция SalesWhisper уже здесь! #SalesWhisper #Fashion #Style",
+            "vk": "{content} Представляем новую коллекцию SalesWhisper. #SalesWhisper #Мода",
+            "tiktok": "{content} Стиль SalesWhisper #saleswhisper #fashion #style",
+            "youtube": "{content} Больше о SalesWhisper в нашем видео!",
+            "telegram": "{content} SalesWhisper - стиль для тебя.",
         }
 
     async def generate_text(self, prompt: str, max_tokens: int = 500) -> str:
         await asyncio.sleep(0.1)
+        platform = self._detect_platform(prompt)
 
-        platform = "instagram"
-        if "for VK" in prompt or "vk" in prompt.lower():
-            platform = "vk"
-        elif "for TikTok" in prompt or "tiktok" in prompt.lower():
-            platform = "tiktok"
-        elif "for YouTube" in prompt or "youtube" in prompt.lower():
-            platform = "youtube"
-        elif "for Telegram" in prompt or "telegram" in prompt.lower():
-            platform = "telegram"
-
-        content_match = re.search(r'CONTENT TEXT: "(.*?)"', prompt)
+        content_match = re.search(r'CONTENT TEXT: "(.*?)"', prompt, re.DOTALL) or re.search(
+            r'ИСХОДНЫЙ ТЕКСТ:\s*"(.*?)"', prompt, re.DOTALL
+        )
         content = content_match.group(1) if content_match else "New collection"
 
         if len(content) > 50:
@@ -134,6 +127,18 @@ class MockProvider(LLMProviderBase):
 
         template = self.response_templates.get(platform, self.response_templates["instagram"])
         return template.format(content=content)
+
+    def _detect_platform(self, prompt: str) -> str:
+        prompt_lower = prompt.lower()
+        if "for vk" in prompt_lower or "vk" in prompt_lower:
+            return "vk"
+        if "for tiktok" in prompt_lower or "tiktok" in prompt_lower:
+            return "tiktok"
+        if "for youtube" in prompt_lower or "youtube" in prompt_lower:
+            return "youtube"
+        if "for telegram" in prompt_lower or "telegram" in prompt_lower:
+            return "telegram"
+        return "instagram"
 
     def get_provider_name(self) -> str:
         return "mock"
@@ -182,14 +187,8 @@ class CaptionLLMService:
                 result = await self._generate_single_caption(platform, platform_input)
                 results[platform] = result
             except Exception as e:
-                logger.error(f"Caption generation failed for {platform}", error=str(e))
-                results[platform] = CaptionOutput(
-                    platform=platform,
-                    caption=self._create_fallback_caption(platform, platform_input),
-                    hashtags=platform_input.hashtags[:5],
-                    character_count=0,
-                    confidence_score=0.3,
-                )
+                logger.error("Caption generation failed", platform=platform, error=str(e))
+                results[platform] = self._create_fallback_output(platform, platform_input)
 
         total_time = time.time() - start_time
         logger.info("Caption generation completed", total_time=total_time)
@@ -237,13 +236,13 @@ class CaptionLLMService:
             "instagram": [
                 "- Use emojis moderately",
                 "- Add a call to action",
-                f"- Maximum {config['max_length']} characters",
+                f"- Максимум {config['max_length']} символов",
             ],
-            "vk": ["- Minimal emojis", "- Direct call to action", f"- Maximum {config['max_length']} characters"],
+            "vk": ["- Minimal emojis", "- Direct call to action", f"- Максимум {config['max_length']} символов"],
             "tiktok": [
                 "- Use trending hashtags and emojis",
                 "- Energetic tone",
-                f"- Maximum {config['max_length']} characters",
+                f"- Максимум {config['max_length']} символов",
             ],
         }
 
@@ -264,10 +263,14 @@ class CaptionLLMService:
         if len(caption) <= max_length:
             return caption, False
 
-        truncated = caption[:max_length]
+        if max_length <= 3:
+            return caption[:max_length], True
+
+        truncated = caption[: max_length - 3]
         last_space = truncated.rfind(" ")
-        if last_space > max_length * 0.9:
-            truncated = truncated[:last_space] + "..."
+        if last_space > max_length * 0.6:
+            truncated = truncated[:last_space]
+        truncated = truncated.rstrip() + "..."
 
         return truncated, True
 
@@ -284,6 +287,15 @@ class CaptionLLMService:
         content = platform_input.content_text[:100]
         return template.format(content=content)
 
+    def _create_fallback_output(self, platform: str, platform_input: PlatformInput) -> CaptionOutput:
+        return CaptionOutput(
+            platform=platform,
+            caption=self._create_fallback_caption(platform, platform_input),
+            hashtags=platform_input.hashtags[:5],
+            character_count=0,
+            confidence_score=0.3,
+        )
+
 
 # Global service instance
 caption_service = CaptionLLMService()
@@ -291,4 +303,7 @@ caption_service = CaptionLLMService()
 
 # Convenience functions
 async def generate_all_captions(platform_inputs: dict[str, PlatformInput]) -> dict[str, CaptionOutput]:
-    return await caption_service.generate_all(platform_inputs)
+    result = caption_service.generate_all(platform_inputs)
+    if asyncio.iscoroutine(result):
+        return await result
+    return result

@@ -26,6 +26,40 @@ from .config import settings
 request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 user_id_ctx: ContextVar[str | None] = ContextVar("user_id", default=None)
 task_id_ctx: ContextVar[str | None] = ContextVar("task_id", default=None)
+SENSITIVE_FIELDS = {
+    "password",
+    "secret",
+    "token",
+    "key",
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "jwt",
+    "auth",
+}
+LOG_RECORD_SKIP_FIELDS = {
+    "name",
+    "msg",
+    "args",
+    "levelname",
+    "levelno",
+    "pathname",
+    "filename",
+    "module",
+    "lineno",
+    "funcName",
+    "created",
+    "msecs",
+    "relativeCreated",
+    "thread",
+    "threadName",
+    "processName",
+    "process",
+    "getMessage",
+    "exc_info",
+    "exc_text",
+    "stack_info",
+}
 
 
 class StructlogFormatter(logging.Formatter):
@@ -63,29 +97,7 @@ class StructlogFormatter(logging.Formatter):
         # Add extra fields
         if hasattr(record, "__dict__"):
             for key, value in record.__dict__.items():
-                if key not in {
-                    "name",
-                    "msg",
-                    "args",
-                    "levelname",
-                    "levelno",
-                    "pathname",
-                    "filename",
-                    "module",
-                    "lineno",
-                    "funcName",
-                    "created",
-                    "msecs",
-                    "relativeCreated",
-                    "thread",
-                    "threadName",
-                    "processName",
-                    "process",
-                    "getMessage",
-                    "exc_info",
-                    "exc_text",
-                    "stack_info",
-                }:
+                if key not in LOG_RECORD_SKIP_FIELDS:
                     event_dict[key] = value
 
         return self.processor(None, None, event_dict)
@@ -117,14 +129,12 @@ def add_timestamps(logger, method_name, event_dict):
 
 def filter_sensitive_data(logger, method_name, event_dict):
     """Filter sensitive data from logs."""
-    sensitive_fields = {"password", "secret", "token", "key", "api_key", "access_token", "refresh_token", "jwt", "auth"}
-
     def _filter_dict(obj, path=""):
         if isinstance(obj, dict):
             return {
                 key: (
                     "[REDACTED]"
-                    if any(field in key.lower() for field in sensitive_fields)
+                    if any(field in key.lower() for field in SENSITIVE_FIELDS)
                     else _filter_dict(value, f"{path}.{key}" if path else key)
                 )
                 for key, value in obj.items()
@@ -388,8 +398,19 @@ def get_logger(name: str = None) -> FilteringBoundLogger:
     return structlog.get_logger(name)
 
 
-def with_logging_context(request_id: str = None, user_id: str = None, task_id: str = None) -> LoggingContextManager:
-    """Create logging context manager."""
+def with_logging_context(
+    request_id: str = None,
+    user_id: str = None,
+    task_id: str = None,
+    correlation_id: str = None,
+    **_: object,
+) -> LoggingContextManager:
+    """Create logging context manager.
+
+    Accepts `correlation_id` as a backward-compatible alias for request_id.
+    """
+    if request_id is None and correlation_id is not None:
+        request_id = correlation_id
     return LoggingContextManager(request_id, user_id, task_id)
 
 

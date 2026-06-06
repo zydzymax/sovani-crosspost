@@ -17,7 +17,6 @@ from app.media.ffmpeg_wrapper import (
     ConversionParams,
     ConversionResult,
     ConversionStrategy,
-    FFmpegError,
     FFmpegWrapper,
     QualityProfile,
 )
@@ -196,15 +195,13 @@ class TestFFmpegWrapperMocked:
     """Test FFmpegWrapper with mocked dependencies."""
 
     def test_wrapper_initialization_missing_script(self):
-        """Test wrapper initialization with missing script."""
+        """Test wrapper initialization falls back when script is missing."""
         with patch("app.media.ffmpeg_wrapper.Path") as mock_path:
             mock_path.return_value.parent.parent = MagicMock()
             mock_path.return_value.parent.parent.__truediv__.return_value.exists.return_value = False
 
-            with pytest.raises(FFmpegError) as exc_info:
-                FFmpegWrapper()
-
-            assert "Could not locate ffmpeg_profiles.sh" in str(exc_info.value)
+            wrapper = FFmpegWrapper()
+            assert wrapper.script_path is None
 
     def test_build_command(self):
         """Test command building."""

@@ -52,6 +52,14 @@ class TochkaPaymentService:
         self.success_url = settings.payment.success_url
         self.fail_url = settings.payment.fail_url
 
+    @staticmethod
+    def _error_result(error: str) -> PaymentResult:
+        return PaymentResult(success=False, payment_id="", status="error", error=error)
+
+    @staticmethod
+    def _status_error(error: str) -> dict[str, Any]:
+        return {"status": "error", "error": error}
+
     def _generate_signature(self, data: dict[str, Any]) -> str:
         """Generate HMAC signature for request."""
         # Sort keys and create string
@@ -129,18 +137,21 @@ class TochkaPaymentService:
                 response = await client.post(f"{self.api_url}/payments/create", json=payment_data)
 
                 if response.status_code != 200:
-                    logger.error(f"Tochka API error: {response.status_code} - {response.text}")
-                    return PaymentResult(
-                        success=False,
-                        payment_id="",
-                        status="error",
-                        error=f"Payment provider error: {response.status_code}",
+                    logger.error(
+                        "Tochka API error",
+                        status_code=response.status_code,
+                        response_text=response.text,
                     )
+                    return self._error_result(f"Payment provider error: {response.status_code}")
 
                 result = response.json()
 
                 if result.get("success"):
-                    logger.info(f"Payment created: {result.get('payment_id')} for order {order_id}")
+                    logger.info(
+                        "Payment created",
+                        payment_id=result.get("payment_id"),
+                        order_id=order_id,
+                    )
                     return PaymentResult(
                         success=True,
                         payment_id=result.get("payment_id", ""),
@@ -148,17 +159,15 @@ class TochkaPaymentService:
                         status="created",
                     )
                 else:
-                    logger.error(f"Payment creation failed: {result}")
-                    return PaymentResult(
-                        success=False, payment_id="", status="error", error=result.get("error", "Unknown error")
-                    )
+                    logger.error("Payment creation failed", result=result)
+                    return self._error_result(result.get("error", "Unknown error"))
 
         except httpx.TimeoutException:
             logger.error("Tochka API timeout")
-            return PaymentResult(success=False, payment_id="", status="error", error="Payment provider timeout")
+            return self._error_result("Payment provider timeout")
         except Exception as e:
-            logger.error(f"Payment creation error: {e}")
-            return PaymentResult(success=False, payment_id="", status="error", error=str(e))
+            logger.exception("Payment creation error", error=str(e))
+            return self._error_result(str(e))
 
     async def check_payment_status(self, payment_id: str) -> dict[str, Any]:
         """
@@ -186,12 +195,12 @@ class TochkaPaymentService:
                 if response.status_code == 200:
                     return response.json()
                 else:
-                    logger.error(f"Payment status check failed: {response.status_code}")
-                    return {"status": "error", "error": f"Status check failed: {response.status_code}"}
+                    logger.error("Payment status check failed", status_code=response.status_code)
+                    return self._status_error(f"Status check failed: {response.status_code}")
 
         except Exception as e:
-            logger.error(f"Payment status check error: {e}")
-            return {"status": "error", "error": str(e)}
+            logger.exception("Payment status check error", error=str(e))
+            return self._status_error(str(e))
 
     def process_webhook(self, data: dict[str, Any]) -> dict[str, Any]:
         """
@@ -221,7 +230,7 @@ class TochkaPaymentService:
             "paid_at": data.get("paid_at"),
         }
 
-        logger.info(f"Webhook processed: {payment_info}")
+        logger.info("Webhook processed", payment_info=payment_info)
         return payment_info
 
 

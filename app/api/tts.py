@@ -10,6 +10,18 @@ from .deps import get_current_user
 
 router = APIRouter(prefix="/tts", tags=["text-to-speech"])
 
+VALID_VOICES = ("alloy", "echo", "fable", "onyx", "nova", "shimmer")
+VALID_MODELS = ("tts-1", "tts-1-hd")
+VALID_FORMATS = ("mp3", "opus", "aac", "flac", "wav", "pcm")
+CONTENT_TYPES = {
+    "mp3": "audio/mpeg",
+    "opus": "audio/opus",
+    "aac": "audio/aac",
+    "flac": "audio/flac",
+    "wav": "audio/wav",
+    "pcm": "audio/L16",
+}
+
 
 # Request/Response models
 class TTSRequest(BaseModel):
@@ -41,113 +53,74 @@ class TTSResponse(BaseModel):
     error: str | None = None
 
 
-@router.post("/generate", response_class=Response)
-async def generate_speech(request: TTSRequest, current_user: User = Depends(get_current_user)):
-    """Generate speech from text. Returns audio file directly."""
-    # Validate voice
-    valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
-    if request.voice not in valid_voices:
+def _validate_tts_request(voice: str, model: str, audio_format: str) -> None:
+    if voice not in VALID_VOICES:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid voice. Valid options: {valid_voices}"
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid voice. Valid options: {list(VALID_VOICES)}"
+        )
+    if model not in VALID_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid model. Valid options: {list(VALID_MODELS)}"
+        )
+    if audio_format not in VALID_FORMATS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid format. Valid options: {list(VALID_FORMATS)}"
         )
 
-    # Validate model
-    valid_models = ["tts-1", "tts-1-hd"]
-    if request.model not in valid_models:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid model. Valid options: {valid_models}"
-        )
 
-    # Validate format
-    valid_formats = ["mp3", "opus", "aac", "flac", "wav", "pcm"]
-    if request.format not in valid_formats:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid format. Valid options: {valid_formats}"
-        )
+def _build_audio_response(result, audio_format: str) -> Response:
+    return Response(
+        content=result.audio_data,
+        media_type=CONTENT_TYPES.get(audio_format, "audio/mpeg"),
+        headers={"X-Character-Count": str(result.character_count), "X-Cost-Estimate": str(result.cost_estimate)},
+    )
 
+
+async def _generate_tts_response(
+    request: TTSRequest | LongTTSRequest, *, long_text: bool = False
+) -> Response:
+    _validate_tts_request(request.voice, request.model, request.format)
+
+    service = OpenAITTSService()
     try:
-        service = OpenAITTSService()
-
-        result = await service.generate_speech(
-            text=request.text,
-            voice=TTSVoice(request.voice),
-            model=TTSModel(request.model),
-            response_format=AudioFormat(request.format),
-            speed=request.speed,
-        )
-
-        await service.close()
+        if long_text:
+            result = await service.generate_long_speech(
+                text=request.text,
+                voice=TTSVoice(request.voice),
+                model=TTSModel(request.model),
+                response_format=AudioFormat(request.format),
+                speed=request.speed,
+            )
+        else:
+            result = await service.generate_speech(
+                text=request.text,
+                voice=TTSVoice(request.voice),
+                model=TTSModel(request.model),
+                response_format=AudioFormat(request.format),
+                speed=request.speed,
+            )
 
         if not result.success:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.error)
-
-        # Determine content type
-        content_types = {
-            "mp3": "audio/mpeg",
-            "opus": "audio/opus",
-            "aac": "audio/aac",
-            "flac": "audio/flac",
-            "wav": "audio/wav",
-            "pcm": "audio/L16",
-        }
-
-        return Response(
-            content=result.audio_data,
-            media_type=content_types.get(request.format, "audio/mpeg"),
-            headers={"X-Character-Count": str(result.character_count), "X-Cost-Estimate": str(result.cost_estimate)},
-        )
-
+        return _build_audio_response(result, request.format)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    finally:
+        await service.close()
+
+
+@router.post("/generate", response_class=Response)
+async def generate_speech(request: TTSRequest, current_user: User = Depends(get_current_user)):
+    """Generate speech from text. Returns audio file directly."""
+    return await _generate_tts_response(request)
 
 
 @router.post("/generate-long", response_class=Response)
 async def generate_long_speech(request: LongTTSRequest, current_user: User = Depends(get_current_user)):
     """Generate speech from long text (no 4096 char limit). Returns audio file."""
-    # Validate voice
-    valid_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
-    if request.voice not in valid_voices:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid voice. Valid options: {valid_voices}"
-        )
-
-    try:
-        service = OpenAITTSService()
-
-        result = await service.generate_long_speech(
-            text=request.text,
-            voice=TTSVoice(request.voice),
-            model=TTSModel(request.model),
-            response_format=AudioFormat(request.format),
-            speed=request.speed,
-        )
-
-        await service.close()
-
-        if not result.success:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=result.error)
-
-        content_types = {
-            "mp3": "audio/mpeg",
-            "opus": "audio/opus",
-            "aac": "audio/aac",
-            "flac": "audio/flac",
-            "wav": "audio/wav",
-            "pcm": "audio/L16",
-        }
-
-        return Response(
-            content=result.audio_data,
-            media_type=content_types.get(request.format, "audio/mpeg"),
-            headers={"X-Character-Count": str(result.character_count), "X-Cost-Estimate": str(result.cost_estimate)},
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    return await _generate_tts_response(request, long_text=True)
 
 
 @router.get("/voices")

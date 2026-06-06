@@ -130,6 +130,19 @@ class AntifraudService:
 
         logger.info("AntifraudService initialized")
 
+    @staticmethod
+    def _utcnow() -> datetime:
+        return datetime.utcnow()
+
+    def _risk_level_from_score(self, score: float) -> FraudRiskLevel:
+        if score >= self.config["block_threshold"]:
+            return FraudRiskLevel.CRITICAL
+        if score >= self.config["challenge_threshold"]:
+            return FraudRiskLevel.HIGH
+        if score > 0.2:
+            return FraudRiskLevel.MEDIUM
+        return FraudRiskLevel.LOW
+
     def set_redis(self, redis_client):
         """Set Redis client for distributed state."""
         self._redis = redis_client
@@ -231,7 +244,7 @@ class AntifraudService:
         # ===== LAYER 5: Telegram ID History =====
         previous_demo = await self._get_previous_demo(telegram_id)
         if previous_demo:
-            days_since = (datetime.utcnow() - previous_demo).days
+            days_since = (self._utcnow() - previous_demo).days
             if days_since < self.config["demo_cooldown_days"]:
                 signals.append(
                     FraudSignal(
@@ -266,7 +279,7 @@ class AntifraudService:
         self, telegram_id: int, ip_address: str, device_fingerprint: str | None = None, phone_hash: str | None = None
     ):
         """Register demo account usage for future checks."""
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = self._utcnow().isoformat()
 
         # Store in Redis with TTL
         ttl = self.config["demo_cooldown_days"] * 86400  # Days to seconds
@@ -408,7 +421,7 @@ class AntifraudService:
     async def record_payment_attempt(self, user_id: str, success: bool, amount: float, payment_id: str):
         """Record payment attempt for fraud analysis."""
         if self._redis:
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = self._utcnow().isoformat()
 
             # Record in user's payment history
             key = f"antifraud:payments:{user_id}"
@@ -468,7 +481,7 @@ class AntifraudService:
                     allowed=False,
                     current_count=burst_count,
                     limit=burst_limit,
-                    reset_at=datetime.utcnow() + timedelta(seconds=1),
+                    reset_at=self._utcnow() + timedelta(seconds=1),
                     retry_after=1,
                 )
 
@@ -480,12 +493,12 @@ class AntifraudService:
                 current_count=current_count,
                 limit=rate_limit,
                 reset_at=reset_at,
-                retry_after=None if allowed else int((reset_at - datetime.utcnow()).total_seconds()),
+                retry_after=None if allowed else int((reset_at - self._utcnow()).total_seconds()),
             )
 
         # Fallback without Redis (allow all)
         return RateLimitResult(
-            allowed=True, current_count=0, limit=rate_limit, reset_at=datetime.utcnow() + timedelta(minutes=1)
+            allowed=True, current_count=0, limit=rate_limit, reset_at=self._utcnow() + timedelta(minutes=1)
         )
 
     async def check_bot_activity(
@@ -531,11 +544,7 @@ class AntifraudService:
                     score += 0.4
                     reasons.append("Suspicious request timing pattern")
 
-        risk_level = (
-            FraudRiskLevel.CRITICAL
-            if score > 0.8
-            else FraudRiskLevel.HIGH if score > 0.6 else FraudRiskLevel.MEDIUM if score > 0.3 else FraudRiskLevel.LOW
-        )
+        risk_level = self._risk_level_from_score(score)
 
         return FraudSignal(
             fraud_type=FraudType.BOT_ACTIVITY,
@@ -570,18 +579,8 @@ class AntifraudService:
         total_score = max(s.score for s in signals)  # Use max signal score
 
         # Determine risk level and action
-        if total_score >= self.config["block_threshold"]:
-            risk_level = FraudRiskLevel.CRITICAL
-            action = "block"
-        elif total_score >= self.config["challenge_threshold"]:
-            risk_level = FraudRiskLevel.HIGH
-            action = "challenge"
-        elif total_score > 0.2:
-            risk_level = FraudRiskLevel.MEDIUM
-            action = "allow"
-        else:
-            risk_level = FraudRiskLevel.LOW
-            action = "allow"
+        risk_level = self._risk_level_from_score(total_score)
+        action = "block" if risk_level == FraudRiskLevel.CRITICAL else "challenge" if risk_level == FraudRiskLevel.HIGH else "allow"
 
         # Get highest risk signal for reason
         highest_signal = max(signals, key=lambda s: s.score)
@@ -597,7 +596,7 @@ class AntifraudService:
 
     def _hash(self, value: str) -> str:
         """Create consistent hash for storage."""
-        return hashlib.sha256(value.encode()).hexdigest()
+        return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
     async def _get_demo_count_by_ip(self, ip_address: str) -> int:
         """Get demo account count for IP."""

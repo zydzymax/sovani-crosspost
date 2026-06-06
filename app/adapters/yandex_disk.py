@@ -52,7 +52,7 @@ class YandexDiskAdapter:
 
         if ext in self.VIDEO_EXTENSIONS:
             return MediaType.VIDEO
-        elif ext in self.IMAGE_EXTENSIONS:
+        if ext in self.IMAGE_EXTENSIONS:
             return MediaType.IMAGE
 
         # Fallback to MIME type
@@ -63,6 +63,85 @@ class YandexDiskAdapter:
                 return MediaType.IMAGE
 
         return MediaType.UNKNOWN
+
+    @staticmethod
+    def _target_dir_for_media_type(media_type: MediaType, videos_dir: str, photos_dir: str) -> str | None:
+        if media_type == MediaType.VIDEO:
+            return videos_dir
+        if media_type == MediaType.IMAGE:
+            return photos_dir
+        return None
+
+    @staticmethod
+    def _should_include_media_type(media_type: MediaType, media_types: list[str] | None) -> bool:
+        if media_type == MediaType.UNKNOWN:
+            return False
+        if not media_types:
+            return True
+        if media_type == MediaType.VIDEO:
+            return "video" in media_types
+        if media_type == MediaType.IMAGE:
+            return "image" in media_types
+        return False
+
+    async def _sync_files(
+        self,
+        files: list[CloudFile],
+        output_dir: str,
+        download_func,
+    ) -> SyncResult:
+        errors = []
+        downloaded = []
+
+        if not files:
+            return SyncResult(
+                success=True,
+                files_found=0,
+                files_downloaded=0,
+                files_failed=0,
+                errors=[],
+                downloaded_files=[],
+            )
+
+        videos_dir = os.path.join(output_dir, "videos")
+        photos_dir = os.path.join(output_dir, "photos")
+        os.makedirs(videos_dir, exist_ok=True)
+        os.makedirs(photos_dir, exist_ok=True)
+
+        files_downloaded = 0
+        files_failed = 0
+
+        for cloud_file in files:
+            try:
+                target_dir = self._target_dir_for_media_type(cloud_file.media_type, videos_dir, photos_dir)
+                if target_dir is None:
+                    continue
+
+                output_path = os.path.join(target_dir, cloud_file.name)
+
+                if os.path.exists(output_path) and os.path.getsize(output_path) == cloud_file.size:
+                    logger.debug("Skipping existing file with matching size", file_name=cloud_file.name)
+                    continue
+
+                success = await download_func(cloud_file, output_path)
+                if success:
+                    files_downloaded += 1
+                    downloaded.append(output_path)
+                else:
+                    files_failed += 1
+                    errors.append(f"Failed to download: {cloud_file.name}")
+            except Exception as e:
+                files_failed += 1
+                errors.append(f"Error processing {cloud_file.name}: {str(e)}")
+
+        return SyncResult(
+            success=files_failed == 0,
+            files_found=len(files),
+            files_downloaded=files_downloaded,
+            files_failed=files_failed,
+            errors=errors,
+            downloaded_files=downloaded,
+        )
 
     async def list_folder_contents(
         self, folder_path: str, access_token: str, media_types: list[str] = None
@@ -100,7 +179,12 @@ class YandexDiskAdapter:
                     )
 
                     if response.status_code != 200:
-                        logger.error(f"Failed to list folder: {response.text}")
+                        logger.error(
+                            "Failed to list folder",
+                            folder_path=folder_path,
+                            status_code=response.status_code,
+                            response_text=response.text,
+                        )
                         break
 
                     data = response.json()
@@ -116,21 +200,14 @@ class YandexDiskAdapter:
 
                         media_type = self._classify_file(item.get("name", ""), item.get("mime_type"))
 
-                        # Filter by media type
-                        if media_types:
-                            if media_type == MediaType.VIDEO and "video" not in media_types:
-                                continue
-                            if media_type == MediaType.IMAGE and "image" not in media_types:
-                                continue
-
-                        if media_type == MediaType.UNKNOWN:
+                        if not self._should_include_media_type(media_type, media_types):
                             continue
 
                         # Parse modified time
                         modified_str = item.get("modified", "")
                         try:
                             modified_at = datetime.fromisoformat(modified_str.replace("Z", "+00:00"))
-                        except:
+                        except ValueError:
                             modified_at = datetime.utcnow()
 
                         cloud_file = CloudFile(
@@ -152,11 +229,11 @@ class YandexDiskAdapter:
                     if offset >= total:
                         break
 
-            logger.info(f"Found {len(files)} media files in {folder_path}")
+            logger.info("Found media files in folder", files_count=len(files), folder_path=folder_path)
             return files
 
-        except Exception as e:
-            logger.error(f"Failed to list folder {folder_path}: {e}")
+        except Exception:
+            logger.exception("Failed to list folder", folder_path=folder_path)
             return []
 
     async def list_public_folder(
@@ -193,7 +270,11 @@ class YandexDiskAdapter:
                     )
 
                     if response.status_code != 200:
-                        logger.error(f"Failed to list public folder: {response.text}")
+                        logger.error(
+                            "Failed to list public folder",
+                            status_code=response.status_code,
+                            response_text=response.text,
+                        )
                         break
 
                     data = response.json()
@@ -212,19 +293,13 @@ class YandexDiskAdapter:
 
                         media_type = self._classify_file(item.get("name", ""), item.get("mime_type"))
 
-                        if media_types:
-                            if media_type == MediaType.VIDEO and "video" not in media_types:
-                                continue
-                            if media_type == MediaType.IMAGE and "image" not in media_types:
-                                continue
-
-                        if media_type == MediaType.UNKNOWN:
+                        if not self._should_include_media_type(media_type, media_types):
                             continue
 
                         modified_str = item.get("modified", "")
                         try:
                             modified_at = datetime.fromisoformat(modified_str.replace("Z", "+00:00"))
-                        except:
+                        except ValueError:
                             modified_at = datetime.utcnow()
 
                         cloud_file = CloudFile(
@@ -245,11 +320,11 @@ class YandexDiskAdapter:
                     if offset >= total:
                         break
 
-            logger.info(f"Found {len(files)} media files in public folder")
+            logger.info("Found media files in public folder", files_count=len(files))
             return files
 
-        except Exception as e:
-            logger.error(f"Failed to list public folder: {e}")
+        except Exception:
+            logger.exception("Failed to list public folder")
             return []
 
     async def download_file(self, file_path: str, access_token: str, output_path: str) -> bool:
@@ -275,7 +350,12 @@ class YandexDiskAdapter:
                 )
 
                 if response.status_code != 200:
-                    logger.error(f"Failed to get download URL: {response.text}")
+                    logger.error(
+                        "Failed to get download URL",
+                        file_path=file_path,
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
                     return False
 
                 download_url = response.json().get("href")
@@ -288,18 +368,18 @@ class YandexDiskAdapter:
 
                 async with client.stream("GET", download_url, timeout=300) as resp:
                     if resp.status_code != 200:
-                        logger.error(f"Download failed: {resp.status_code}")
+                        logger.error("Download failed", file_path=file_path, status_code=resp.status_code)
                         return False
 
                     with open(output_path, "wb") as f:
                         async for chunk in resp.aiter_bytes(chunk_size=8192):
                             f.write(chunk)
 
-                logger.info(f"Downloaded {file_path} to {output_path}")
+                logger.info("Downloaded file from Yandex Disk", file_path=file_path, output_path=output_path)
                 return True
 
-        except Exception as e:
-            logger.error(f"Failed to download file {file_path}: {e}")
+        except Exception:
+            logger.exception("Failed to download file", file_path=file_path, output_path=output_path)
             return False
 
     async def download_public_file(self, public_key: str, file_path: str, output_path: str) -> bool:
@@ -324,7 +404,12 @@ class YandexDiskAdapter:
                 )
 
                 if response.status_code != 200:
-                    logger.error(f"Failed to get public download URL: {response.text}")
+                    logger.error(
+                        "Failed to get public download URL",
+                        file_path=file_path,
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
                     return False
 
                 download_url = response.json().get("href")
@@ -337,18 +422,18 @@ class YandexDiskAdapter:
 
                 async with client.stream("GET", download_url, timeout=300) as resp:
                     if resp.status_code != 200:
-                        logger.error(f"Download failed: {resp.status_code}")
+                        logger.error("Public download failed", file_path=file_path, status_code=resp.status_code)
                         return False
 
                     with open(output_path, "wb") as f:
                         async for chunk in resp.aiter_bytes(chunk_size=8192):
                             f.write(chunk)
 
-                logger.info(f"Downloaded public file {file_path} to {output_path}")
+                logger.info("Downloaded public file from Yandex Disk", file_path=file_path, output_path=output_path)
                 return True
 
-        except Exception as e:
-            logger.error(f"Failed to download public file {file_path}: {e}")
+        except Exception:
+            logger.exception("Failed to download public file", file_path=file_path, output_path=output_path)
             return False
 
     async def sync_folder(
@@ -366,63 +451,11 @@ class YandexDiskAdapter:
         Returns:
             SyncResult with statistics
         """
-        errors = []
-        downloaded = []
-
-        # List files
         files = await self.list_folder_contents(folder_path, access_token, media_types)
-
-        if not files:
-            return SyncResult(
-                success=True, files_found=0, files_downloaded=0, files_failed=0, errors=[], downloaded_files=[]
-            )
-
-        # Create output directories
-        videos_dir = os.path.join(output_dir, "videos")
-        photos_dir = os.path.join(output_dir, "photos")
-        os.makedirs(videos_dir, exist_ok=True)
-        os.makedirs(photos_dir, exist_ok=True)
-
-        files_downloaded = 0
-        files_failed = 0
-
-        for cloud_file in files:
-            try:
-                if cloud_file.media_type == MediaType.VIDEO:
-                    target_dir = videos_dir
-                elif cloud_file.media_type == MediaType.IMAGE:
-                    target_dir = photos_dir
-                else:
-                    continue
-
-                output_path = os.path.join(target_dir, cloud_file.name)
-
-                # Skip if already exists and same size
-                if os.path.exists(output_path):
-                    if os.path.getsize(output_path) == cloud_file.size:
-                        logger.debug(f"Skipping {cloud_file.name} - already exists")
-                        continue
-
-                success = await self.download_file(cloud_file.path, access_token, output_path)
-
-                if success:
-                    files_downloaded += 1
-                    downloaded.append(output_path)
-                else:
-                    files_failed += 1
-                    errors.append(f"Failed to download: {cloud_file.name}")
-
-            except Exception as e:
-                files_failed += 1
-                errors.append(f"Error processing {cloud_file.name}: {str(e)}")
-
-        return SyncResult(
-            success=files_failed == 0,
-            files_found=len(files),
-            files_downloaded=files_downloaded,
-            files_failed=files_failed,
-            errors=errors,
-            downloaded_files=downloaded,
+        return await self._sync_files(
+            files,
+            output_dir,
+            download_func=lambda cloud_file, out: self.download_file(cloud_file.path, access_token, out),
         )
 
     async def sync_public_folder(self, public_url: str, output_dir: str, media_types: list[str] = None) -> SyncResult:
@@ -448,59 +481,11 @@ class YandexDiskAdapter:
                 downloaded_files=[],
             )
 
-        errors = []
-        downloaded = []
-
         files = await self.list_public_folder(public_key, "/", media_types)
-
-        if not files:
-            return SyncResult(
-                success=True, files_found=0, files_downloaded=0, files_failed=0, errors=[], downloaded_files=[]
-            )
-
-        videos_dir = os.path.join(output_dir, "videos")
-        photos_dir = os.path.join(output_dir, "photos")
-        os.makedirs(videos_dir, exist_ok=True)
-        os.makedirs(photos_dir, exist_ok=True)
-
-        files_downloaded = 0
-        files_failed = 0
-
-        for cloud_file in files:
-            try:
-                if cloud_file.media_type == MediaType.VIDEO:
-                    target_dir = videos_dir
-                elif cloud_file.media_type == MediaType.IMAGE:
-                    target_dir = photos_dir
-                else:
-                    continue
-
-                output_path = os.path.join(target_dir, cloud_file.name)
-
-                if os.path.exists(output_path):
-                    if os.path.getsize(output_path) == cloud_file.size:
-                        continue
-
-                success = await self.download_public_file(public_key, cloud_file.path, output_path)
-
-                if success:
-                    files_downloaded += 1
-                    downloaded.append(output_path)
-                else:
-                    files_failed += 1
-                    errors.append(f"Failed to download: {cloud_file.name}")
-
-            except Exception as e:
-                files_failed += 1
-                errors.append(f"Error processing {cloud_file.name}: {str(e)}")
-
-        return SyncResult(
-            success=files_failed == 0,
-            files_found=len(files),
-            files_downloaded=files_downloaded,
-            files_failed=files_failed,
-            errors=errors,
-            downloaded_files=downloaded,
+        return await self._sync_files(
+            files,
+            output_dir,
+            download_func=lambda cloud_file, out: self.download_public_file(public_key, cloud_file.path, out),
         )
 
     @staticmethod
@@ -567,11 +552,15 @@ async def exchange_yandex_code(code: str) -> dict[str, Any] | None:
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"Yandex token exchange failed: {response.text}")
+                logger.error(
+                    "Yandex token exchange failed",
+                    status_code=response.status_code,
+                    response_text=response.text,
+                )
                 return None
 
-    except Exception as e:
-        logger.error(f"Yandex token exchange error: {e}")
+    except Exception:
+        logger.exception("Yandex token exchange error")
         return None
 
 
@@ -596,11 +585,15 @@ async def refresh_yandex_token(refresh_token: str) -> dict[str, Any] | None:
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"Yandex token refresh failed: {response.text}")
+                logger.error(
+                    "Yandex token refresh failed",
+                    status_code=response.status_code,
+                    response_text=response.text,
+                )
                 return None
 
-    except Exception as e:
-        logger.error(f"Yandex token refresh error: {e}")
+    except Exception:
+        logger.exception("Yandex token refresh error")
         return None
 
 

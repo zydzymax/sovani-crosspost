@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: [REVOKED_SECRET_REMOVED]
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,7 +23,7 @@ services:
     image: redis:7-alpine
     container_name: saleswhisper_redis
     ports:
-      - "6380:6379"
+      - "6382:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -66,17 +66,20 @@ services:
       - S3_SECRET_KEY=[REVOKED_SECRET_REMOVED]
       - SMTP_HOST=smtp.yandex.ru
       - SMTP_PORT=465
-      - SMTP_USER=saleswhisper.info@yandex.ru
+      - SMTP_USER=vogladkih@yandex.ru
       - SMTP_PASSWORD=[REVOKED_SECRET_REMOVED]
       - SMTP_USE_SSL=true
-      - SMTP_FROM=SalesWhisper <saleswhisper.info@yandex.ru>
+      - SMTP_FROM=SalesWhisper <info@saleswhisper.ru>
       - NANOBANA_API_KEY=${NANOBANA_API_KEY:?NANOBANA_API_KEY is required}
+      - JWT_SECRET_KEY=[REVOKED_SECRET_REMOVED]
+      - GOAPI_KEY=${GOAPI_KEY:-}
     ports:
       - "8003:8000"
     volumes:
       - ./app:/app/app
       - ./config:/app/config
       - media_cache:/tmp/media
+      - /etc/saleswhisper:/etc/saleswhisper:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,15 +104,18 @@ services:
       - S3_SECRET_KEY=[REVOKED_SECRET_REMOVED]
       - SMTP_HOST=smtp.yandex.ru
       - SMTP_PORT=465
-      - SMTP_USER=saleswhisper.info@yandex.ru
+      - SMTP_USER=vogladkih@yandex.ru
       - SMTP_PASSWORD=[REVOKED_SECRET_REMOVED]
       - SMTP_USE_SSL=true
-      - SMTP_FROM=SalesWhisper <saleswhisper.info@yandex.ru>
+      - SMTP_FROM=SalesWhisper <info@saleswhisper.ru>
       - NANOBANA_API_KEY=${NANOBANA_API_KEY:?NANOBANA_API_KEY is required}
+      - JWT_SECRET_KEY=[REVOKED_SECRET_REMOVED]
+      - GOAPI_KEY=${GOAPI_KEY:-}
     volumes:
       - ./app:/app/app
       - ./config:/app/config
       - media_cache:/tmp/media
+      - /etc/saleswhisper:/etc/saleswhisper:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,7 +123,7 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    command: celery -A app.workers.celery_app worker --loglevel=info --queues=ingest,enrich,captionize,transcode,preflight,publish,finalize --concurrency=4
+    command: celery -A app.workers.celery_app worker --loglevel=info --queues=ingest,enrich,captionize,transcode,preflight,publish,finalize,default,outbox --concurrency=4
     restart: unless-stopped
 
   # Celery Beat Scheduler
@@ -147,14 +153,14 @@ services:
 
 volumes:
   postgres_data:
-    external: true
+    
     name: sovani_crosspost_postgres_data
   redis_data:
-    external: true
+    
     name: sovani_crosspost_redis_data
   minio_data:
-    external: true
+    
     name: sovani_crosspost_minio_data
   media_cache:
-    external: true
+    
     name: sovani_crosspost_media_cache

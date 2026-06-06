@@ -7,6 +7,9 @@ This module provides intelligent media adaptation for social platforms:
 - Platform specifications and quality presets
 """
 
+from . import ffmpeg_wrapper as ffmpeg_wrapper
+from . import smart_crop_stub as smart_crop_stub
+from . import smart_media_adapter as smart_media_adapter
 from .ffmpeg_wrapper import (
     AspectRatio,
     ConversionParams,
@@ -16,8 +19,10 @@ from .ffmpeg_wrapper import (
     QualityProfile,
     convert_for_platform,
     convert_to_aspect_ratio,
-    ffmpeg_wrapper,
     get_video_info,
+)
+from .ffmpeg_wrapper import (
+    ffmpeg_wrapper as ffmpeg_wrapper_instance,
 )
 from .smart_crop_stub import (
     ContentType,
@@ -26,7 +31,9 @@ from .smart_crop_stub import (
     analyze_for_smart_crop,
     get_platform_strategy,
     get_smart_crop_info,
-    smart_crop_stub,
+)
+from .smart_crop_stub import (
+    smart_crop_stub as smart_crop_stub_instance,
 )
 from .smart_media_adapter import (
     PLATFORM_SPECS,
@@ -37,13 +44,19 @@ from .smart_media_adapter import (
     adapt_for_platforms,
     adapt_image_for_platform,
     adapt_video_for_platform,
-    smart_adapter,
 )
+from .smart_media_adapter import (
+    smart_adapter as smart_adapter_instance,
+)
+
+smart_adapter = smart_adapter_instance
 
 __all__ = [
     # Smart Media Adapter
     "SmartMediaAdapter",
+    "smart_media_adapter",
     "smart_adapter",
+    "smart_adapter_instance",
     "adapt_image_for_platform",
     "adapt_video_for_platform",
     "adapt_for_platforms",
@@ -54,6 +67,7 @@ __all__ = [
     # FFmpeg Wrapper
     "FFmpegWrapper",
     "ffmpeg_wrapper",
+    "ffmpeg_wrapper_instance",
     "AspectRatio",
     "ConversionStrategy",
     "QualityProfile",
@@ -65,6 +79,7 @@ __all__ = [
     # Smart Crop (legacy stub)
     "SmartCropStub",
     "smart_crop_stub",
+    "smart_crop_stub_instance",
     "CropStrategy",
     "ContentType",
     "analyze_for_smart_crop",

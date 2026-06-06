@@ -64,25 +64,25 @@ class ProductAttributes:
     def to_llm_context(self) -> str:
         """Convert to LLM-friendly text context."""
         context_parts = [
-            f"Product: {self.title}",
-            f"@5=4: {self.brand or 'SalesWhisper'}",
-            f"0B53>@8O: {self.category or '45640'}",
+            f"Товар: {self.title}",
+            f"Бренд: {self.brand or 'SalesWhisper'}",
+            f"Категория: {self.category or 'Одежда'}",
         ]
 
         if self.description:
-            context_parts.append(f"?8A0=85: {self.description}")
+            context_parts.append(f"Описание: {self.description}")
 
         if self.price:
-            price_text = f"Price: {self.price} {self.currency}"
+            price_text = f"Цена: {self.price} {self.currency}"
             if self.original_price and self.original_price > self.price:
-                price_text += f" (was {self.original_price} {self.currency})"
+                price_text += f" (было {self.original_price} {self.currency})"
             context_parts.append(price_text)
 
         if self.colors:
-            context_parts.append(f"Colors: {', '.join(self.colors)}")
+            context_parts.append(f"Цвета: {', '.join(self.colors)}")
 
         if self.sizes:
-            context_parts.append(f"Sizes: {', '.join(self.sizes)}")
+            context_parts.append(f"Размеры: {', '.join(self.sizes)}")
 
         return "\n".join(context_parts)
 
@@ -129,7 +129,7 @@ class LocalProductSource(ProductSource):
                 return ProductAttributes(**product_data)
             return None
         except Exception as e:
-            logger.error(f"Error getting local product data: {e}")
+            logger.exception("Error getting local product data")
             raise ProductSourceError(f"Local source error: {e}")
 
     def get_source_name(self) -> str:
@@ -140,21 +140,21 @@ class LocalProductSource(ProductSource):
             "dress_001": {
                 "external_id": "dress_001",
                 "source": "local",
-                "title": "Elegant dress SalesWhisper Classic",
-                "description": "Stylish dress from quality knitwear",
-                "category": "Dresses",
+                "title": "Элегантное платье SalesWhisper Classic",
+                "description": "Стильное платье из качественного трикотажа",
+                "category": "Платья",
                 "brand": "SalesWhisper",
                 "price": 5990.0,
                 "original_price": 7990.0,
                 "currency": "RUB",
-                "colors": ["Black", "Blue", "Burgundy"],
+                "colors": ["Черный", "Синий", "Бордовый"],
                 "sizes": ["XS", "S", "M", "L", "XL"],
-                "materials": ["Knitwear", "Elastane"],
+                "materials": ["Трикотаж", "Эластан"],
                 "image_urls": ["https://saleswhisper.ru/images/dress_001_1.jpg"],
                 "in_stock": True,
-                "tags": ["office", "elegance"],
-                "keywords": ["dress", "knitwear", "SalesWhisper"],
-                "collection": "Classic 2024",
+                "tags": ["офис", "элегантность"],
+                "keywords": ["платье", "трикотаж", "SalesWhisper"],
+                "collection": "Классика 2024",
                 "sku": "SOV-DR-001",
                 "product_url": "https://saleswhisper.ru/products/dress_001",
                 "confidence_score": 1.0,
@@ -174,13 +174,13 @@ class WildberriesSource(ProductSource):
             return ProductAttributes(
                 external_id=external_id,
                 source=self.source_name,
-                title="Product from Wildberries",
-                description="Marketplace product description",
-                category="45640",
+                title="Товар с Wildberries",
+                description="Описание товара из маркетплейса",
+                category="Одежда",
                 brand="Test Brand",
                 price=1500.0,
                 currency="RUB",
-                colors=["White"],
+                colors=["Белый"],
                 sizes=["M", "L"],
                 confidence_score=0.8,
             )
@@ -194,6 +194,10 @@ class ProductEnrichmentService:
     def __init__(self):
         self.sources: dict[str, ProductSource] = {"local": LocalProductSource(), "wildberries": WildberriesSource()}
         self.cache_ttl_hours = 24
+
+    @staticmethod
+    def _processing_time(start_time: float) -> float:
+        return time.time() - start_time
 
     async def get_product_attrs(self, source: str, external_id: str) -> ProductAttributes | None:
         start_time = time.time()
@@ -209,7 +213,7 @@ class ProductEnrichmentService:
                 product = await source_instance.get_product_data(external_id)
 
                 if product:
-                    processing_time = time.time() - start_time
+                    processing_time = self._processing_time(start_time)
 
                     logger.info(
                         "Product attributes retrieved successfully",
@@ -228,11 +232,17 @@ class ProductEnrichmentService:
                     raise ProductNotFoundError(f"Product {external_id} not found in {source}")
 
             except ProductNotFoundError:
+                processing_time = self._processing_time(start_time)
+                metrics.track_external_api_call(
+                    service=f"product_{source}", endpoint="get_product", status_code=500, duration=processing_time
+                )
+                raise
+            except ProductSourceError:
                 raise
             except Exception as e:
-                processing_time = time.time() - start_time
+                processing_time = self._processing_time(start_time)
 
-                logger.error(
+                logger.exception(
                     "Error getting product attributes",
                     source=source,
                     external_id=external_id,
@@ -244,7 +254,7 @@ class ProductEnrichmentService:
                     service=f"product_{source}", endpoint="get_product", status_code=500, duration=processing_time
                 )
 
-                raise ProductSourceError(f"Error fetching product from {source}: {str(e)}")
+                raise ProductSourceError(f"Error fetching product from {source}: {str(e).lower()}")
 
     async def get_enriched_context_for_llm(self, source: str, external_id: str) -> str:
         try:
@@ -252,12 +262,12 @@ class ProductEnrichmentService:
             if product:
                 return product.to_llm_context()
             else:
-                return f"Product {external_id} not found in source {source}"
+                return f"Товар {external_id} не найден в источнике {source}"
         except ProductNotFoundError:
-            return f"Product {external_id} not found"
+            return f"Товар {external_id} не найден"
         except Exception as e:
-            logger.error(f"Error getting LLM context: {e}")
-            return f"Error getting product data: {str(e)}"
+            logger.exception("Error getting LLM context")
+            return f"Ошибка получения данных товара: {str(e)}"
 
     def get_available_sources(self) -> list[str]:
         return list(self.sources.keys())

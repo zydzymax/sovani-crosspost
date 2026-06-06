@@ -1,292 +1,216 @@
 """
 Ingest stage tasks for SalesWhisper Crosspost.
 
-This module handles:
-- Processing incoming Telegram webhook data
-- Media file downloading and validation
-- Initial post creation in database
-- Triggering next stage (enrich)
+Processes incoming Telegram webhook data:
+- Downloads media from Telegram Bot API
+- Creates Post + MediaAsset records in DB
+- Uploads media to MinIO
+- Triggers enrich stage
 """
 
+import io
 import time
+import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy.orm import Session
+import httpx
+from minio import Minio
+from urllib.parse import urlparse
 
+from ...core.config import settings
 from ...core.logging import audit_logger, get_logger, with_logging_context
 from ...models.db import db_manager
+from ...models.entities import MediaAsset, MediaType, Platform, Post, PostStatus, TaskStage
 from ...observability.metrics import metrics
 from ..celery_app import celery
 
 logger = get_logger("tasks.ingest")
 
+MEDIA_FIELDS = ("photo", "video", "animation", "document", "audio", "voice")
+MEDIA_TYPE_MAP = {
+    "photo": MediaType.IMAGE,
+    "video": MediaType.VIDEO,
+    "animation": MediaType.ANIMATION,
+    "document": MediaType.DOCUMENT,
+    "audio": MediaType.AUDIO,
+    "voice": MediaType.AUDIO,
+}
 
-@celery.task(bind=True, name="app.workers.tasks.ingest.process_telegram_update")
+
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _get_minio_client() -> Minio:
+    parsed = urlparse(settings.s3.endpoint)
+    secure = parsed.scheme == "https"
+    endpoint_host = parsed.netloc or parsed.path
+    return Minio(
+        endpoint_host,
+        access_key=settings.s3.access_key,
+        secret_key=settings.s3.secret_key.get_secret_value(),
+        secure=secure,
+    )
+
+
+def _ensure_bucket(client: Minio, bucket: str) -> None:
+    if not client.bucket_exists(bucket):
+        client.make_bucket(bucket)
+
+
+def _download_telegram_file(bot_token: str, file_id: str) -> tuple[bytes, str] | None:
+    """Download file from Telegram, return (bytes, file_path)."""
+    try:
+        with httpx.Client(timeout=60) as http:
+            resp = http.get(f"https://api.telegram.org/bot{bot_token}/getFile?file_id={file_id}")
+            resp.raise_for_status()
+            file_path = resp.json()["result"]["file_path"]
+            data = http.get(f"https://api.telegram.org/file/bot{bot_token}/{file_path}")
+            data.raise_for_status()
+            return data.content, file_path
+    except Exception as e:
+        logger.warning("Failed to download Telegram file", file_id=file_id, error=str(e))
+        return None
+
+
+def _upload_to_minio(client: Minio, bucket: str, object_name: str, data: bytes, content_type: str) -> str:
+    client.put_object(
+        bucket, object_name,
+        io.BytesIO(data), length=len(data),
+        content_type=content_type,
+    )
+    return f"s3://{bucket}/{object_name}"
+
+
+@celery.task(bind=True, name="app.workers.tasks.ingest.process_telegram_update", max_retries=3)
 def process_telegram_update(self, update_data: dict[str, Any], post_id: str) -> dict[str, Any]:
-    """
-    Process incoming Telegram update and create initial post record.
-
-    Args:
-        update_data: Telegram webhook update data
-        post_id: Generated post ID
-
-    Returns:
-        Processing result with next stage info
-    """
-    task_start_time = time.time()
+    """Process incoming Telegram update: create DB record, download media, trigger enrich."""
+    task_start = time.monotonic()
 
     with with_logging_context(task_id=self.request.id, post_id=post_id):
-        logger.info(
-            "Starting Telegram update processing",
-            post_id=post_id,
-            update_id=update_data.get("update_id"),
-            has_message=bool(update_data.get("message")),
-            has_channel_post=bool(update_data.get("channel_post")),
-        )
+        logger.info("Starting ingest", post_id=post_id, update_id=update_data.get("update_id"))
 
         try:
-            # Get database session
-            db_session = db_manager.get_session()
+            content = _extract_content_from_update(update_data)
+            if not content:
+                raise ValueError("No processable content in update")
 
+            bot_token = settings.telegram.publishing_bot_token.get_secret_value()
+            minio = _get_minio_client()
+            bucket = settings.s3.bucket_name
+            _ensure_bucket(minio, bucket)
+
+            session = db_manager.get_session()
             try:
-                # Extract relevant content
-                content = _extract_content_from_update(update_data)
-
-                if not content:
-                    raise ValueError("No processable content in update")
-
-                # Create post record
-                _create_post_record(db_session, post_id, content, update_data)
-
-                # Download and validate media files
-                media_info = _process_media_files(content, post_id)
-
-                # Update post with media info
-                if media_info:
-                    _update_post_with_media(db_session, post_id, media_info)
-
-                # Commit transaction
-                db_session.commit()
-
-                # Calculate processing time
-                processing_time = time.time() - task_start_time
-
-                # Update task status
-                _update_task_status(db_session, post_id, "ingest", "completed", processing_time)
-
-                # Track metrics
-                metrics.track_post_created("telegram", "webhook")
-                metrics.track_media_processed(
-                    media_type="mixed" if media_info else "text",
-                    platform="telegram",
-                    success=True,
-                    duration=processing_time,
-                    file_size=sum(m.get("file_size", 0) for m in media_info) if media_info else 0,
+                # Create Post record
+                chat = content.get("chat", {})
+                sender = content.get("from", {})
+                post = Post(
+                    id=uuid.UUID(post_id),
+                    source_platform=Platform.TELEGRAM,
+                    source_message_id=str(content.get("message_id", "")),
+                    source_chat_id=str(chat.get("id", "")),
+                    source_user_id=str(sender.get("id", "")) if sender else None,
+                    original_text=content.get("text") or content.get("caption") or "",
+                    source_data=content,
+                    status=PostStatus.INGESTED,
+                    current_stage=TaskStage.INGEST,
                 )
+                session.add(post)
+                session.flush()
 
-                # Audit log
-                audit_logger.log_post_created(
-                    post_id=post_id,
-                    platform="telegram",
-                    user_id=str(content.get("from", {}).get("id", "unknown")),
-                    product_id="telegram_ingest",
-                    processing_time=processing_time,
-                )
+                # Download and store media
+                media_count = 0
+                for field in MEDIA_FIELDS:
+                    if field not in content:
+                        continue
+                    raw = content[field]
+                    if field == "photo" and isinstance(raw, list):
+                        raw = max(raw, key=lambda x: x.get("file_size", 0))
+                    if not isinstance(raw, dict):
+                        continue
 
-                # Prepare next stage
-                next_stage_data = {
-                    "post_id": post_id,
-                    "has_media": bool(media_info),
-                    "media_count": len(media_info) if media_info else 0,
-                    "text_content": content.get("text") or content.get("caption", ""),
-                    "source": "telegram",
-                    "original_update": update_data,
-                }
+                    file_id = raw.get("file_id")
+                    if not file_id:
+                        continue
 
-                # Trigger next stage (enrich)
-                from .enrich import enrich_post_content
+                    result = _download_telegram_file(bot_token, file_id)
+                    if not result:
+                        continue
+                    file_bytes, tg_path = result
+                    ext = tg_path.rsplit(".", 1)[-1] if "." in tg_path else "bin"
+                    object_name = f"telegram/{post_id}/{field}_{file_id}.{ext}"
+                    mime = raw.get("mime_type", f"application/{ext}")
+                    s3_path = _upload_to_minio(minio, bucket, object_name, file_bytes, mime)
 
-                enrich_task = enrich_post_content.delay(next_stage_data)
+                    asset = MediaAsset(
+                        post_id=uuid.UUID(post_id),
+                        original_file_id=file_id,
+                        file_name=raw.get("file_name"),
+                        media_type=MEDIA_TYPE_MAP.get(field, MediaType.DOCUMENT),
+                        mime_type=mime,
+                        file_size=len(file_bytes),
+                        width=raw.get("width"),
+                        height=raw.get("height"),
+                        duration=raw.get("duration"),
+                        original_path=s3_path,
+                    )
+                    session.add(asset)
+                    media_count += 1
 
-                logger.info(
-                    "Telegram update processed successfully",
-                    post_id=post_id,
-                    processing_time=processing_time,
-                    next_task_id=enrich_task.id,
-                    media_files_count=len(media_info) if media_info else 0,
-                )
-
-                return {
-                    "success": True,
-                    "post_id": post_id,
-                    "processing_time": processing_time,
-                    "media_processed": len(media_info) if media_info else 0,
-                    "next_stage": "enrich",
-                    "next_task_id": enrich_task.id,
-                }
-
+                session.commit()
             finally:
-                db_session.close()
+                session.close()
 
-        except Exception as e:
-            processing_time = time.time() - task_start_time
+            elapsed = time.monotonic() - task_start
+            metrics.track_post_created("telegram", "webhook")
 
-            logger.error(
-                "Telegram update processing failed",
+            audit_logger.log_post_created(
                 post_id=post_id,
-                error=str(e),
-                processing_time=processing_time,
-                exc_info=True,
+                platform="telegram",
+                user_id=str(content.get("from", {}).get("id", "unknown")),
+                product_id="telegram_ingest",
+                processing_time=elapsed,
             )
 
-            # Update task status
-            try:
-                db_session = db_manager.get_session()
-                _update_task_status(db_session, post_id, "ingest", "failed", processing_time, error_message=str(e))
-                db_session.commit()
-                db_session.close()
-            except:
-                pass  # Don't fail on status update errors
+            next_stage = {
+                "post_id": post_id,
+                "has_media": media_count > 0,
+                "media_count": media_count,
+                "text_content": content.get("text") or content.get("caption", ""),
+                "source": "telegram",
+                "original_update": update_data,
+            }
 
-            # Track failure metrics
+            from .enrich import enrich_post_content
+            enrich_task = enrich_post_content.apply_async(args=[next_stage], queue="enrich")
+
+            logger.info(
+                "Ingest done", post_id=post_id, media=media_count,
+                next_task=enrich_task.id, elapsed=elapsed,
+            )
+            return {
+                "success": True, "post_id": post_id,
+                "media_processed": media_count,
+                "next_stage": "enrich", "next_task_id": enrich_task.id,
+            }
+
+        except Exception as e:
+            elapsed = time.monotonic() - task_start
+            logger.exception("Ingest failed", post_id=post_id, error=str(e), elapsed=elapsed)
             metrics.track_post_failed("telegram", "ingest_error")
-
-            # Retry logic
             if self.request.retries < self.max_retries:
-                logger.warning(
-                    "Retrying telegram update processing",
-                    post_id=post_id,
-                    retry_count=self.request.retries + 1,
-                    max_retries=self.max_retries,
-                )
                 raise self.retry(countdown=60 * (self.request.retries + 1))
-
             raise
 
 
 def _extract_content_from_update(update_data: dict[str, Any]) -> dict[str, Any] | None:
-    """Extract processable content from Telegram update."""
-    content_sources = ["message", "channel_post", "edited_message"]
-
-    for source in content_sources:
-        if source in update_data and update_data[source]:
-            return update_data[source]
-
+    for key in ("message", "channel_post", "edited_message"):
+        if update_data.get(key):
+            return update_data[key]
     return None
 
 
-def _create_post_record(
-    db_session: Session, post_id: str, content: dict[str, Any], update_data: dict[str, Any]
-) -> dict[str, Any]:
-    """Create initial post record in database."""
-    logger.info("Creating post record", post_id=post_id)
-
-    # This is a placeholder - would create actual database record
-    post_data = {
-        "id": post_id,
-        "source_platform": "telegram",
-        "source_data": content,
-        "original_update": update_data,
-        "status": "ingested",
-        "created_at": datetime.utcnow(),
-        "updated_at": datetime.utcnow(),
-    }
-
-    # In real implementation:
-    # post = PostModel(**post_data)
-    # db_session.add(post)
-
-    logger.info("Post record created", post_id=post_id)
-    return post_data
-
-
-def _process_media_files(content: dict[str, Any], post_id: str) -> list | None:
-    """Download and process media files from content."""
-    media_info = []
-
-    # Check for different media types
-    media_fields = ["photo", "video", "animation", "document", "audio", "voice"]
-
-    for field in media_fields:
-        if field in content:
-            media_data = content[field]
-
-            # For photos, get largest size
-            if field == "photo" and isinstance(media_data, list):
-                media_data = max(media_data, key=lambda x: x.get("file_size", 0))
-
-            if media_data:
-                media_file_info = _download_media_file(media_data, field, post_id)
-                if media_file_info:
-                    media_info.append(media_file_info)
-
-    return media_info if media_info else None
-
-
-def _download_media_file(media_data: dict[str, Any], media_type: str, post_id: str) -> dict[str, Any] | None:
-    """Download media file from Telegram."""
-    file_id = media_data.get("file_id")
-    if not file_id:
-        return None
-
-    logger.info("Processing media file", post_id=post_id, file_id=file_id, media_type=media_type)
-
-    # This is a placeholder - would actually download file
-    # In real implementation:
-    # 1. Get file info from Telegram API
-    # 2. Download file to temp location
-    # 3. Upload to S3/MinIO
-    # 4. Return S3 path and metadata
-
-    media_info = {
-        "file_id": file_id,
-        "media_type": media_type,
-        "file_size": media_data.get("file_size", 0),
-        "mime_type": media_data.get("mime_type"),
-        "file_name": media_data.get("file_name"),
-        "duration": media_data.get("duration"),
-        "width": media_data.get("width"),
-        "height": media_data.get("height"),
-        "local_path": f"/tmp/{post_id}_{file_id}",  # Placeholder
-        "s3_path": f"media/{post_id}/{file_id}",  # Placeholder
-        "downloaded_at": datetime.utcnow().isoformat(),
-    }
-
-    logger.info("Media file processed", post_id=post_id, file_id=file_id, file_size=media_info["file_size"])
-
-    return media_info
-
-
-def _update_post_with_media(db_session: Session, post_id: str, media_info: list):
-    """Update post record with media information."""
-    logger.info("Updating post with media info", post_id=post_id, media_count=len(media_info))
-
-    # This is a placeholder - would update database record
-    # In real implementation:
-    # post = db_session.query(PostModel).filter_by(id=post_id).first()
-    # post.media_assets = media_info
-    # post.updated_at = datetime.utcnow()
-
-    logger.info("Post updated with media info", post_id=post_id)
-
-
-def _update_task_status(
-    db_session: Session, post_id: str, stage: str, status: str, processing_time: float, error_message: str = None
-):
-    """Update task status in database."""
-    logger.debug("Updating task status", post_id=post_id, stage=stage, status=status, processing_time=processing_time)
-
-    # This is a placeholder - would update task status table
-    # In real implementation:
-    # task_status = TaskStatusModel(
-    #     post_id=post_id,
-    #     stage=stage,
-    #     status=status,
-    #     processing_time=processing_time,
-    #     error_message=error_message,
-    #     completed_at=datetime.utcnow()
-    # )
-    # db_session.add(task_status)
-
-    logger.debug("Task status updated", post_id=post_id, stage=stage, status=status)
+def delay(*args, **kwargs):
+    return process_telegram_update.delay(*args, **kwargs)

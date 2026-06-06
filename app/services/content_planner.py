@@ -247,6 +247,23 @@ class ContentPlannerService:
 
         logger.info("Content planner service initialized (o1 + Claude pipeline)")
 
+    @staticmethod
+    def _extract_json_object(content: str) -> dict[str, Any]:
+        """Extract JSON object from model response text."""
+        json_start = content.find("{")
+        json_end = content.rfind("}") + 1
+        if json_start != -1 and json_end > json_start:
+            return json.loads(content[json_start:json_end])
+        return json.loads(content)
+
+    @staticmethod
+    def _safe_media_type(value: str, fallback: MediaType = MediaType.IMAGE) -> MediaType:
+        """Convert media type value to enum with safe fallback."""
+        try:
+            return MediaType(value.lower())
+        except (AttributeError, ValueError):
+            return fallback
+
     def _get_openai_key(self) -> str:
         """Get OpenAI API key."""
         if hasattr(settings, "openai") and hasattr(settings.openai, "api_key"):
@@ -358,7 +375,7 @@ class ContentPlannerService:
             )
 
         except Exception as e:
-            logger.error(f"Failed to generate content plan: {e}", exc_info=True)
+            logger.error("Failed to generate content plan", error=str(e), exc_info=True)
             return ContentPlanResult(
                 success=False,
                 plan_id=plan_id,
@@ -426,12 +443,15 @@ class ContentPlannerService:
         )
 
         # Add optional context
+        optional_sections = []
         if target_audience:
-            prompt += f"\n\nЦелевая аудитория: {target_audience}"
+            optional_sections.append(f"Целевая аудитория: {target_audience}")
         if brand_guidelines:
-            prompt += f"\n\nБренд-гайдлайны: {brand_guidelines}"
+            optional_sections.append(f"Бренд-гайдлайны: {brand_guidelines}")
         if exclude_topics:
-            prompt += f"\n\nИсключить темы: {', '.join(exclude_topics)}"
+            optional_sections.append(f"Исключить темы: {', '.join(exclude_topics)}")
+        if optional_sections:
+            prompt += "\n\n" + "\n\n".join(optional_sections)
 
         # Call o1-mini (reasoning model)
         # Note: o1 models use different API parameters
@@ -444,7 +464,7 @@ class ContentPlannerService:
             )
         except Exception as e:
             # Fallback to gpt-4-turbo if o1 not available
-            logger.warning(f"o1-mini not available, falling back to gpt-4-turbo: {e}")
+            logger.warning("o1-mini unavailable, falling back to gpt-4-turbo", error=str(e))
             response = await self.openai_client.chat.completions.create(
                 model="gpt-4-turbo-preview",
                 messages=[{"role": "user", "content": prompt}],
@@ -454,15 +474,7 @@ class ContentPlannerService:
             )
 
         content = response.choices[0].message.content
-
-        # Extract JSON from response (o1 might include reasoning text)
-        json_start = content.find("{")
-        json_end = content.rfind("}") + 1
-        if json_start != -1 and json_end > json_start:
-            json_str = content[json_start:json_end]
-            return json.loads(json_str)
-
-        return json.loads(content)
+        return self._extract_json_object(content)
 
     @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def _stage2_review_with_claude(
@@ -498,34 +510,27 @@ class ContentPlannerService:
                 )
 
                 if response.status_code != 200:
-                    logger.warning(f"Claude API error: {response.status_code}, using raw plan")
+                    logger.warning("Claude API error, using raw plan", status_code=response.status_code)
                     return raw_plan
 
                 result = response.json()
                 content = result["content"][0]["text"]
 
-                # Extract JSON
-                json_start = content.find("{")
-                json_end = content.rfind("}") + 1
-                if json_start != -1 and json_end > json_start:
-                    json_str = content[json_start:json_end]
-                    reviewed = json.loads(json_str)
+                reviewed = self._extract_json_object(content)
 
-                    # Log review summary
-                    if "review_summary" in reviewed:
-                        summary = reviewed["review_summary"]
-                        logger.info(
-                            "Claude review completed",
-                            posts_improved=summary.get("posts_improved", 0),
-                            quality=summary.get("overall_quality", "unknown"),
-                        )
+                # Log review summary
+                if "review_summary" in reviewed:
+                    summary = reviewed["review_summary"]
+                    logger.info(
+                        "Claude review completed",
+                        posts_improved=summary.get("posts_improved", 0),
+                        quality=summary.get("overall_quality", "unknown"),
+                    )
 
-                    return reviewed
-
-                return json.loads(content)
+                return reviewed
 
         except Exception as e:
-            logger.warning(f"Claude review failed, using raw plan: {e}")
+            logger.warning("Claude review failed, using raw plan", error=str(e))
             return raw_plan
 
     def _parse_posts(
@@ -559,11 +564,7 @@ class ContentPlannerService:
                     post_data["time"] = preferred_posting_times[time_index]
 
                 # Parse media type
-                media_type_str = post_data.get("media_type", "image").lower()
-                try:
-                    media_type = MediaType(media_type_str)
-                except ValueError:
-                    media_type = MediaType.IMAGE
+                media_type = self._safe_media_type(post_data.get("media_type", "image"))
 
                 post = PlannedPost(
                     date=post_data["date"],
@@ -583,7 +584,7 @@ class ContentPlannerService:
                 posts.append(post)
 
             except Exception as e:
-                logger.warning(f"Failed to parse post {i}: {e}")
+                logger.warning("Failed to parse post", index=i, error=str(e))
                 continue
 
         return posts
@@ -631,7 +632,7 @@ class ContentPlannerService:
             caption_draft=data.get("caption_draft", post.caption_draft),
             hashtags=data.get("hashtags", post.hashtags),
             platforms=post.platforms,
-            media_type=MediaType(data.get("media_type", post.media_type.value)),
+            media_type=self._safe_media_type(data.get("media_type"), fallback=post.media_type),
             image_prompt=data.get("image_prompt", post.image_prompt),
             video_prompt=data.get("video_prompt", post.video_prompt),
             call_to_action=data.get("call_to_action", post.call_to_action),

@@ -8,7 +8,6 @@ This module provides:
 - Rate limiting and throttling
 """
 
-import logging
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -20,10 +19,11 @@ from celery import Celery
 from celery.schedules import crontab
 
 from ..core.config import settings
+from ..core.logging import get_logger
 from ..models.entities import ContentQueue, Platform, Post, PostStatus, Schedule
 from ..models.repositories import UnitOfWork
 
-logger = logging.getLogger(__name__)
+logger = get_logger("services.scheduler")
 
 
 class PublishingWindowManager:
@@ -38,10 +38,10 @@ class PublishingWindowManager:
         try:
             rules_file = Path(path)
             if rules_file.exists():
-                with open(rules_file, encoding="utf-8") as f:
+                with rules_file.open(encoding="utf-8") as f:
                     return yaml.safe_load(f)
-        except Exception as e:
-            logger.warning(f"Failed to load publishing rules: {e}")
+        except Exception:
+            logger.exception("Failed to load publishing rules from %s", path)
         return {}
 
     def get_optimal_hours(self, platform: Platform) -> list[int]:
@@ -143,7 +143,11 @@ class ContentScheduler:
 
             uow.commit()
 
-        logger.info(f"Scheduled post {post_id} for {len(platforms)} platforms")
+        logger.info(
+            "Scheduled post for platforms",
+            post_id=post_id,
+            platforms_count=len(platforms),
+        )
         return scheduled_slots
 
     def _get_scheduled_slots(self, uow: UnitOfWork, platforms: list[Platform]) -> dict[Platform, list[datetime]]:
@@ -199,7 +203,11 @@ class ContentScheduler:
                     # Get post data
                     post = uow.posts.get_with_media(item.post_id)
                     if not post:
-                        logger.warning(f"Post {item.post_id} not found for queue item {item.id}")
+                        logger.warning(
+                            "Post not found for queue item",
+                            post_id=str(item.post_id),
+                            queue_item_id=str(item.id),
+                        )
                         uow.queue.mark_failed(item.id, "Post not found")
                         stats["failed"] += 1
                         continue
@@ -218,13 +226,13 @@ class ContentScheduler:
                     stats["processed"] += 1
 
                 except Exception as e:
-                    logger.error(f"Failed to process queue item {item.id}: {e}")
+                    logger.exception("Failed to process queue item %s", item.id)
                     uow.queue.mark_failed(item.id, str(e))
                     stats["failed"] += 1
 
             uow.commit()
 
-        logger.info(f"Processed queue: {stats}")
+        logger.info("Processed queue", stats=stats)
         return stats
 
     def _check_rate_limits(self, uow: UnitOfWork, platform: Platform) -> bool:
@@ -245,7 +253,7 @@ class ContentScheduler:
         )
 
         if hourly_count >= self.max_posts_per_hour:
-            logger.debug(f"Rate limit: {platform.value} hourly limit reached")
+            logger.debug("Rate limit reached", platform=platform.value, period="hourly")
             return False
 
         # Count posts in last day
@@ -260,7 +268,7 @@ class ContentScheduler:
         )
 
         if daily_count >= self.max_posts_per_day:
-            logger.debug(f"Rate limit: {platform.value} daily limit reached")
+            logger.debug("Rate limit reached", platform=platform.value, period="daily")
             return False
 
         return True
@@ -289,7 +297,7 @@ class ContentScheduler:
 
             uow.commit()
 
-        logger.info(f"Rescheduled {rescheduled} failed items")
+        logger.info("Rescheduled failed queue items", count=rescheduled)
         return rescheduled
 
     def get_queue_stats(self) -> dict[str, Any]:
@@ -317,6 +325,20 @@ class ScheduleRunner:
     def __init__(self):
         self.scheduler = ContentScheduler()
 
+    @staticmethod
+    def _parse_cron_int(field: str, default: int) -> int:
+        """Parse cron field integer with safe fallback."""
+        if field == "*":
+            return default
+        try:
+            return int(field)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _utcnow() -> datetime:
+        return datetime.utcnow()
+
     def check_and_run_schedules(self) -> dict[str, int]:
         """Check all active schedules and queue content."""
         stats = {"checked": 0, "queued": 0}
@@ -334,8 +356,8 @@ class ScheduleRunner:
                     next_run = self._calculate_next_run(schedule)
                     uow.schedules.update_last_run(schedule.id, next_run)
 
-                except Exception as e:
-                    logger.error(f"Failed to process schedule {schedule.id}: {e}")
+                except Exception:
+                    logger.exception("Failed to process schedule", schedule_id=str(schedule.id))
 
             uow.commit()
 
@@ -384,15 +406,23 @@ class ScheduleRunner:
 
         if schedule.publish_times:
             # Find next publish time from list
-            for time_str in sorted(schedule.publish_times):
-                hour, minute = map(int, time_str.split(":"))
+            parsed_times = []
+            for time_str in schedule.publish_times:
+                try:
+                    hour, minute = map(int, time_str.split(":", 1))
+                    parsed_times.append((hour, minute))
+                except (TypeError, ValueError):
+                    logger.warning("Skipping invalid publish time", schedule_id=str(schedule.id), value=time_str)
+
+            for hour, minute in sorted(parsed_times):
                 scheduled = now.replace(hour=hour, minute=minute, second=0)
                 if scheduled > now:
                     return scheduled
 
             # All times passed today, use first time tomorrow
-            hour, minute = map(int, schedule.publish_times[0].split(":"))
-            return (now + timedelta(days=1)).replace(hour=hour, minute=minute, second=0)
+            if parsed_times:
+                hour, minute = sorted(parsed_times)[0]
+                return (now + timedelta(days=1)).replace(hour=hour, minute=minute, second=0)
 
         # Default: next hour
         return now + timedelta(hours=1)
@@ -407,9 +437,13 @@ class ScheduleRunner:
             # Format: minute hour day_of_month month day_of_week
             parts = schedule.cron_expression.split()
             if len(parts) >= 2:
-                minute = int(parts[0]) if parts[0] != "*" else 0
-                hour = int(parts[1]) if parts[1] != "*" else now.hour + 1
-                return now.replace(hour=hour, minute=minute, second=0) + timedelta(days=1)
+                minute = self._parse_cron_int(parts[0], 0)
+                if parts[1] != "*":
+                    hour = self._parse_cron_int(parts[1], now.hour)
+                    return now.replace(hour=hour, minute=minute, second=0) + timedelta(days=1)
+
+                next_run = now + timedelta(hours=1)
+                return next_run.replace(minute=minute, second=0, microsecond=0)
 
         # Default: run every hour
         return now + timedelta(hours=1)
@@ -468,7 +502,7 @@ def register_scheduler_tasks(celery_app: Celery):
     def cleanup_queue():
         """Clean up old queue items."""
         with UnitOfWork() as uow:
-            cutoff = datetime.utcnow() - timedelta(days=30)
+            cutoff = ScheduleRunner._utcnow() - timedelta(days=30)
             deleted = (
                 uow.queue.session.query(ContentQueue)
                 .filter(ContentQueue.status.in_(["published", "cancelled"]), ContentQueue.created_at < cutoff)

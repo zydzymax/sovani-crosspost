@@ -87,6 +87,44 @@ class WebhookResponse(BaseModel):
     message: str
 
 
+def _success_message(message: str, **payload):
+    return {"success": True, "message": message, **payload}
+
+
+def _to_order_item_response(item: dict) -> "OrderItemResponse":
+    return OrderItemResponse(
+        product_code=item.get("product_code", ""),
+        product_name=item.get("product_name", ""),
+        plan_code=item.get("plan_code", ""),
+        plan_name=item.get("plan_name", ""),
+        price_rub=float(item.get("price_rub", 0)),
+        billing_period=item.get("billing_period", "monthly"),
+    )
+
+
+def _to_order_response(order: Order, payment_url: str | None = None) -> "OrderResponse":
+    return OrderResponse(
+        id=str(order.id),
+        order_number=order.order_number,
+        status=order.status.value,
+        items=[_to_order_item_response(item) for item in order.items],
+        subtotal_rub=float(order.subtotal_rub),
+        discount_rub=float(order.discount_rub),
+        promo_code=order.promo_code,
+        total_rub=float(order.total_rub),
+        payment_url=payment_url,
+        created_at=order.created_at,
+    )
+
+
+async def _get_user_order_or_404(db: AsyncSession, order_id: str, user_id) -> Order:
+    result = await db.execute(select(Order).where(Order.id == order_id, Order.user_id == user_id))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+    return order
+
+
 # ==================== HELPERS ====================
 
 
@@ -118,7 +156,7 @@ async def activate_subscription(db: AsyncSession, user: User, order: Order):
         product = result.scalar_one_or_none()
 
         if not product:
-            logger.error(f"Product not found for activation: {product_code}")
+            logger.error("Product not found for activation", product_code=product_code)
             continue
 
         result = await db.execute(
@@ -127,7 +165,7 @@ async def activate_subscription(db: AsyncSession, user: User, order: Order):
         plan = result.scalar_one_or_none()
 
         if not plan:
-            logger.error(f"Plan not found for activation: {product_code}/{plan_code}")
+            logger.error("Plan not found for activation", product_code=product_code, plan_code=plan_code)
             continue
 
         # Calculate expiration
@@ -158,7 +196,12 @@ async def activate_subscription(db: AsyncSession, user: User, order: Order):
             else:
                 subscription.expires_at = expires_at
             subscription.updated_at = now
-            logger.info(f"Updated subscription for user {user.id}: {product_code}/{plan_code}")
+            logger.info(
+                "Updated subscription",
+                user_id=str(user.id),
+                product_code=product_code,
+                plan_code=plan_code,
+            )
         else:
             # Create new subscription
             subscription = UserSubscription(
@@ -170,7 +213,12 @@ async def activate_subscription(db: AsyncSession, user: User, order: Order):
                 expires_at=expires_at,
             )
             db.add(subscription)
-            logger.info(f"Created subscription for user {user.id}: {product_code}/{plan_code}")
+            logger.info(
+                "Created subscription",
+                user_id=str(user.id),
+                product_code=product_code,
+                plan_code=plan_code,
+            )
 
     await db.commit()
 
@@ -188,8 +236,8 @@ async def send_order_confirmation_email(user: User, order: Order):
             ],
             total_rub=float(order.total_rub),
         )
-    except Exception as e:
-        logger.error(f"Failed to send order confirmation email: {e}")
+    except Exception:
+        logger.exception("Failed to send order confirmation email")
 
 
 # ==================== ROUTES ====================
@@ -302,35 +350,16 @@ async def create_order(
 
     await db.commit()
 
-    logger.info(f"Order created: {order_number} for user {user.id}, total: {total} RUB")
-
-    # Build response
-    response_items = [
-        OrderItemResponse(
-            product_code=item.get("product_code", ""),
-            product_name=item.get("product_name", ""),
-            plan_code=item.get("plan_code", ""),
-            plan_name=item.get("plan_name", ""),
-            price_rub=float(item.get("price_rub", 0)),
-            billing_period=item.get("billing_period", "monthly"),
-        )
-        for item in order.items
-    ]
+    logger.info(
+        "Order created",
+        order_number=order_number,
+        user_id=str(user.id),
+        total_rub=float(total),
+    )
 
     return CreateOrderResponse(
         success=True,
-        order=OrderResponse(
-            id=str(order.id),
-            order_number=order.order_number,
-            status=order.status.value,
-            items=response_items,
-            subtotal_rub=float(order.subtotal_rub),
-            discount_rub=float(order.discount_rub),
-            promo_code=order.promo_code,
-            total_rub=float(order.total_rub),
-            payment_url=payment_result.payment_url,
-            created_at=order.created_at,
-        ),
+        order=_to_order_response(order, payment_result.payment_url),
         payment_url=payment_result.payment_url,
         message="Заказ создан. Перенаправляем на страницу оплаты...",
     )
@@ -343,36 +372,8 @@ async def get_order(
     """
     Get order details.
     """
-    result = await db.execute(select(Order).where(Order.id == order_id, Order.user_id == user.id))
-    order = result.scalar_one_or_none()
-
-    if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
-
-    response_items = [
-        OrderItemResponse(
-            product_code=item.get("product_code", ""),
-            product_name=item.get("product_name", ""),
-            plan_code=item.get("plan_code", ""),
-            plan_name=item.get("plan_name", ""),
-            price_rub=float(item.get("price_rub", 0)),
-            billing_period=item.get("billing_period", "monthly"),
-        )
-        for item in order.items
-    ]
-
-    return OrderResponse(
-        id=str(order.id),
-        order_number=order.order_number,
-        status=order.status.value,
-        items=response_items,
-        subtotal_rub=float(order.subtotal_rub),
-        discount_rub=float(order.discount_rub),
-        promo_code=order.promo_code,
-        total_rub=float(order.total_rub),
-        payment_url=None,
-        created_at=order.created_at,
-    )
+    order = await _get_user_order_or_404(db, order_id, user.id)
+    return _to_order_response(order)
 
 
 @router.get("/orders")
@@ -412,14 +413,14 @@ async def tochka_webhook(
     except Exception:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON payload")
 
-    logger.info(f"Received Tochka webhook: {data}")
+    logger.info("Received Tochka webhook", payload=data)
 
     # Process webhook
     payment_service = get_payment_service()
     webhook_info = payment_service.process_webhook(data)
 
     if not webhook_info.get("verified"):
-        logger.warning(f"Webhook verification failed: {webhook_info}")
+        logger.warning("Webhook verification failed", webhook_info=webhook_info)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Webhook verification failed")
 
     # Find order
@@ -432,7 +433,7 @@ async def tochka_webhook(
     order = result.scalar_one_or_none()
 
     if not order:
-        logger.error(f"Order not found for webhook: {order_id}")
+        logger.error("Order not found for webhook", order_id=order_id)
         return WebhookResponse(success=False, message="Order not found")
 
     # Find payment
@@ -464,9 +465,9 @@ async def tochka_webhook(
             # Send confirmation email
             background_tasks.add_task(send_order_confirmation_email, user, order)
 
-        logger.info(f"Payment completed for order {order.order_number}")
+        logger.info("Payment completed", order_number=order.order_number)
 
-    elif payment_status == "failed" or payment_status == "cancelled":
+    elif payment_status in {"failed", "cancelled"}:
         # Payment failed or cancelled
         order.status = OrderStatus.FAILED
 
@@ -474,7 +475,7 @@ async def tochka_webhook(
             payment.status = PaymentStatus.FAILED
 
         await db.commit()
-        logger.info(f"Payment failed/cancelled for order {order.order_number}")
+        logger.info("Payment failed or cancelled", order_number=order.order_number)
 
     elif payment_status == "refunded":
         # Payment refunded
@@ -484,7 +485,7 @@ async def tochka_webhook(
             payment.status = PaymentStatus.REFUNDED
 
         await db.commit()
-        logger.info(f"Payment refunded for order {order.order_number}")
+        logger.info("Payment refunded", order_number=order.order_number)
 
     return WebhookResponse(success=True, message="Webhook processed")
 
@@ -504,11 +505,7 @@ async def simulate_payment(
     if settings.payment.merchant_id and settings.payment.secret_key.get_secret_value():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Payment simulation disabled in production")
 
-    result = await db.execute(select(Order).where(Order.id == order_id, Order.user_id == user.id))
-    order = result.scalar_one_or_none()
-
-    if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заказ не найден")
+    order = await _get_user_order_or_404(db, order_id, user.id)
 
     if order.status != OrderStatus.AWAITING_PAYMENT:
         raise HTTPException(
@@ -534,6 +531,6 @@ async def simulate_payment(
     # Send confirmation email
     background_tasks.add_task(send_order_confirmation_email, user, order)
 
-    logger.info(f"Simulated payment for order {order.order_number}")
+    logger.info("Simulated payment", order_number=order.order_number)
 
-    return {"success": True, "message": "Платёж успешно симулирован", "order_number": order.order_number}
+    return _success_message("Платёж успешно симулирован", order_number=order.order_number)

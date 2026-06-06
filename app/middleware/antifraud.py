@@ -20,6 +20,28 @@ from ..services.antifraud import FraudRiskLevel, antifraud_service
 
 logger = get_logger("middleware.antifraud")
 
+BLOCKED_RESPONSE = {"error": "access_denied", "message": "Access denied."}
+
+
+def _mask(value: str, visible: int = 8) -> str:
+    return value[:visible] + "..." if len(value) > visible else value
+
+
+def _extract_client_ip(request: Request) -> str:
+    """Extract client IP from request headers or connection info."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip
+
+    if request.client:
+        return request.client.host
+
+    return "unknown"
+
 
 class AntifraudMiddleware(BaseHTTPMiddleware):
     """
@@ -80,7 +102,7 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
             if not rate_result.allowed:
                 logger.warning(
                     "Rate limit exceeded",
-                    identifier=identifier[:16] + "..." if len(identifier) > 16 else identifier,
+                    identifier=_mask(identifier, visible=16),
                     path=path,
                     current=rate_result.current_count,
                     limit=rate_result.limit,
@@ -127,7 +149,7 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
                 if bot_signal.risk_level in [FraudRiskLevel.HIGH, FraudRiskLevel.CRITICAL]:
                     logger.warning(
                         "Bot activity detected",
-                        ip=client_ip[:8] + "...",
+                        ip=_mask(client_ip),
                         path=path,
                         risk=bot_signal.risk_level.value,
                         score=bot_signal.score,
@@ -152,7 +174,10 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
             duration = time.time() - start_time
             if duration > 5.0:  # Requests taking > 5 seconds
                 logger.warning(
-                    "Slow request detected", path=path, duration=round(duration, 2), identifier=identifier[:16] + "..."
+                    "Slow request detected",
+                    path=path,
+                    duration=round(duration, 2),
+                    identifier=_mask(identifier, visible=16),
                 )
 
             return response
@@ -164,22 +189,7 @@ class AntifraudMiddleware(BaseHTTPMiddleware):
 
     def _get_client_ip(self, request: Request) -> str:
         """Extract client IP from request."""
-        # Check X-Forwarded-For header (for proxied requests)
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            # Get first IP in chain (original client)
-            return forwarded.split(",")[0].strip()
-
-        # Check X-Real-IP header
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
-
-        # Fallback to direct connection
-        if request.client:
-            return request.client.host
-
-        return "unknown"
+        return _extract_client_ip(request)
 
 
 class IPBlockMiddleware(BaseHTTPMiddleware):
@@ -204,44 +214,37 @@ class IPBlockMiddleware(BaseHTTPMiddleware):
 
         # Check static blocklist
         if client_ip in self.blocked_ips:
-            logger.warning("Blocked IP attempted access", ip=client_ip[:8] + "...")
+            logger.warning("Blocked IP attempted access", ip=_mask(client_ip))
             return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN, content={"error": "access_denied", "message": "Access denied."}
+                status_code=status.HTTP_403_FORBIDDEN,
+                content=BLOCKED_RESPONSE,
             )
 
         # Check Redis blocklist
         if self._redis:
             is_blocked = await self._redis.get(f"antifraud:blocked_ip:{client_ip}")
             if is_blocked:
-                logger.warning("Redis-blocked IP attempted access", ip=client_ip[:8] + "...")
+                logger.warning("Redis-blocked IP attempted access", ip=_mask(client_ip))
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    content={"error": "access_denied", "message": "Access denied."},
+                    content=BLOCKED_RESPONSE,
                 )
 
         return await call_next(request)
 
     def _get_client_ip(self, request: Request) -> str:
         """Extract client IP from request."""
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
-        if request.client:
-            return request.client.host
-        return "unknown"
+        return _extract_client_ip(request)
 
     def block_ip(self, ip: str):
         """Add IP to static blocklist."""
         self.blocked_ips.add(ip)
-        logger.info("IP added to blocklist", ip=ip[:8] + "...")
+        logger.info("IP added to blocklist", ip=_mask(ip))
 
     def unblock_ip(self, ip: str):
         """Remove IP from static blocklist."""
         self.blocked_ips.discard(ip)
-        logger.info("IP removed from blocklist", ip=ip[:8] + "...")
+        logger.info("IP removed from blocklist", ip=_mask(ip))
 
 
 def get_device_fingerprint(request: Request) -> str | None:

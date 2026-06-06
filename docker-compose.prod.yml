@@ -13,7 +13,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-saleswhisper}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +32,7 @@ services:
     image: redis:7-alpine
     container_name: saleswhisper_redis
     ports:
-      - "6380:6379"
+      - "6382:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
@@ -78,6 +78,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: saleswhisper_api
+    init: true
     env_file: .env
     ports:
       - "8003:8000"
@@ -90,10 +91,10 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -134,6 +135,11 @@ services:
       redis:
         condition: service_healthy
     command: celery -A app.workers.celery_app beat --loglevel=info
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: always
     logging:
       driver: "json-file"

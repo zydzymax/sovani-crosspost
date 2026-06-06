@@ -132,6 +132,18 @@ class EmailService:
         self._auth_code_template = self.jinja_env.from_string(AUTH_CODE_TEMPLATE)
         self._order_confirmation_template = self.jinja_env.from_string(ORDER_CONFIRMATION_TEMPLATE)
 
+    async def _send_via_smtp(self, msg: MIMEMultipart, use_tls: bool) -> None:
+        await aiosmtplib.send(
+            msg,
+            hostname=self.config.smtp_host,
+            port=self.config.smtp_port,
+            username=self.config.smtp_user,
+            password=self.config.smtp_password,
+            use_tls=use_tls,
+            start_tls=not use_tls,
+            timeout=self.config.timeout,
+        )
+
     async def send_auth_code(self, to_email: str, code: str, expires_minutes: int = 5) -> bool:
         """Send authentication code email."""
         subject = f"Код входа в SalesWhisper: {code}"
@@ -178,36 +190,16 @@ class EmailService:
             # HTML version
             msg.attach(MIMEText(html, "html", "utf-8"))
 
-            # Send via SMTP
-            if self.config.use_ssl:
-                await aiosmtplib.send(
-                    msg,
-                    hostname=self.config.smtp_host,
-                    port=self.config.smtp_port,
-                    username=self.config.smtp_user,
-                    password=self.config.smtp_password,
-                    use_tls=True,
-                    timeout=self.config.timeout,
-                )
-            else:
-                await aiosmtplib.send(
-                    msg,
-                    hostname=self.config.smtp_host,
-                    port=self.config.smtp_port,
-                    username=self.config.smtp_user,
-                    password=self.config.smtp_password,
-                    start_tls=True,
-                    timeout=self.config.timeout,
-                )
+            await self._send_via_smtp(msg, use_tls=self.config.use_ssl)
 
-            logger.info(f"Email sent successfully to {to_email}: {subject}")
+            logger.info("Email sent successfully", to_email=to_email, subject=subject)
             return True
 
         except aiosmtplib.SMTPException as e:
-            logger.error(f"SMTP error sending email to {to_email}: {e}")
+            logger.error("SMTP error sending email", to_email=to_email, error=str(e))
             return False
-        except Exception as e:
-            logger.error(f"Error sending email to {to_email}: {e}")
+        except Exception:
+            logger.exception("Unexpected error sending email", to_email=to_email)
             return False
 
 

@@ -88,15 +88,20 @@ def process_media(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                 original_path = asset.get("original_path")
 
                 if not original_path:
-                    logger.warning(f"No original path for asset {asset_id}")
+                    logger.warning("No original path for asset %s", asset_id)
                     continue
 
-                logger.info(f"Processing asset {asset_id}", media_type=media_type, platforms=target_platforms)
+                logger.info(
+                    "Processing asset %s",
+                    asset_id,
+                    media_type=media_type,
+                    platforms=target_platforms,
+                )
 
                 # Download from S3 to temp file
                 local_input = _download_media(original_path)
                 if not local_input:
-                    logger.error(f"Failed to download media: {original_path}")
+                    logger.error("Failed to download media: %s", original_path)
                     continue
 
                 try:
@@ -151,8 +156,8 @@ def process_media(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                     if local_input and os.path.exists(local_input):
                         try:
                             os.unlink(local_input)
-                        except Exception as e:
-                            logger.warning(f"Failed to cleanup temp file: {e}")
+                        except Exception:
+                            logger.exception("Failed to cleanup temp file")
 
             # Log summary
             total_time = time.time() - task_start_time
@@ -166,7 +171,7 @@ def process_media(self, stage_data: dict[str, Any]) -> dict[str, Any]:
             return _trigger_next_stage(stage_data, processed_media, task_start_time)
 
         except Exception as e:
-            logger.error("Media processing failed", post_id=post_id, error=str(e), exc_info=True)
+            logger.exception("Media processing failed", post_id=post_id, error=str(e))
 
             if self.request.retries < self.max_retries:
                 raise self.retry(countdown=60 * (self.request.retries + 1))
@@ -209,7 +214,7 @@ async def _adapt_media_for_platforms(
             results[platform] = result
 
         except Exception as e:
-            logger.error(f"Adaptation failed for {platform}: {e}")
+            logger.exception("Adaptation failed for %s", platform)
             results[platform] = AdaptationResult(
                 success=False,
                 input_path=input_path,
@@ -252,8 +257,8 @@ def _download_media(s3_path: str) -> str | None:
 
         return None
 
-    except Exception as e:
-        logger.error(f"Failed to download media: {e}")
+    except Exception:
+        logger.exception("Failed to download media")
         return None
 
 
@@ -267,8 +272,8 @@ def _upload_media(local_path: str, s3_key: str) -> str:
             # Fallback: return local path for testing
             return local_path
 
-    except Exception as e:
-        logger.error(f"Failed to upload media: {e}")
+    except Exception:
+        logger.exception("Failed to upload media")
         return local_path
 
 
@@ -321,7 +326,7 @@ def adapt_single_media(
     task_start_time = time.time()
 
     with with_logging_context(task_id=self.request.id):
-        logger.info(f"Adapting single {media_type} for {platform}/{format_type}")
+        logger.info("Adapting single %s for %s/%s", media_type, platform, format_type)
 
         try:
             # Download if S3 path
@@ -349,7 +354,7 @@ def adapt_single_media(
             }
 
         except Exception as e:
-            logger.error(f"Single media adaptation failed: {e}")
+            logger.exception("Single media adaptation failed")
             return {"success": False, "error": str(e), "processing_time": time.time() - task_start_time}
 
 
@@ -358,3 +363,8 @@ def get_platform_specs(self, platform: str) -> dict[str, Any]:
     """Get media specifications for a platform."""
     specs = PLATFORM_SPECS.get(platform.lower(), {})
     return {"platform": platform, "specs": specs, "supported_formats": list(specs.keys()) if specs else []}
+
+
+def delay(*args, **kwargs):
+    """Compatibility proxy for task.delay used by legacy tests."""
+    return process_media.delay(*args, **kwargs)

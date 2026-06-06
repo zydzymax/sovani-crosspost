@@ -102,71 +102,22 @@ class DashboardStats(BaseModel):
     weekly_growth: float
 
 
-# === Endpoints ===
-
-
-@router.post("/metrics", response_model=MetricsResponse)
-async def submit_metrics(
-    data: MetricsInput, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
-):
-    """Submit metrics for a published post."""
-    try:
-        service = get_analytics_service()
-        metrics = await service.collect_metrics_for_post(db, uuid.UUID(data.publish_result_id), data.dict())
-        return MetricsResponse(
-            id=str(metrics.id),
-            post_id=str(metrics.post_id),
-            platform=metrics.platform,
-            views=metrics.views,
-            likes=metrics.likes,
-            comments=metrics.comments,
-            shares=metrics.shares,
-            engagement_rate=metrics.engagement_rate,
-            followers_gained=metrics.followers_gained,
-            measured_at=metrics.measured_at.isoformat(),
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@router.get("/metrics/{post_id}", response_model=list[MetricsResponse])
-async def get_post_metrics(
-    post_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
-):
-    """Get all metrics snapshots for a post."""
-    result = await db.execute(
-        select(PostMetrics).where(PostMetrics.post_id == uuid.UUID(post_id)).order_by(desc(PostMetrics.measured_at))
+def _to_metrics_response(metrics: PostMetrics) -> "MetricsResponse":
+    return MetricsResponse(
+        id=str(metrics.id),
+        post_id=str(metrics.post_id),
+        platform=metrics.platform,
+        views=metrics.views,
+        likes=metrics.likes,
+        comments=metrics.comments,
+        shares=metrics.shares,
+        engagement_rate=metrics.engagement_rate or 0,
+        followers_gained=metrics.followers_gained or 0,
+        measured_at=metrics.measured_at.isoformat() if metrics.measured_at else "",
     )
-    metrics_list = result.scalars().all()
-
-    return [
-        MetricsResponse(
-            id=str(m.id),
-            post_id=str(m.post_id),
-            platform=m.platform,
-            views=m.views,
-            likes=m.likes,
-            comments=m.comments,
-            shares=m.shares,
-            engagement_rate=m.engagement_rate or 0,
-            followers_gained=m.followers_gained or 0,
-            measured_at=m.measured_at.isoformat() if m.measured_at else "",
-        )
-        for m in metrics_list
-    ]
 
 
-@router.post("/analyze/{post_id}", response_model=InsightResponse)
-async def analyze_post(
-    post_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
-):
-    """Trigger AI analysis for a specific post."""
-    service = get_analytics_service()
-    insight = await service.analyze_post_performance(db, uuid.UUID(post_id), current_user.id)
-
-    if not insight:
-        raise HTTPException(status_code=404, detail="No metrics found for post")
-
+def _to_insight_response(insight: ContentInsight) -> "InsightResponse":
     return InsightResponse(
         id=str(insight.id),
         post_id=str(insight.post_id) if insight.post_id else None,
@@ -184,6 +135,87 @@ async def analyze_post(
     )
 
 
+def _default_settings_response() -> "SettingsResponse":
+    return SettingsResponse(
+        optimization_mode="hints_only",
+        collect_metrics=True,
+        auto_adjust_timing=False,
+        auto_optimize_hashtags=False,
+        auto_suggest_topics=True,
+        notify_on_viral=True,
+        notify_weekly_report=True,
+    )
+
+
+def _to_settings_response(settings: AnalyticsSettings) -> "SettingsResponse":
+    return SettingsResponse(
+        optimization_mode=settings.optimization_mode.value,
+        collect_metrics=settings.collect_metrics,
+        auto_adjust_timing=settings.auto_adjust_timing,
+        auto_optimize_hashtags=settings.auto_optimize_hashtags,
+        auto_suggest_topics=settings.auto_suggest_topics,
+        notify_on_viral=settings.notify_on_viral,
+        notify_weekly_report=settings.notify_weekly_report,
+    )
+
+
+def _parse_insight_status(value: str) -> InsightStatus:
+    try:
+        return InsightStatus(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {value}") from exc
+
+
+def _parse_optimization_mode(value: str) -> OptimizationMode:
+    try:
+        return OptimizationMode(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid optimization_mode: {value}") from exc
+
+
+# === Endpoints ===
+
+
+@router.post("/metrics", response_model=MetricsResponse)
+async def submit_metrics(
+    data: MetricsInput, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
+):
+    """Submit metrics for a published post."""
+    try:
+        service = get_analytics_service()
+        metrics = await service.collect_metrics_for_post(db, uuid.UUID(data.publish_result_id), data.dict())
+        return _to_metrics_response(metrics)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/metrics/{post_id}", response_model=list[MetricsResponse])
+async def get_post_metrics(
+    post_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
+):
+    """Get all metrics snapshots for a post."""
+    result = await db.execute(
+        select(PostMetrics).where(PostMetrics.post_id == uuid.UUID(post_id)).order_by(desc(PostMetrics.measured_at))
+    )
+    metrics_list = result.scalars().all()
+
+    return [_to_metrics_response(m) for m in metrics_list]
+
+
+@router.post("/analyze/{post_id}", response_model=InsightResponse)
+async def analyze_post(
+    post_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
+):
+    """Trigger AI analysis for a specific post."""
+    service = get_analytics_service()
+    insight = await service.analyze_post_performance(db, uuid.UUID(post_id), current_user.id)
+
+    if not insight:
+        raise HTTPException(status_code=404, detail="No metrics found for post")
+
+    return _to_insight_response(insight)
+
+
 @router.get("/insights", response_model=list[InsightResponse])
 async def get_insights(
     status: str | None = Query(None, description="Filter by status"),
@@ -196,7 +228,7 @@ async def get_insights(
     query = select(ContentInsight).where(ContentInsight.user_id == current_user.id)
 
     if status:
-        query = query.where(ContentInsight.status == InsightStatus(status))
+        query = query.where(ContentInsight.status == _parse_insight_status(status))
     if platform:
         query = query.where(ContentInsight.platform == platform)
 
@@ -205,24 +237,7 @@ async def get_insights(
     result = await db.execute(query)
     insights = result.scalars().all()
 
-    return [
-        InsightResponse(
-            id=str(i.id),
-            post_id=str(i.post_id) if i.post_id else None,
-            platform=i.platform,
-            insight_type=i.insight_type.value,
-            priority=i.priority.value,
-            status=i.status.value,
-            title=i.title,
-            summary=i.summary,
-            detailed_analysis=i.detailed_analysis,
-            recommendations=i.recommendations or [],
-            confidence_score=i.confidence_score or 0.8,
-            created_at=i.created_at.isoformat() if i.created_at else "",
-            expires_at=i.expires_at.isoformat() if i.expires_at else None,
-        )
-        for i in insights
-    ]
+    return [_to_insight_response(i) for i in insights]
 
 
 @router.post("/insights/{insight_id}/apply")
@@ -278,25 +293,9 @@ async def get_settings(
 
     if not settings:
         # Return defaults
-        return SettingsResponse(
-            optimization_mode="hints_only",
-            collect_metrics=True,
-            auto_adjust_timing=False,
-            auto_optimize_hashtags=False,
-            auto_suggest_topics=True,
-            notify_on_viral=True,
-            notify_weekly_report=True,
-        )
+        return _default_settings_response()
 
-    return SettingsResponse(
-        optimization_mode=settings.optimization_mode.value,
-        collect_metrics=settings.collect_metrics,
-        auto_adjust_timing=settings.auto_adjust_timing,
-        auto_optimize_hashtags=settings.auto_optimize_hashtags,
-        auto_suggest_topics=settings.auto_suggest_topics,
-        notify_on_viral=settings.notify_on_viral,
-        notify_weekly_report=settings.notify_weekly_report,
-    )
+    return _to_settings_response(settings)
 
 
 @router.put("/settings", response_model=SettingsResponse)
@@ -313,7 +312,7 @@ async def update_settings(
         settings = AnalyticsSettings(user_id=current_user.id)
         db.add(settings)
 
-    settings.optimization_mode = OptimizationMode(data.optimization_mode)
+    settings.optimization_mode = _parse_optimization_mode(data.optimization_mode)
     settings.collect_metrics = data.collect_metrics
     settings.auto_adjust_timing = data.auto_adjust_timing
     settings.auto_optimize_hashtags = data.auto_optimize_hashtags
@@ -324,15 +323,7 @@ async def update_settings(
     await db.commit()
     await db.refresh(settings)
 
-    return SettingsResponse(
-        optimization_mode=settings.optimization_mode.value,
-        collect_metrics=settings.collect_metrics,
-        auto_adjust_timing=settings.auto_adjust_timing,
-        auto_optimize_hashtags=settings.auto_optimize_hashtags,
-        auto_suggest_topics=settings.auto_suggest_topics,
-        notify_on_viral=settings.notify_on_viral,
-        notify_weekly_report=settings.notify_weekly_report,
-    )
+    return _to_settings_response(settings)
 
 
 @router.get("/dashboard", response_model=DashboardStats)

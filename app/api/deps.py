@@ -21,6 +21,7 @@ from ..core.security import SecurityUtils, decode_jwt_token
 from ..models.db import db_manager
 
 logger = get_logger("api.deps")
+BEARER_AUTH_HEADERS = {"WWW-Authenticate": "Bearer"}
 
 
 def get_settings() -> Settings:
@@ -91,7 +92,7 @@ async def get_redis_client() -> redis.Redis:
 
 
 def verify_api_key(
-    x_api_key: str | None = Header(None, alias="X-API-Key"), settings: Settings = Depends(get_settings)
+    x_api_key: str | None = Header(None, alias="X-API-Key"), _settings: Settings = Depends(get_settings)
 ) -> str:
     """
     Verify API key authentication.
@@ -111,25 +112,18 @@ def verify_api_key(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required", headers={"WWW-Authenticate": "APIKey"}
         )
 
-    try:
-        # In a real implementation, this would validate against a database
-        # For now, we'll just check if it's present and log the attempt
-        logger.info("API key authentication attempted", api_key_prefix=x_api_key[:8] + "...")
+    # In a real implementation, this would validate against a database
+    # For now, we'll just check if it's present and log the attempt
+    logger.info("API key authentication attempted", api_key_prefix=x_api_key[:8] + "...")
 
-        # Placeholder validation - in production this would check against database
-        if len(x_api_key) < 16:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key format")
+    # Placeholder validation - in production this would check against database
+    if len(x_api_key) < 16:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key format")
 
-        return x_api_key
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("API key validation error", error=str(e))
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Authentication error")
+    return x_api_key
 
 
-def verify_jwt_token(authorization: str | None = Header(None), settings: Settings = Depends(get_settings)) -> dict:
+def verify_jwt_token(authorization: str | None = Header(None), _settings: Settings = Depends(get_settings)) -> dict:
     """
     Verify JWT token authentication.
 
@@ -143,34 +137,24 @@ def verify_jwt_token(authorization: str | None = Header(None), settings: Setting
     Raises:
         HTTPException: If token is invalid
     """
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    token = _extract_bearer_token(authorization, required_detail="Authorization header required")
 
     try:
-        # Extract token from "Bearer <token>" format
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication scheme")
-
-        # Verify and decode token
         payload = decode_jwt_token(token)
+        if not payload:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
         logger.debug("JWT token verified", user_id=payload.get("user_id"))
         return payload
-
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authorization header format")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning("JWT token verification failed", error=str(e))
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
 
 def verify_telegram_webhook(
-    request: Request,
+    _request: Request,
     x_telegram_bot_api_secret_token: str | None = Header(None),
     settings: Settings = Depends(get_settings),
 ) -> bool:
@@ -208,7 +192,9 @@ def verify_telegram_webhook(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Webhook verification failed")
 
 
-def get_current_user(token_payload: dict = Depends(verify_jwt_token), db: Session = Depends(get_db_session)) -> dict:
+def get_current_user_legacy(
+    token_payload: dict = Depends(verify_jwt_token), _db: Session = Depends(get_db_session)
+) -> dict:
     """
     Get current authenticated user.
 
@@ -245,7 +231,7 @@ def get_current_user(token_payload: dict = Depends(verify_jwt_token), db: Sessio
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User retrieval failed")
 
 
-def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+def require_admin_legacy(current_user: dict = Depends(get_current_user_legacy)) -> dict:
     """
     Require admin privileges.
 
@@ -391,6 +377,25 @@ import jwt
 from sqlalchemy import select
 
 
+def _extract_bearer_token(authorization: str | None, required_detail: str = "Not authenticated") -> str:
+    """Extract Bearer token from Authorization header."""
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=required_detail,
+            headers=BEARER_AUTH_HEADERS,
+        )
+
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header",
+            headers=BEARER_AUTH_HEADERS,
+        )
+    return parts[1]
+
+
 async def get_current_user(
     authorization: str | None = Header(None, alias="Authorization"), db=Depends(get_db_async_session)
 ):
@@ -407,23 +412,7 @@ async def get_current_user(
     Raises:
         HTTPException: If not authenticated or token invalid
     """
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Extract token from "Bearer <token>"
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = parts[1]
+    token = _extract_bearer_token(authorization)
 
     # Decode JWT
     try:
@@ -486,6 +475,18 @@ async def get_current_user_optional(
         return await get_current_user(authorization, db)
     except HTTPException:
         return None
+
+
+async def require_admin(current_user=Depends(get_current_user)):
+    """
+    Require admin privileges for DB-backed auth.
+
+    Current admin model uses `is_master` as elevated access flag.
+    """
+    if not getattr(current_user, "is_master", False):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
+
+    return current_user
 
 
 def check_subscription_active(user):

@@ -9,9 +9,12 @@ This module provides:
 - Pydantic request/response schemas
 """
 
+import asyncio
 import json
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -22,6 +25,56 @@ from .deps import get_db_session, get_redis_client, get_settings
 
 router = APIRouter()
 logger = get_logger("api")
+SUPPORTED_DEBUG_PLATFORMS = {"instagram", "vk", "tiktok", "youtube"}
+PIPELINE_QUEUE_NAMES = ("ingest", "enrich", "captionize", "transcode", "preflight", "publish", "finalize")
+QUEUE_OVERLOAD_THRESHOLD = 1000
+S3_HEALTH_TIMEOUT_SECONDS = 3.0
+
+
+def _extract_telegram_content(webhook_data: "TelegramWebhookRequest") -> dict[str, Any] | None:
+    """Return the first processable Telegram payload."""
+    return webhook_data.message or webhook_data.channel_post or webhook_data.edited_message
+
+
+def _resolve_secret_value(secret_like: Any) -> str:
+    """Return plain secret value from SecretStr-like or raw string."""
+    getter = getattr(secret_like, "get_secret_value", None)
+    if callable(getter):
+        return getter()
+    return str(secret_like)
+
+
+def _check_s3_bucket_exists(endpoint: str, access_key: str, secret_key: str, bucket_name: str) -> bool:
+    """Run blocking S3 bucket existence check via MinIO-compatible API."""
+    from minio import Minio
+
+    parsed = urlparse(endpoint)
+    secure = parsed.scheme == "https"
+    endpoint_host = parsed.netloc or parsed.path
+    client = Minio(endpoint_host, access_key=access_key, secret_key=secret_key, secure=secure)
+    return bool(client.bucket_exists(bucket_name))
+
+
+async def _check_s3_health(settings: Any) -> bool:
+    """Check S3 storage health by verifying configured bucket availability."""
+    try:
+        s3_cfg = getattr(settings, "s3", SimpleNamespace())
+        endpoint = getattr(s3_cfg, "endpoint", "")
+        access_key = getattr(s3_cfg, "access_key", "")
+        secret_key = _resolve_secret_value(getattr(s3_cfg, "secret_key", ""))
+        bucket_name = getattr(s3_cfg, "bucket_name", "")
+
+        if not endpoint or not access_key or not secret_key or not bucket_name:
+            logger.error("S3 health check missing configuration")
+            return False
+
+        return await asyncio.wait_for(
+            asyncio.to_thread(_check_s3_bucket_exists, endpoint, access_key, secret_key, bucket_name),
+            timeout=S3_HEALTH_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        logger.error("S3 health check failed", error=str(e))
+        return False
 
 
 class HealthResponse(BaseModel):
@@ -129,7 +182,7 @@ async def readiness_check(redis=Depends(get_redis_client)):
 
 
 @router.get("/health", response_model=HealthResponse, tags=["Health"])
-async def health_check(db=Depends(get_db_session), redis=Depends(get_redis_client), settings=Depends(get_settings)):
+async def health_check(_db=Depends(get_db_session), redis=Depends(get_redis_client), settings=Depends(get_settings)):
     """
     Health check endpoint.
 
@@ -161,13 +214,9 @@ async def health_check(db=Depends(get_db_session), redis=Depends(get_redis_clien
         logger.error("Redis health check failed", error=str(e))
         services["redis"] = "unhealthy"
 
-    # S3 health (basic connectivity)
-    try:
-        # This is a placeholder - would normally test S3 connectivity
-        services["s3"] = "healthy"
-    except Exception as e:
-        logger.error("S3 health check failed", error=str(e))
-        services["s3"] = "unhealthy"
+    # S3 health
+    s3_healthy = await _check_s3_health(settings)
+    services["s3"] = "healthy" if s3_healthy else "unhealthy"
 
     # Overall status
     overall_status = "healthy" if all(s == "healthy" for s in services.values()) else "degraded"
@@ -192,9 +241,8 @@ async def health_check(db=Depends(get_db_session), redis=Depends(get_redis_clien
 async def telegram_webhook(
     request: Request,
     webhook_data: TelegramWebhookRequest,
-    db=Depends(get_db_session),
+    _db=Depends(get_db_session),
     redis=Depends(get_redis_client),
-    settings=Depends(get_settings),
 ):
     """
     Telegram webhook endpoint.
@@ -216,13 +264,7 @@ async def telegram_webhook(
             # In production, this would verify the webhook signature
 
             # Extract relevant content
-            content = None
-            if webhook_data.message:
-                content = webhook_data.message
-            elif webhook_data.channel_post:
-                content = webhook_data.channel_post
-            elif webhook_data.edited_message:
-                content = webhook_data.edited_message
+            content = _extract_telegram_content(webhook_data)
 
             if not content:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No processable content in webhook")
@@ -232,19 +274,15 @@ async def telegram_webhook(
 
             post_id = str(uuid.uuid4())
 
-            # Store in database (placeholder)
-            logger.info("Storing webhook content in database", post_id=post_id)
+            # Build full update dict for ingest task
+            update_dict = webhook_data.model_dump()
 
-            # Queue for processing (placeholder)
-            processing_task = {
-                "post_id": post_id,
-                "content": content,
-                "update_id": webhook_data.update_id,
-                "created_at": datetime.now().isoformat(),
-            }
-
-            # Add to Redis queue (placeholder)
-            await redis.lpush("ingest_queue", json.dumps(processing_task))
+            # Dispatch to Celery ingest pipeline
+            from ..workers.tasks.ingest import process_telegram_update
+            process_telegram_update.apply_async(
+                args=[update_dict, post_id],
+                queue="ingest",
+            )
 
             # Track metrics
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -285,7 +323,7 @@ async def telegram_webhook(
 async def debug_publish(
     request: Request,
     publish_request: DebugPublishRequest,
-    db=Depends(get_db_session),
+    _db=Depends(get_db_session),
     redis=Depends(get_redis_client),
     settings=Depends(get_settings),
 ):
@@ -319,8 +357,7 @@ async def debug_publish(
                 )
 
             # Validate platforms
-            supported_platforms = ["instagram", "vk", "tiktok", "youtube"]
-            invalid_platforms = [p for p in publish_request.platforms if p not in supported_platforms]
+            invalid_platforms = [p for p in publish_request.platforms if p not in SUPPORTED_DEBUG_PLATFORMS]
 
             if invalid_platforms:
                 raise HTTPException(
@@ -350,7 +387,7 @@ async def debug_publish(
                         "queue": queue_name,
                     }
 
-                    logger.info(f"Queued publishing task for {platform}", post_id=publish_request.post_id)
+                    logger.info("Queued publishing task", platform=platform, post_id=publish_request.post_id)
 
                 except Exception as e:
                     results[platform] = {
@@ -359,7 +396,7 @@ async def debug_publish(
                         "error": str(e),
                     }
 
-                    logger.error(f"Failed to queue {platform} task", error=str(e))
+                    logger.error("Failed to queue publishing task", platform=platform, error=str(e))
 
             # Track metrics
             processing_time = (datetime.now() - start_time).total_seconds()
@@ -411,7 +448,7 @@ async def debug_publish(
 
 
 @router.get("/admin/queues", response_model=QueuesResponse, tags=["Admin"])
-async def get_queue_status(request: Request, redis=Depends(get_redis_client), settings=Depends(get_settings)):
+async def get_queue_status(request: Request, redis=Depends(get_redis_client), _settings=Depends(get_settings)):
     """
     Queue monitoring endpoint.
 
@@ -424,13 +461,11 @@ async def get_queue_status(request: Request, redis=Depends(get_redis_client), se
 
         try:
             # Define queue names
-            queue_names = ["ingest", "enrich", "captionize", "transcode", "preflight", "publish", "finalize"]
-
             queues = []
             total_pending = 0
             total_active = 0
 
-            for queue_name in queue_names:
+            for queue_name in PIPELINE_QUEUE_NAMES:
                 try:
                     # Get queue length (pending tasks)
                     queue_size = await redis.llen(f"{queue_name}_queue")
@@ -462,7 +497,7 @@ async def get_queue_status(request: Request, redis=Depends(get_redis_client), se
                     metrics.update_active_celery_tasks(queue_name, active_tasks)
 
                 except Exception as e:
-                    logger.warning(f"Failed to get status for queue {queue_name}", error=str(e))
+                    logger.warning("Failed to get status for queue", queue_name=queue_name, error=str(e))
 
                     queues.append(
                         QueueInfo(
@@ -477,7 +512,7 @@ async def get_queue_status(request: Request, redis=Depends(get_redis_client), se
             # Determine system health
             if any(q.size == -1 for q in queues):
                 system_health = "degraded"
-            elif total_pending > 1000:  # Arbitrary threshold
+            elif total_pending > QUEUE_OVERLOAD_THRESHOLD:  # Arbitrary threshold
                 system_health = "overloaded"
             else:
                 system_health = "healthy"

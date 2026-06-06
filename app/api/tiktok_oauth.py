@@ -3,6 +3,8 @@ TikTok OAuth API routes.
 Handles TikTok Login Kit flow for connecting user accounts.
 """
 
+import json
+import os
 import secrets
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
@@ -16,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.logging import get_logger
-from ..core.security import SecurityUtils
-from .deps import get_current_user, get_db_async_session
+from ..core.security import decrypt_data, encrypt_data
+from .deps import get_current_user, get_db_async_session, get_redis_client
 
 logger = get_logger("api.tiktok_oauth")
 
@@ -28,6 +30,7 @@ router = APIRouter(prefix="/oauth/tiktok", tags=["TikTok OAuth"])
 TIKTOK_AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/"
 TIKTOK_TOKEN_URL = "https://open.tiktokapis.com/v2/oauth/token/"
 TIKTOK_USER_INFO_URL = "https://open.tiktokapis.com/v2/user/info/"
+DASHBOARD_ACCOUNTS_URL = "https://crosspost.saleswhisper.pro/dashboard/accounts"
 
 # Required scopes for content posting
 TIKTOK_SCOPES = [
@@ -39,8 +42,110 @@ TIKTOK_SCOPES = [
     "video.list",  # List user videos
 ]
 
-# State storage (in production, use Redis)
+# Redis-backed state storage with in-memory fallback.
+OAUTH_STATE_PREFIX = "oauth:tiktok:state:"
+OAUTH_STATE_TTL_SECONDS = 600
 _oauth_states: dict = {}
+
+
+def _dashboard_redirect(**params: str) -> RedirectResponse:
+    clean_params = {k: v for k, v in params.items() if v}
+    if not clean_params:
+        return RedirectResponse(url=DASHBOARD_ACCOUNTS_URL)
+    return RedirectResponse(url=f"{DASHBOARD_ACCOUNTS_URL}?{urlencode(clean_params)}")
+
+
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _fallback_display_name(open_id: str | None) -> str:
+    return f"TikTok User {(open_id or 'unknown')[:8]}"
+
+
+def _is_strict_oauth_state_mode() -> bool:
+    env_override = str(os.getenv("TIKTOK_OAUTH_STATE_STRICT", "")).strip().lower()
+    if env_override in {"1", "true", "yes", "on"}:
+        return True
+    if env_override in {"0", "false", "no", "off"}:
+        return False
+    app_env = getattr(getattr(settings, "app", None), "environment", "")
+    return app_env in {"staging", "production"}
+
+
+def _serialize_state(payload: dict[str, str]) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def _deserialize_state(raw_value: str | None) -> dict[str, str] | None:
+    if not raw_value:
+        return None
+    try:
+        parsed = json.loads(raw_value)
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+async def _get_optional_redis():
+    try:
+        return await get_redis_client()
+    except HTTPException as exc:
+        if _is_strict_oauth_state_mode():
+            logger.error(
+                "Redis unavailable for TikTok OAuth state in strict mode",
+                status_code=exc.status_code,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="OAuth state storage is temporarily unavailable",
+            ) from exc
+        logger.warning("Redis unavailable for TikTok OAuth state, using in-memory fallback")
+        return None
+
+
+async def _store_oauth_state(state: str, user_id: str):
+    payload = {"user_id": user_id, "created_at": _utcnow().isoformat()}
+    redis_client = await _get_optional_redis()
+
+    if redis_client is not None:
+        key = f"{OAUTH_STATE_PREFIX}{state}"
+        try:
+            await redis_client.setex(key, OAUTH_STATE_TTL_SECONDS, _serialize_state(payload))
+            return
+        except Exception as e:
+            logger.warning("Failed to store TikTok OAuth state in Redis", error=str(e))
+
+    # Fallback for local/dev resilience.
+    _oauth_states[state] = {
+        "user_id": user_id,
+        "created_at": _utcnow(),
+        "expires_at": _utcnow() + timedelta(seconds=OAUTH_STATE_TTL_SECONDS),
+    }
+
+
+async def _consume_oauth_state(state: str) -> dict | None:
+    redis_client = await _get_optional_redis()
+    if redis_client is not None:
+        key = f"{OAUTH_STATE_PREFIX}{state}"
+        try:
+            raw_value = await redis_client.execute_command("GETDEL", key)
+        except Exception:
+            # Redis < 6.2 fallback (best effort)
+            raw_value = await redis_client.get(key)
+            if raw_value is not None:
+                await redis_client.delete(key)
+        parsed = _deserialize_state(raw_value)
+        if parsed:
+            return parsed
+
+    # In-memory fallback
+    state_data = _oauth_states.pop(state, None)
+    if not state_data:
+        return None
+    if _utcnow() > state_data.get("expires_at", _utcnow()):
+        return None
+    return state_data
 
 
 class TikTokAuthURLResponse(BaseModel):
@@ -71,11 +176,7 @@ async def get_tiktok_auth_url(
     state = secrets.token_urlsafe(32)
 
     # Store state with user info (expires in 10 minutes)
-    _oauth_states[state] = {
-        "user_id": str(user.id),
-        "created_at": datetime.utcnow(),
-        "expires_at": datetime.utcnow() + timedelta(minutes=10),
-    }
+    await _store_oauth_state(state, str(user.id))
 
     # Build authorization URL
     params = {
@@ -88,7 +189,7 @@ async def get_tiktok_auth_url(
 
     auth_url = f"{TIKTOK_AUTH_URL}?{urlencode(params)}"
 
-    logger.info(f"TikTok auth URL generated for user {user.id}")
+    logger.info("TikTok auth URL generated", user_id=str(user.id))
 
     return TikTokAuthURLResponse(auth_url=auth_url, state=state)
 
@@ -107,26 +208,19 @@ async def tiktok_oauth_callback(
     """
     # Check for errors from TikTok
     if error:
-        logger.warning(f"TikTok OAuth error: {error} - {error_description}")
+        logger.warning("TikTok OAuth error", error=error, error_description=error_description)
         # Redirect to frontend with error
-        return RedirectResponse(
-            url=f"https://crosspost.saleswhisper.pro/dashboard/accounts?error={error}&message={error_description or 'Authorization failed'}"
-        )
+        return _dashboard_redirect(error=error, message=error_description or "Authorization failed")
 
     if not code or not state:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing code or state parameter")
 
     # Validate state
-    state_data = _oauth_states.get(state)
+    state_data = await _consume_oauth_state(state)
     if not state_data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired state")
 
-    if datetime.utcnow() > state_data["expires_at"]:
-        del _oauth_states[state]
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="State expired, please try again")
-
     user_id = state_data["user_id"]
-    del _oauth_states[state]  # One-time use
 
     # Exchange code for tokens
     try:
@@ -144,17 +238,16 @@ async def tiktok_oauth_callback(
             )
 
             if token_response.status_code != 200:
-                logger.error(f"TikTok token error: {token_response.text}")
-                return RedirectResponse(
-                    url="https://crosspost.saleswhisper.pro/dashboard/accounts?error=token_error&message=Failed to get access token"
-                )
+                logger.error("TikTok token error", response_text=token_response.text)
+                return _dashboard_redirect(error="token_error", message="Failed to get access token")
 
             token_data = token_response.json()
 
             if "error" in token_data:
-                logger.error(f"TikTok token error: {token_data}")
-                return RedirectResponse(
-                    url=f"https://crosspost.saleswhisper.pro/dashboard/accounts?error={token_data.get('error')}&message={token_data.get('error_description', 'Token error')}"
+                logger.error("TikTok token response contains error", token_data=token_data)
+                return _dashboard_redirect(
+                    error=token_data.get("error"),
+                    message=token_data.get("error_description", "Token error"),
                 )
 
             access_token = token_data.get("access_token")
@@ -162,12 +255,13 @@ async def tiktok_oauth_callback(
             open_id = token_data.get("open_id")
             expires_in = token_data.get("expires_in", 86400)
             scope = token_data.get("scope", "")
+            if not open_id:
+                logger.error("TikTok token response missing open_id", token_data=token_data)
+                return _dashboard_redirect(error="token_error", message="Missing TikTok account identifier")
 
     except Exception as e:
-        logger.exception(f"TikTok token exchange failed: {e}")
-        return RedirectResponse(
-            url="https://crosspost.saleswhisper.pro/dashboard/accounts?error=exchange_failed&message=Token exchange failed"
-        )
+        logger.exception("TikTok token exchange failed", error=str(e))
+        return _dashboard_redirect(error="exchange_failed", message="Token exchange failed")
 
     # Get user info from TikTok
     try:
@@ -184,15 +278,15 @@ async def tiktok_oauth_callback(
                 display_name = user_data.get("display_name", username)
                 avatar_url = user_data.get("avatar_url", "")
             else:
-                logger.warning(f"Failed to get TikTok user info: {user_response.text}")
+                logger.warning("Failed to get TikTok user info", response_text=user_response.text)
                 username = ""
-                display_name = f"TikTok User {open_id[:8]}"
+                display_name = _fallback_display_name(open_id)
                 avatar_url = ""
 
     except Exception as e:
-        logger.exception(f"TikTok user info failed: {e}")
+        logger.exception("TikTok user info failed", error=str(e))
         username = ""
-        display_name = f"TikTok User {open_id[:8]}"
+        display_name = _fallback_display_name(open_id)
         avatar_url = ""
 
     # Save account to database
@@ -206,9 +300,7 @@ async def tiktok_oauth_callback(
         user = user_result.scalar_one_or_none()
 
         if not user:
-            return RedirectResponse(
-                url="https://crosspost.saleswhisper.pro/dashboard/accounts?error=user_not_found&message=User session expired"
-            )
+            return _dashboard_redirect(error="user_not_found", message="User session expired")
 
         # Check if account already exists
         existing_result = await db.execute(
@@ -220,14 +312,23 @@ async def tiktok_oauth_callback(
 
         if existing_account:
             # Update existing account tokens
-            existing_account.access_token = SecurityUtils.encrypt_token(access_token)
-            existing_account.refresh_token = SecurityUtils.encrypt_token(refresh_token) if refresh_token else None
-            existing_account.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
-            existing_account.username = username or existing_account.username
-            existing_account.display_name = display_name or existing_account.display_name
-            existing_account.profile_picture_url = avatar_url or existing_account.profile_picture_url
+            existing_account.access_token = encrypt_data(access_token)
+            existing_account.refresh_token = encrypt_data(refresh_token) if refresh_token else None
+            existing_account.token_expires_at = _utcnow() + timedelta(seconds=expires_in)
+            existing_account.platform_username = username or existing_account.platform_username
+            existing_account.platform_display_name = display_name or existing_account.platform_display_name
+            extra_credentials = existing_account.extra_credentials if isinstance(existing_account.extra_credentials, dict) else {}
+            extra_credentials.update(
+                {
+                    "avatar_url": avatar_url,
+                    "scope": scope,
+                    "granted_scopes": scope.split(",") if scope else [],
+                    "open_id": open_id,
+                }
+            )
+            existing_account.extra_credentials = extra_credentials
             existing_account.is_active = True
-            existing_account.updated_at = datetime.utcnow()
+            existing_account.updated_at = _utcnow()
 
             account = existing_account
 
@@ -251,15 +352,16 @@ async def tiktok_oauth_callback(
             account = SocialAccount(
                 platform=Platform.TIKTOK,
                 platform_user_id=open_id,
-                username=username,
-                display_name=display_name,
-                profile_picture_url=avatar_url,
-                access_token=SecurityUtils.encrypt_token(access_token),
-                refresh_token=SecurityUtils.encrypt_token(refresh_token) if refresh_token else None,
-                token_expires_at=datetime.utcnow() + timedelta(seconds=expires_in),
+                platform_username=username,
+                platform_display_name=display_name,
+                access_token=encrypt_data(access_token),
+                refresh_token=encrypt_data(refresh_token) if refresh_token else None,
+                token_expires_at=_utcnow() + timedelta(seconds=expires_in),
                 is_active=True,
                 is_verified=True,
-                credentials={
+                extra_credentials={
+                    "avatar_url": avatar_url,
+                    "open_id": open_id,
                     "scope": scope,
                     "granted_scopes": scope.split(",") if scope else [],
                 },
@@ -278,19 +380,15 @@ async def tiktok_oauth_callback(
 
         await db.commit()
 
-        logger.info(f"TikTok account connected: {username or open_id} for user {user_id}")
+        logger.info("TikTok account connected", account=username or open_id, user_id=user_id)
 
         # Redirect to success page
-        return RedirectResponse(
-            url=f"https://crosspost.saleswhisper.pro/dashboard/accounts?success=true&platform=tiktok&username={username or display_name}"
-        )
+        return _dashboard_redirect(success="true", platform="tiktok", username=username or display_name)
 
     except Exception as e:
-        logger.exception(f"Failed to save TikTok account: {e}")
+        logger.exception("Failed to save TikTok account", error=str(e))
         await db.rollback()
-        return RedirectResponse(
-            url="https://crosspost.saleswhisper.pro/dashboard/accounts?error=save_failed&message=Failed to save account"
-        )
+        return _dashboard_redirect(error="save_failed", message="Failed to save account")
 
 
 @router.post("/refresh")
@@ -328,7 +426,10 @@ async def refresh_tiktok_token(
 
     # Refresh token
     try:
-        refresh_token = SecurityUtils.decrypt_token(account.refresh_token)
+        try:
+            refresh_token = decrypt_data(account.refresh_token)
+        except Exception:
+            refresh_token = account.refresh_token
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -347,16 +448,16 @@ async def refresh_tiktok_token(
 
             data = response.json()
 
-            account.access_token = SecurityUtils.encrypt_token(data["access_token"])
+            account.access_token = encrypt_data(data["access_token"])
             if data.get("refresh_token"):
-                account.refresh_token = SecurityUtils.encrypt_token(data["refresh_token"])
-            account.token_expires_at = datetime.utcnow() + timedelta(seconds=data.get("expires_in", 86400))
-            account.updated_at = datetime.utcnow()
+                account.refresh_token = encrypt_data(data["refresh_token"])
+            account.token_expires_at = _utcnow() + timedelta(seconds=data.get("expires_in", 86400))
+            account.updated_at = _utcnow()
 
             await db.commit()
 
             return {"success": True, "message": "Token refreshed"}
 
     except Exception as e:
-        logger.exception(f"Token refresh failed: {e}")
+        logger.exception("Token refresh failed", error=str(e))
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Token refresh failed")

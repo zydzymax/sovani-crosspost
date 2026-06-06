@@ -164,7 +164,7 @@ class NanobanaService:
             return result
 
         except Exception as e:
-            logger.error(f"Nanobana generation failed: {e}", exc_info=True)
+            logger.error("Nanobana generation failed", error=str(e), exc_info=True)
             return NanobanaResult(success=False, error=str(e))
 
     async def _generate_pro(
@@ -285,7 +285,7 @@ class NanobanaService:
             return {}
 
         except Exception as e:
-            logger.warning(f"Failed to get credits: {e}")
+            logger.warning("Failed to get credits", error=str(e))
             return {}
 
     async def close(self):
@@ -309,10 +309,28 @@ async def generate_nanobana_image(
     """
     service = NanobanaService(api_key)
     try:
-        model_type = ModelType.PRO if model == "pro" else ModelType.FLASH
-        res = Resolution(resolution) if resolution in [r.value for r in Resolution] else Resolution.RES_1K
-        ratio = AspectRatio(aspect_ratio) if aspect_ratio in [r.value for r in AspectRatio] else AspectRatio.SQUARE
+        model_type = _parse_model_type(model)
+        res = _parse_resolution(resolution)
+        ratio = _parse_aspect_ratio(aspect_ratio)
 
         return await service.generate_image(prompt, model_type, res, ratio)
     finally:
         await service.close()
+
+
+def _parse_model_type(model: str) -> ModelType:
+    return ModelType.PRO if model == "pro" else ModelType.FLASH
+
+
+def _parse_resolution(resolution: str) -> Resolution:
+    try:
+        return Resolution(resolution)
+    except ValueError:
+        return Resolution.RES_1K
+
+
+def _parse_aspect_ratio(aspect_ratio: str) -> AspectRatio:
+    try:
+        return AspectRatio(aspect_ratio)
+    except ValueError:
+        return AspectRatio.SQUARE

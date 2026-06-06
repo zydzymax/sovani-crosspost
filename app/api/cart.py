@@ -71,6 +71,26 @@ class ApplyPromoResponse(BaseModel):
 # ==================== HELPERS ====================
 
 
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _success_response(message: str) -> dict[str, str | bool]:
+    return {"success": True, "message": message}
+
+
+def _build_cart_item_response(item: dict) -> CartItemResponse:
+    return CartItemResponse(
+        id=item.get("id", ""),
+        product_code=item.get("product_code", ""),
+        product_name=item.get("product_name", ""),
+        plan_code=item.get("plan_code", ""),
+        plan_name=item.get("plan_name", ""),
+        price_rub=float(item.get("price_rub", 0)),
+        billing_period=item.get("billing_period", "monthly"),
+    )
+
+
 async def get_or_create_cart(db: AsyncSession, user: User) -> Cart:
     """Get existing cart or create new one for user."""
     result = await db.execute(select(Cart).where(Cart.user_id == user.id))
@@ -90,7 +110,7 @@ async def calculate_cart_total(db: AsyncSession, cart: Cart) -> tuple[Decimal, D
     subtotal = Decimal("0")
     discount = Decimal("0")
 
-    for item in cart.items:
+    for item in cart.items or []:
         subtotal += Decimal(str(item.get("price_rub", 0)))
 
     # Apply promo code discount if exists
@@ -107,6 +127,12 @@ async def calculate_cart_total(db: AsyncSession, cart: Cart) -> tuple[Decimal, D
     return subtotal, discount
 
 
+async def _recalculate_and_store_total(db: AsyncSession, cart: Cart) -> tuple[Decimal, Decimal]:
+    subtotal, discount = await calculate_cart_total(db, cart)
+    cart.total_rub = subtotal - discount
+    return subtotal, discount
+
+
 # ==================== ROUTES ====================
 
 
@@ -119,19 +145,7 @@ async def get_cart(db: AsyncSession = Depends(get_db_async_session), user: User 
     subtotal, discount = await calculate_cart_total(db, cart)
 
     # Build response items with product/plan names
-    response_items = []
-    for item in cart.items:
-        response_items.append(
-            CartItemResponse(
-                id=item.get("id", ""),
-                product_code=item.get("product_code", ""),
-                product_name=item.get("product_name", ""),
-                plan_code=item.get("plan_code", ""),
-                plan_name=item.get("plan_name", ""),
-                price_rub=float(item.get("price_rub", 0)),
-                billing_period=item.get("billing_period", "monthly"),
-            )
-        )
+    response_items = [_build_cart_item_response(item) for item in (cart.items or [])]
 
     # Get promo description if applied
     promo_description = None
@@ -209,23 +223,32 @@ async def add_to_cart(
         "plan_name": plan.name,
         "price_rub": float(plan.price_rub),
         "billing_period": plan.billing_period,
-        "added_at": datetime.utcnow().isoformat(),
+        "added_at": _utcnow().isoformat(),
     }
 
     if existing_idx is not None:
         cart_items[existing_idx] = new_item
-        logger.info(f"Updated cart item for user {user.id}: {item.product_code}/{item.plan_code}")
+        logger.info(
+            "Updated cart item",
+            user_id=str(user.id),
+            product_code=item.product_code,
+            plan_code=item.plan_code,
+        )
     else:
         cart_items.append(new_item)
-        logger.info(f"Added to cart for user {user.id}: {item.product_code}/{item.plan_code}")
+        logger.info(
+            "Added cart item",
+            user_id=str(user.id),
+            product_code=item.product_code,
+            plan_code=item.plan_code,
+        )
 
     # Update cart
     cart.items = cart_items
-    cart.updated_at = datetime.utcnow()
+    cart.updated_at = _utcnow()
 
     # Recalculate total
-    subtotal, discount = await calculate_cart_total(db, cart)
-    cart.total_rub = subtotal - discount
+    await _recalculate_and_store_total(db, cart)
 
     await db.commit()
     await db.refresh(cart)
@@ -254,17 +277,16 @@ async def remove_from_cart(
 
     # Update cart
     cart.items = cart_items
-    cart.updated_at = datetime.utcnow()
+    cart.updated_at = _utcnow()
 
     # Recalculate total
-    subtotal, discount = await calculate_cart_total(db, cart)
-    cart.total_rub = subtotal - discount
+    await _recalculate_and_store_total(db, cart)
 
     await db.commit()
 
-    logger.info(f"Removed item {item_id} from cart for user {user.id}")
+    logger.info("Removed cart item", item_id=item_id, user_id=str(user.id))
 
-    return {"success": True, "message": "Item removed from cart"}
+    return _success_response("Item removed from cart")
 
 
 @router.post("/clear")
@@ -277,13 +299,13 @@ async def clear_cart(db: AsyncSession = Depends(get_db_async_session), user: Use
     cart.items = []
     cart.promo_code = None
     cart.total_rub = Decimal("0")
-    cart.updated_at = datetime.utcnow()
+    cart.updated_at = _utcnow()
 
     await db.commit()
 
-    logger.info(f"Cleared cart for user {user.id}")
+    logger.info("Cleared cart", user_id=str(user.id))
 
-    return {"success": True, "message": "Cart cleared"}
+    return _success_response("Cart cleared")
 
 
 @router.post("/apply-promo", response_model=ApplyPromoResponse)
@@ -304,7 +326,7 @@ async def apply_promo_code(
 
     # Check if promo is valid
     if not promo.is_valid:
-        if promo.valid_until and promo.valid_until < datetime.utcnow():
+        if promo.valid_until and promo.valid_until < _utcnow():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Срок действия промокода истёк")
         if promo.max_uses and promo.current_uses >= promo.max_uses:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Промокод больше не действителен")
@@ -317,15 +339,14 @@ async def apply_promo_code(
 
     # Apply promo to cart
     cart.promo_code = code
-    cart.updated_at = datetime.utcnow()
+    cart.updated_at = _utcnow()
 
     # Calculate new total
-    subtotal, discount = await calculate_cart_total(db, cart)
-    cart.total_rub = subtotal - discount
+    _, discount = await _recalculate_and_store_total(db, cart)
 
     await db.commit()
 
-    logger.info(f"Applied promo {code} to cart for user {user.id}, discount: {discount}")
+    logger.info("Applied promo to cart", promo_code=code, user_id=str(user.id), discount_rub=float(discount))
 
     return ApplyPromoResponse(
         success=True,
@@ -346,7 +367,7 @@ async def remove_promo_code(db: AsyncSession = Depends(get_db_async_session), us
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Промокод не применён")
 
     cart.promo_code = None
-    cart.updated_at = datetime.utcnow()
+    cart.updated_at = _utcnow()
 
     # Recalculate total
     subtotal, _ = await calculate_cart_total(db, cart)
@@ -354,6 +375,6 @@ async def remove_promo_code(db: AsyncSession = Depends(get_db_async_session), us
 
     await db.commit()
 
-    logger.info(f"Removed promo from cart for user {user.id}")
+    logger.info("Removed promo from cart", user_id=str(user.id))
 
-    return {"success": True, "message": "Промокод удалён"}
+    return _success_response("Промокод удалён")

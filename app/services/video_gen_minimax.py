@@ -94,6 +94,26 @@ class MinimaxService:
         """Get Minimax API key from settings or environment."""
         return os.getenv("MINIMAX_API_KEY", "")
 
+    async def _submit_generation(self, payload: dict[str, Any]) -> str:
+        response = await self.http_client.post(f"{self.API_BASE}/video_generation", json=payload)
+
+        if response.status_code == 401:
+            raise MinimaxAuthError("Invalid API credentials")
+        if response.status_code == 429:
+            raise MinimaxRateLimitError("Rate limit exceeded")
+        if response.status_code != 200:
+            raise MinimaxGenerationError(f"API error: {response.status_code}")
+
+        data = response.json()
+        if data.get("base_resp", {}).get("status_code") != 0:
+            error_msg = data.get("base_resp", {}).get("status_msg", "Unknown error")
+            raise MinimaxGenerationError(error_msg)
+
+        task_id = data.get("task_id")
+        if not task_id:
+            raise MinimaxGenerationError("No task_id returned")
+        return task_id
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
@@ -103,30 +123,8 @@ class MinimaxService:
         """Generate video from text prompt."""
         logger.info("Starting Minimax text-to-video generation", prompt=prompt[:50])
 
-        payload = {"model": model.value, "prompt": prompt}
-
         try:
-            response = await self.http_client.post(f"{self.API_BASE}/video_generation", json=payload)
-
-            if response.status_code == 401:
-                raise MinimaxAuthError("Invalid API credentials")
-            elif response.status_code == 429:
-                raise MinimaxRateLimitError("Rate limit exceeded")
-            elif response.status_code != 200:
-                raise MinimaxGenerationError(f"API error: {response.status_code}")
-
-            data = response.json()
-
-            if data.get("base_resp", {}).get("status_code") != 0:
-                error_msg = data.get("base_resp", {}).get("status_msg", "Unknown error")
-                raise MinimaxGenerationError(error_msg)
-
-            task_id = data.get("task_id")
-
-            if not task_id:
-                raise MinimaxGenerationError("No task_id returned")
-
-            # Poll for result
+            task_id = await self._submit_generation({"model": model.value, "prompt": prompt})
             return await self._poll_for_result(task_id)
 
         except httpx.TimeoutException:
@@ -144,29 +142,10 @@ class MinimaxService:
         """Generate video from image."""
         logger.info("Starting Minimax image-to-video generation")
 
-        payload = {"model": model.value, "first_frame_image": image_url, "prompt": prompt}
-
         try:
-            response = await self.http_client.post(f"{self.API_BASE}/video_generation", json=payload)
-
-            if response.status_code == 401:
-                raise MinimaxAuthError("Invalid API credentials")
-            elif response.status_code == 429:
-                raise MinimaxRateLimitError("Rate limit exceeded")
-            elif response.status_code != 200:
-                raise MinimaxGenerationError(f"API error: {response.status_code}")
-
-            data = response.json()
-
-            if data.get("base_resp", {}).get("status_code") != 0:
-                error_msg = data.get("base_resp", {}).get("status_msg", "Unknown error")
-                raise MinimaxGenerationError(error_msg)
-
-            task_id = data.get("task_id")
-
-            if not task_id:
-                raise MinimaxGenerationError("No task_id returned")
-
+            task_id = await self._submit_generation(
+                {"model": model.value, "first_frame_image": image_url, "prompt": prompt}
+            )
             return await self._poll_for_result(task_id)
 
         except httpx.TimeoutException:
@@ -185,7 +164,7 @@ class MinimaxService:
             )
 
             if response.status_code != 200:
-                logger.warning(f"Poll request failed: {response.status_code}")
+                logger.warning("Poll request failed", status_code=response.status_code, task_id=task_id)
                 await asyncio.sleep(poll_interval)
                 continue
 

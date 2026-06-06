@@ -218,11 +218,7 @@ class RuTubeAdapter:
             file_name = file_path.name
             file_content = None
 
-        # Calculate MD5 hash for the file
-        if file_content:
-            file_hash = hashlib.md5(file_content).hexdigest()
-        else:
-            file_hash = await self._calculate_file_hash(video.file_path)
+        file_hash = hashlib.md5(file_content).hexdigest() if file_content else await self._calculate_file_hash(video.file_path)
 
         # Initialize upload
         response = await self._make_api_request(
@@ -328,8 +324,8 @@ class RuTubeAdapter:
             await self._make_api_request(f"/video/{video_id}/", method="DELETE")
             logger.info("RuTube video deleted", video_id=video_id)
             return True
-        except Exception as e:
-            logger.error(f"Failed to delete RuTube video: {e}", video_id=video_id)
+        except Exception:
+            logger.exception("Failed to delete RuTube video", video_id=video_id)
             return False
 
     async def get_channel_videos(self, limit: int = 20, offset: int = 0) -> dict[str, Any]:
@@ -379,8 +375,8 @@ class RuTubeAdapter:
             await self._make_api_request(f"/video/{video_id}/", method="PATCH", json_data=metadata)
             logger.info("RuTube video updated", video_id=video_id)
             return True
-        except Exception as e:
-            logger.error(f"Failed to update RuTube video: {e}", video_id=video_id)
+        except Exception:
+            logger.exception("Failed to update RuTube video", video_id=video_id)
             return False
 
     async def _check_rate_limits(self):
@@ -408,13 +404,14 @@ class RuTubeAdapter:
         url = f"{self.API_BASE}{endpoint}"
 
         try:
-            if method == "GET":
+            method_upper = method.upper()
+            if method_upper == "GET":
                 response = await self.http_client.get(url, params=params)
-            elif method == "POST":
+            elif method_upper == "POST":
                 response = await self.http_client.post(url, json=json_data)
-            elif method == "PATCH":
+            elif method_upper == "PATCH":
                 response = await self.http_client.patch(url, json=json_data)
-            elif method == "DELETE":
+            elif method_upper == "DELETE":
                 response = await self.http_client.delete(url)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
@@ -422,15 +419,15 @@ class RuTubeAdapter:
             # Handle errors
             if response.status_code == 401:
                 raise RuTubeAuthError("Authentication failed")
-            elif response.status_code == 429:
+            if response.status_code == 429:
                 raise RuTubeRateLimitError("Rate limit exceeded")
-            elif response.status_code >= 400:
+            if response.status_code >= 400:
                 error_msg = response.text
                 try:
                     error_data = response.json()
                     error_msg = error_data.get("detail", error_data.get("error", str(error_data)))
-                except:
-                    pass
+                except ValueError:
+                    logger.debug("Failed to parse RuTube error response as JSON", status_code=response.status_code)
                 raise RuTubeError(f"API Error {response.status_code}: {error_msg}")
 
             if response.status_code == 204:
@@ -439,10 +436,10 @@ class RuTubeAdapter:
             return response.json()
 
         except httpx.RequestError as e:
-            logger.warning(f"RuTube API request error: {e}")
+            logger.warning("RuTube API request error", error=str(e))
             raise
-        except Exception as e:
-            logger.error(f"RuTube API request failed: {e}")
+        except Exception:
+            logger.exception("RuTube API request failed")
             raise
 
     async def close(self):

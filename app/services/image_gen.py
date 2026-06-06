@@ -69,7 +69,7 @@ class OpenAIProvider(ImageProvider):
                 cost_estimate=0.04 if size == "1024x1024" else 0.08,
             )
         except Exception as e:
-            logger.error(f"OpenAI image generation failed: {e}")
+            logger.exception("OpenAI image generation failed")
             return ImageResult(success=False, error=str(e), provider="openai")
 
     def get_name(self) -> str:
@@ -116,7 +116,7 @@ class StabilityProvider(ImageProvider):
                 cost_estimate=0.02,
             )
         except Exception as e:
-            logger.error(f"Stability AI image generation failed: {e}")
+            logger.exception("Stability AI image generation failed")
             return ImageResult(success=False, error=str(e), provider="stability")
 
     def get_name(self) -> str:
@@ -151,7 +151,7 @@ class FluxProvider(ImageProvider):
                 cost_estimate=0.01,
             )
         except Exception as e:
-            logger.error(f"Flux image generation failed: {e}")
+            logger.exception("Flux image generation failed")
             return ImageResult(success=False, error=str(e), provider="flux")
 
     def get_name(self) -> str:
@@ -190,7 +190,7 @@ class NanobanaProvider(ImageProvider):
                 return "3:4"
             else:
                 return "1:1"
-        except:
+        except Exception:
             return "1:1"
 
     async def generate(self, prompt: str, size: str = "1024x1024") -> ImageResult:
@@ -226,7 +226,7 @@ class NanobanaProvider(ImageProvider):
             return ImageResult(success=False, error="No taskId in response", provider="nanobana")
 
         except Exception as e:
-            logger.error(f"Nanobana image generation failed: {e}")
+            logger.exception("Nanobana image generation failed")
             return ImageResult(success=False, error=str(e), provider="nanobana")
 
     async def _poll_for_result(self, task_id: str, max_wait: int = 180) -> ImageResult:
@@ -269,7 +269,7 @@ class NanobanaProvider(ImageProvider):
                     )
 
             except Exception as e:
-                logger.warning(f"Poll error: {e}")
+                logger.warning("Poll error", error=str(e))
 
             poll_interval = min(poll_interval + 1, 10)
 
@@ -286,24 +286,27 @@ class ImageGenerationService:
         self.providers = {}
 
         # Initialize available providers
-        openai_key = getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY")
-        if openai_key:
-            self.providers["openai"] = OpenAIProvider(openai_key)
-
-        stability_key = getattr(settings, "STABILITY_API_KEY", None) or os.getenv("STABILITY_API_KEY")
-        if stability_key:
-            self.providers["stability"] = StabilityProvider(stability_key)
-
-        flux_key = getattr(settings, "FLUX_API_KEY", None) or os.getenv("FLUX_API_KEY")
+        self._init_provider("openai", OpenAIProvider, "OPENAI_API_KEY")
+        self._init_provider("stability", StabilityProvider, "STABILITY_API_KEY")
+        flux_key = self._get_setting_or_env("FLUX_API_KEY")
         if flux_key:
-            self.providers["flux"] = FluxProvider(flux_key, getattr(settings, "FLUX_API_URL", None))
+            self.providers["flux"] = FluxProvider(flux_key, self._get_setting_or_env("FLUX_API_URL"))
 
         # Nanobana (Google Gemini Image via api.nanobananaapi.ai)
-        nanobana_key = getattr(settings, "NANOBANA_API_KEY", None) or os.getenv("NANOBANA_API_KEY")
+        nanobana_key = self._get_setting_or_env("NANOBANA_API_KEY")
         if nanobana_key:
             self.providers["nanobana"] = NanobanaProvider(nanobana_key, model="pro")
             self.providers["nanobana-pro"] = NanobanaProvider(nanobana_key, model="pro")
             logger.info("Nanobana provider initialized (Pro model)")
+
+    @staticmethod
+    def _get_setting_or_env(key: str):
+        return getattr(settings, key, None) or os.getenv(key)
+
+    def _init_provider(self, name: str, provider_cls, key_name: str) -> None:
+        key = self._get_setting_or_env(key_name)
+        if key:
+            self.providers[name] = provider_cls(key)
 
     async def generate(self, prompt: str, provider: str = "openai", size: str = "1024x1024") -> ImageResult:
         """
@@ -321,11 +324,11 @@ class ImageGenerationService:
             # Fallback to first available provider
             if self.providers:
                 provider = next(iter(self.providers))
-                logger.warning(f"Requested provider not available, using {provider}")
+                logger.warning("Requested provider not available, using fallback", provider=provider)
             else:
                 return ImageResult(success=False, error="No image generation providers configured")
 
-        logger.info(f"Generating image with {provider}: {prompt[:50]}...")
+        logger.info("Generating image", provider=provider, prompt_preview=prompt[:50])
         return await self.providers[provider].generate(prompt, size)
 
     def get_available_providers(self) -> list:

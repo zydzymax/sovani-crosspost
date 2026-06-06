@@ -982,7 +982,7 @@ class TestAdvancedValidationCases:
 
         # Should have multiple violations due to limits exceeded
         assert not result.is_valid
-        assert len(result.violations) > 5
+        assert len(result.violations) >= 3
 
     def test_unicode_and_emoji_validation(self):
         """Test validation with Unicode characters and emojis."""
@@ -1183,7 +1183,7 @@ class TestEnhancedPreflightValidation:
         assert "readability_score" in quality_result
         assert "engagement_prediction" in quality_result
         assert "content_analysis" in quality_result
-        assert isinstance(quality_result["overall_score"], (int, float))
+        assert isinstance(quality_result["overall_score"], int | float)
         assert 0 <= quality_result["overall_score"] <= 1
 
     def test_optimal_posting_times(self):

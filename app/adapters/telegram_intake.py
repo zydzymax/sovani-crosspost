@@ -11,6 +11,7 @@ This module handles:
 """
 
 import hashlib
+import math
 import mimetypes
 import os
 import tempfile
@@ -34,6 +35,8 @@ from ..workers.tasks.outbox import publish_outbox_event
 from .storage_s3 import S3StorageAdapter
 
 logger = get_logger("adapters.telegram_intake")
+MEDIA_FIELDS = ["photo", "video", "animation", "document", "audio", "voice", "video_note", "sticker"]
+CONTENT_TYPE_PRIORITY = [*MEDIA_FIELDS, "text"]
 
 
 class TelegramIntakeError(Exception):
@@ -197,11 +200,32 @@ class TelegramIntakeAdapter:
         for source in content_sources:
             if source in update_data and update_data[source]:
                 content = update_data[source]
-                logger.debug(f"Extracted content from {source}", message_id=content.get("message_id"))
+                logger.debug(
+                    "Extracted content from update source", source=source, message_id=content.get("message_id")
+                )
                 return content
 
         logger.warning("No processable content found in update")
         return None
+
+    @staticmethod
+    def _parse_frame_rate(frame_rate: str) -> float:
+        """Safely parse ffmpeg rate string like '30000/1001'."""
+        if not frame_rate:
+            return 0.0
+        if "/" not in frame_rate:
+            try:
+                return float(frame_rate)
+            except ValueError:
+                return 0.0
+        num, den = frame_rate.split("/", 1)
+        try:
+            denominator = float(den)
+            if denominator == 0:
+                return 0.0
+            return float(num) / denominator
+        except ValueError:
+            return 0.0
 
     async def _process_media_files(self, content: dict[str, Any], post_id: str) -> list[dict[str, Any]]:
         """
@@ -217,18 +241,7 @@ class TelegramIntakeAdapter:
         media_assets = []
 
         # Media fields to check in order of priority
-        media_fields = [
-            ("photo", "photo"),
-            ("video", "video"),
-            ("animation", "animation"),
-            ("document", "document"),
-            ("audio", "audio"),
-            ("voice", "voice"),
-            ("video_note", "video_note"),
-            ("sticker", "sticker"),
-        ]
-
-        for field_name, media_type in media_fields:
+        for field_name in MEDIA_FIELDS:
             if field_name in content:
                 media_data = content[field_name]
 
@@ -238,7 +251,7 @@ class TelegramIntakeAdapter:
                         media_data = max(media_data, key=lambda x: x.get("file_size", 0))
 
                     if media_data:
-                        asset = await self._download_and_process_media(media_data, media_type, post_id)
+                        asset = await self._download_and_process_media(media_data, field_name, post_id)
                         if asset:
                             media_assets.append(asset)
 
@@ -252,7 +265,7 @@ class TelegramIntakeAdapter:
                     )
                     # Continue processing other media files
 
-        logger.info(f"Processed {len(media_assets)} media assets", post_id=post_id)
+        logger.info("Processed media assets", count=len(media_assets), post_id=post_id)
         return media_assets
 
     async def _download_and_process_media(
@@ -339,7 +352,7 @@ class TelegramIntakeAdapter:
                 try:
                     os.unlink(temp_file_path)
                 except Exception as e:
-                    logger.warning(f"Failed to delete temp file {temp_file_path}: {e}")
+                    logger.warning("Failed to delete temp file", temp_file_path=temp_file_path, error=str(e))
 
         except Exception as e:
             logger.error(
@@ -381,7 +394,7 @@ class TelegramIntakeAdapter:
                     async for chunk in response.aiter_bytes(8192):
                         f.write(chunk)
 
-            logger.debug(f"Downloaded file to {temp_file_path}", file_id=file_id)
+            logger.debug("Downloaded file to temp path", file_id=file_id, temp_file_path=temp_file_path)
             return temp_file_path
 
         except httpx.HTTPError as e:
@@ -426,12 +439,12 @@ class TelegramIntakeAdapter:
                                 "height": int(video_stream.get("height", 0)),
                                 "duration": float(video_stream.get("duration", 0)),
                                 "codec": video_stream.get("codec_name"),
-                                "fps": eval(video_stream.get("r_frame_rate", "0/1")),
+                                "fps": self._parse_frame_rate(video_stream.get("r_frame_rate", "0/1")),
                             }
                         )
 
                 except Exception as e:
-                    logger.warning(f"Failed to extract video metadata with ffmpeg: {e}")
+                    logger.warning("Failed to extract video metadata with ffmpeg", error=str(e))
 
             elif media_type in ["audio", "voice"]:
                 # Extract audio metadata
@@ -452,10 +465,10 @@ class TelegramIntakeAdapter:
                         )
 
                 except Exception as e:
-                    logger.warning(f"Failed to extract audio metadata with ffmpeg: {e}")
+                    logger.warning("Failed to extract audio metadata with ffmpeg", error=str(e))
 
         except Exception as e:
-            logger.warning(f"Failed to extract metadata for {media_type}: {e}")
+            logger.warning("Failed to extract metadata", media_type=media_type, error=str(e))
 
         return metadata
 
@@ -481,14 +494,7 @@ class TelegramIntakeAdapter:
         """Calculate aspect ratio string from width and height."""
         if not width or not height:
             return None
-
-        # Calculate GCD for simplification
-        def gcd(a, b):
-            while b:
-                a, b = b, a % b
-            return a
-
-        divisor = gcd(width, height)
+        divisor = math.gcd(width, height)
         ratio_w = width // divisor
         ratio_h = height // divisor
 
@@ -507,8 +513,8 @@ class TelegramIntakeAdapter:
 
             logger.debug("Media asset saved to database", asset_id=media_asset["id"])
 
-        except Exception as e:
-            logger.error(f"Failed to save media asset to database: {e}")
+        except Exception:
+            logger.exception("Failed to save media asset to database")
             raise
         finally:
             if "db_session" in locals():
@@ -551,31 +557,14 @@ class TelegramIntakeAdapter:
 
     def _determine_content_type(self, content: dict[str, Any]) -> str:
         """Determine the type of content in the message."""
-        if "photo" in content:
-            return "photo"
-        elif "video" in content:
-            return "video"
-        elif "animation" in content:
-            return "animation"
-        elif "document" in content:
-            return "document"
-        elif "audio" in content:
-            return "audio"
-        elif "voice" in content:
-            return "voice"
-        elif "video_note" in content:
-            return "video_note"
-        elif "sticker" in content:
-            return "sticker"
-        elif "text" in content:
-            return "text"
-        else:
-            return "unknown"
+        for field_name in CONTENT_TYPE_PRIORITY:
+            if field_name in content:
+                return field_name
+        return "unknown"
 
     def _has_media(self, content: dict[str, Any]) -> bool:
         """Check if content contains media files."""
-        media_fields = ["photo", "video", "animation", "document", "audio", "voice", "video_note", "sticker"]
-        return any(field in content for field in media_fields)
+        return any(field in content for field in MEDIA_FIELDS)
 
     async def _create_posts_for_platforms(
         self,
@@ -653,8 +642,8 @@ class TelegramIntakeAdapter:
                 platforms=self.target_platforms,
             )
 
-        except Exception as e:
-            logger.error(f"Failed to create posts for platforms: {e}")
+        except Exception:
+            logger.exception("Failed to create posts for platforms")
             raise
         finally:
             if "db_session" in locals():

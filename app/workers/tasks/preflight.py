@@ -20,10 +20,51 @@ from ..celery_app import celery
 logger = get_logger("tasks.preflight")
 
 
+def _build_media_list(media_data: Any) -> list[MediaMetadata]:
+    media_list: list[MediaMetadata] = []
+    if isinstance(media_data, list):
+        for media_item in media_data:
+            if isinstance(media_item, dict):
+                media_list.append(
+                    MediaMetadata(
+                        file_path=media_item.get("file_path"),
+                        file_size=media_item.get("file_size"),
+                        width=media_item.get("width"),
+                        height=media_item.get("height"),
+                        duration=media_item.get("duration"),
+                        format=media_item.get("format"),
+                        mime_type=media_item.get("mime_type"),
+                        aspect_ratio=media_item.get("aspect_ratio"),
+                    )
+                )
+    return media_list
+
+
+def _quality_metrics(validation_results: dict[str, dict[str, Any]]) -> tuple[float, int]:
+    """Calculate aggregate quality score and optimal-time platform count."""
+    if not validation_results:
+        return 0.0, 0
+
+    quality_scores = [
+        result.get("metadata", {}).get("quality_score", 0)
+        for result in validation_results.values()
+        if isinstance(result, dict)
+    ]
+    avg_quality_score = sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
+
+    optimal_times = [
+        result.get("metadata", {}).get("optimal_posting_times", {}).get("is_optimal_time", False)
+        for result in validation_results.values()
+        if isinstance(result, dict)
+    ]
+    optimal_time_platforms = sum(1 for is_optimal in optimal_times if is_optimal)
+    return avg_quality_score, optimal_time_platforms
+
+
 @celery.task(bind=True, name="app.workers.tasks.preflight.run_preflight_checks")
 def run_preflight_checks(self, stage_data: dict[str, Any]) -> dict[str, Any]:
     """Run comprehensive preflight validation checks before publishing."""
-    task_start_time = time.time()
+    task_start_time = time.monotonic()
     post_id = stage_data["post_id"]
 
     with with_logging_context(task_id=self.request.id, post_id=post_id):
@@ -38,7 +79,7 @@ def run_preflight_checks(self, stage_data: dict[str, Any]) -> dict[str, Any]:
 
             # Validate each platform post
             for platform, post_data in platform_posts.items():
-                logger.info(f"Validating content for {platform}", post_id=post_id, platform=platform)
+                logger.info("Validating content for platform", post_id=post_id, platform=platform)
 
                 try:
                     # Extract content for validation
@@ -48,23 +89,7 @@ def run_preflight_checks(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                     links = post_data.get("links", [])
 
                     # Convert media metadata
-                    media_list = []
-                    media_data = post_data.get("media", [])
-                    if isinstance(media_data, list):
-                        for media_item in media_data:
-                            if isinstance(media_item, dict):
-                                media_list.append(
-                                    MediaMetadata(
-                                        file_path=media_item.get("file_path"),
-                                        file_size=media_item.get("file_size"),
-                                        width=media_item.get("width"),
-                                        height=media_item.get("height"),
-                                        duration=media_item.get("duration"),
-                                        format=media_item.get("format"),
-                                        mime_type=media_item.get("mime_type"),
-                                        aspect_ratio=media_item.get("aspect_ratio"),
-                                    )
-                                )
+                    media_list = _build_media_list(post_data.get("media", []))
 
                     # Create post content for validation
                     content = PostContent(
@@ -83,9 +108,7 @@ def run_preflight_checks(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                         hashtags=hashtags,
                         mentions=mentions,
                         links=links,
-                        media_metadata=[
-                            media.to_dict() if hasattr(media, "to_dict") else media.__dict__ for media in media_list
-                        ],
+                        media_metadata=[to_dict(media) for media in media_list],
                     )
 
                     # Enhanced validation checks
@@ -180,12 +203,11 @@ def run_preflight_checks(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                     )
 
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         "Failed to validate platform content",
                         post_id=post_id,
                         platform=platform,
                         error=str(e),
-                        exc_info=True,
                     )
                     all_validations_passed = False
                     validation_results[platform] = {"is_valid": False, "error": str(e), "platform": platform}
@@ -212,25 +234,10 @@ def run_preflight_checks(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                 "platforms_passed": len([r for r in validation_results.values() if r.get("is_valid", False)]),
             }
 
-            processing_time = time.time() - task_start_time
+            processing_time = time.monotonic() - task_start_time
 
             # Calculate quality metrics
-            avg_quality_score = 0
-            optimal_time_platforms = 0
-            if validation_results:
-                quality_scores = [
-                    r.get("metadata", {}).get("quality_score", 0)
-                    for r in validation_results.values()
-                    if isinstance(r, dict)
-                ]
-                avg_quality_score = sum(quality_scores) / len(quality_scores) if quality_scores else 0
-
-                optimal_times = [
-                    r.get("metadata", {}).get("optimal_posting_times", {}).get("is_optimal_time", False)
-                    for r in validation_results.values()
-                    if isinstance(r, dict)
-                ]
-                optimal_time_platforms = sum(1 for is_optimal in optimal_times if is_optimal)
+            avg_quality_score, optimal_time_platforms = _quality_metrics(validation_results)
 
             # Track enhanced metrics
             metrics.track_preflight_stage(
@@ -294,14 +301,13 @@ def run_preflight_checks(self, stage_data: dict[str, Any]) -> dict[str, Any]:
                 }
 
         except Exception as e:
-            processing_time = time.time() - task_start_time
+            processing_time = time.monotonic() - task_start_time
 
-            logger.error(
+            logger.exception(
                 "Preflight checks task failed",
                 post_id=post_id,
                 error=str(e),
                 processing_time=processing_time,
-                exc_info=True,
             )
 
             # Track failure metrics
@@ -334,3 +340,8 @@ def to_dict(obj):
         return obj.__dict__
     else:
         return obj
+
+
+def delay(*args, **kwargs):
+    """Compatibility proxy for task.delay used by legacy tests."""
+    return run_preflight_checks.delay(*args, **kwargs)

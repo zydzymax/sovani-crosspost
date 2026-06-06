@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.core.config import get_test_settings
-from app.observability.metrics import get_test_metrics
+from app.observability.metrics import get_test_metrics, track_celery_task_lifecycle
 from app.workers.tasks import captionize, enrich, finalize, ingest, preflight, publish, transcode
 from app.workers.tasks.outbox import publish_outbox_event
 
@@ -273,14 +273,14 @@ class TestTaskPipeline:
         post_id = str(uuid.uuid4())
 
         with patch("app.observability.metrics.metrics") as mock_metrics:
-            # Execute a single stage to test metrics
-            stage_data = {"post_id": post_id, "text_content": "Test"}
-
-            # Mock successful enrich task
-            with patch("app.workers.tasks.enrich.enrich_post_content") as mock_enrich:
-                mock_enrich.return_value = {"success": True, "processing_time": 1.5, "stage": "enrich"}
-
-                result = mock_enrich(stage_data)
+            # Simulate a successful stage lifecycle metric event.
+            track_celery_task_lifecycle(
+                task_name="app.workers.tasks.enrich.enrich_post_content",
+                queue="enrich",
+                execution_time=1.5,
+                success=True,
+            )
+            result = {"post_id": post_id, "processing_time": 1.5}
 
         # Verify metrics were tracked
         assert mock_metrics.track_celery_task.called

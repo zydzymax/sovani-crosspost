@@ -107,4 +107,4 @@ node_modules/
 
 # Build artifacts
 *.tar.gz
-*.zip
+*.zipscripts/backup-prod.sh.bak

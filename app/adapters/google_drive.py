@@ -102,17 +102,37 @@ class GoogleDriveAdapter:
         except ImportError:
             logger.error("google-api-python-client not installed")
             return None
-        except Exception as e:
-            logger.error(f"Failed to create Drive service: {e}")
+        except Exception:
+            logger.exception("Failed to create Drive service")
             return None
 
     def _classify_mime_type(self, mime_type: str) -> MediaType:
         """Classify MIME type as video, image, or unknown."""
         if mime_type in self.VIDEO_MIME_TYPES:
             return MediaType.VIDEO
-        elif mime_type in self.IMAGE_MIME_TYPES:
+        if mime_type in self.IMAGE_MIME_TYPES:
             return MediaType.IMAGE
         return MediaType.UNKNOWN
+
+    @staticmethod
+    def _target_dir_for_media_type(media_type: MediaType, videos_dir: str, photos_dir: str) -> str | None:
+        if media_type == MediaType.VIDEO:
+            return videos_dir
+        if media_type == MediaType.IMAGE:
+            return photos_dir
+        return None
+
+    @staticmethod
+    def _should_include_media_type(media_type: MediaType, media_types: list[str] | None) -> bool:
+        if media_type == MediaType.UNKNOWN:
+            return False
+        if not media_types:
+            return True
+        if media_type == MediaType.VIDEO:
+            return "video" in media_types
+        if media_type == MediaType.IMAGE:
+            return "image" in media_types
+        return False
 
     async def list_folder_contents(
         self, folder_id: str, credentials: dict[str, Any], media_types: list[str] = None
@@ -164,6 +184,8 @@ class GoogleDriveAdapter:
 
                 for file in response.get("files", []):
                     media_type = self._classify_mime_type(file.get("mimeType", ""))
+                    if not self._should_include_media_type(media_type, media_types):
+                        continue
 
                     cloud_file = CloudFile(
                         id=file["id"],
@@ -181,11 +203,11 @@ class GoogleDriveAdapter:
                 if not page_token:
                     break
 
-            logger.info(f"Found {len(files)} media files in folder {folder_id}")
+            logger.info("Found media files in folder", count=len(files), folder_id=folder_id)
             return files
 
-        except Exception as e:
-            logger.error(f"Failed to list folder {folder_id}: {e}")
+        except Exception:
+            logger.exception("Failed to list folder", folder_id=folder_id)
             return []
 
     async def download_file(self, file_id: str, credentials: dict[str, Any], output_path: str) -> bool:
@@ -219,13 +241,13 @@ class GoogleDriveAdapter:
                 while not done:
                     status, done = await asyncio.get_event_loop().run_in_executor(None, downloader.next_chunk)
                     if status:
-                        logger.debug(f"Download progress: {int(status.progress() * 100)}%")
+                        logger.debug("Download progress", progress_percent=int(status.progress() * 100))
 
-            logger.info(f"Downloaded file {file_id} to {output_path}")
+            logger.info("Downloaded file", file_id=file_id, output_path=output_path)
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to download file {file_id}: {e}")
+        except Exception:
+            logger.exception("Failed to download file", file_id=file_id)
             return False
 
     async def sync_folder(
@@ -265,12 +287,8 @@ class GoogleDriveAdapter:
 
         for cloud_file in files:
             try:
-                # Determine output directory
-                if cloud_file.media_type == MediaType.VIDEO:
-                    target_dir = videos_dir
-                elif cloud_file.media_type == MediaType.IMAGE:
-                    target_dir = photos_dir
-                else:
+                target_dir = self._target_dir_for_media_type(cloud_file.media_type, videos_dir, photos_dir)
+                if target_dir is None:
                     continue  # Skip unknown types
 
                 output_path = os.path.join(target_dir, cloud_file.name)
@@ -278,7 +296,7 @@ class GoogleDriveAdapter:
                 # Skip if already exists and same size
                 if os.path.exists(output_path):
                     if os.path.getsize(output_path) == cloud_file.size:
-                        logger.debug(f"Skipping {cloud_file.name} - already exists")
+                        logger.debug("Skipping existing file with matching size", file_name=cloud_file.name)
                         continue
 
                 # Download file
@@ -326,8 +344,8 @@ class GoogleDriveAdapter:
                 "permissions": folder.get("permissions", []),
             }
 
-        except Exception as e:
-            logger.error(f"Failed to get folder info: {e}")
+        except Exception:
+            logger.exception("Failed to get folder info")
             return None
 
     @staticmethod
@@ -401,11 +419,11 @@ async def exchange_google_code(code: str, redirect_uri: str) -> dict[str, Any] |
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"Token exchange failed: {response.text}")
+                logger.error("Token exchange failed", response_text=response.text)
                 return None
 
-    except Exception as e:
-        logger.error(f"Token exchange error: {e}")
+    except Exception:
+        logger.exception("Token exchange error")
         return None
 
 
@@ -431,11 +449,11 @@ async def refresh_google_token(refresh_token: str) -> dict[str, Any] | None:
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"Token refresh failed: {response.text}")
+                logger.error("Token refresh failed", response_text=response.text)
                 return None
 
-    except Exception as e:
-        logger.error(f"Token refresh error: {e}")
+    except Exception:
+        logger.exception("Token refresh error")
         return None
 
 

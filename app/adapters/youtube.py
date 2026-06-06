@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -466,7 +467,7 @@ class YouTubeAdapter:
                     # Upload in progress
                     uploaded = chunk_end
                     progress = int(uploaded / file_size * 100)
-                    logger.debug(f"Upload progress: {progress}%")
+                    logger.debug("Upload progress", progress_percent=progress)
 
                 elif response.status_code in (200, 201):
                     # Upload complete
@@ -486,9 +487,10 @@ class YouTubeAdapter:
 
     async def _set_thumbnail(self, video_id: str, thumbnail_path: str):
         """Set custom thumbnail for video."""
-        logger.info(f"Setting thumbnail for video {video_id}")
+        logger.info("Setting thumbnail for video", video_id=video_id)
 
         headers = self._get_auth_headers()
+        headers["Content-Type"] = "image/png"
 
         with open(thumbnail_path, "rb") as f:
             thumbnail_data = f.read()
@@ -498,15 +500,14 @@ class YouTubeAdapter:
             params={"videoId": video_id},
             headers=headers,
             content=thumbnail_data,
-            headers_update={"Content-Type": "image/png"},
         )
 
         if response.status_code not in (200, 201):
-            logger.warning(f"Failed to set thumbnail: {response.text}")
+            logger.warning("Failed to set thumbnail", video_id=video_id, response_text=response.text)
 
     async def _add_to_playlist(self, video_id: str, playlist_id: str):
         """Add video to a playlist."""
-        logger.info(f"Adding video {video_id} to playlist {playlist_id}")
+        logger.info("Adding video to playlist", video_id=video_id, playlist_id=playlist_id)
 
         headers = self._get_auth_headers()
         headers["Content-Type"] = "application/json"
@@ -518,7 +519,12 @@ class YouTubeAdapter:
         )
 
         if response.status_code not in (200, 201):
-            logger.warning(f"Failed to add to playlist: {response.text}")
+            logger.warning(
+                "Failed to add video to playlist",
+                video_id=video_id,
+                playlist_id=playlist_id,
+                response_text=response.text,
+            )
 
     async def get_channel_info(self) -> YouTubeChannel | None:
         """Get authenticated channel information."""
@@ -531,7 +537,7 @@ class YouTubeAdapter:
         )
 
         if response.status_code != 200:
-            logger.error(f"Failed to get channel info: {response.text}")
+            logger.error("Failed to get channel info", response_text=response.text, status_code=response.status_code)
             return None
 
         data = response.json()
@@ -589,10 +595,10 @@ class YouTubeAdapter:
         )
 
         if response.status_code == 204:
-            logger.info(f"Video {video_id} deleted successfully")
+            logger.info("Video deleted successfully", video_id=video_id)
             return True
 
-        logger.error(f"Failed to delete video: {response.text}")
+        logger.error("Failed to delete video", video_id=video_id, response_text=response.text)
         return False
 
     @staticmethod
@@ -607,8 +613,7 @@ class YouTubeAdapter:
             "prompt": "consent",
             "state": state,
         }
-        query = "&".join(f"{k}={v}" for k, v in params.items())
-        return f"{YOUTUBE_AUTH_URL}?{query}"
+        return f"{YOUTUBE_AUTH_URL}?{urlencode(params)}"
 
     async def exchange_code_for_tokens(
         self, code: str, client_id: str, client_secret: str, redirect_uri: str

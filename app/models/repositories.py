@@ -34,6 +34,15 @@ from .entities import (
 T = TypeVar("T", bound=Base)
 
 
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _ensure_mapping(value: dict[str, Any] | None) -> dict[str, Any]:
+    """Return mutable dict for JSON fields."""
+    return value if value is not None else {}
+
+
 class BaseRepository(Generic[T]):
     """Base repository with common CRUD operations."""
 
@@ -64,7 +73,8 @@ class BaseRepository(Generic[T]):
             for key, value in kwargs.items():
                 if hasattr(entity, key):
                     setattr(entity, key, value)
-            entity.updated_at = datetime.utcnow()
+            if hasattr(entity, "updated_at") and "updated_at" not in kwargs:
+                entity.updated_at = _utcnow()
             self.session.flush()
         return entity
 
@@ -134,7 +144,7 @@ class PostRepository(BaseRepository[Post]):
 
     def update_status(self, post_id: uuid.UUID, status: PostStatus, error_message: str = None) -> Post | None:
         """Update post status."""
-        return self.update(post_id, status=status, error_message=error_message, updated_at=datetime.utcnow())
+        return self.update(post_id, status=status, error_message=error_message, updated_at=_utcnow())
 
     def update_caption(
         self,
@@ -153,7 +163,7 @@ class PostRepository(BaseRepository[Post]):
 
     def mark_published(self, post_id: uuid.UUID) -> Post | None:
         """Mark post as published."""
-        return self.update(post_id, status=PostStatus.PUBLISHED, published_at=datetime.utcnow())
+        return self.update(post_id, status=PostStatus.PUBLISHED, published_at=_utcnow())
 
     def get_with_media(self, post_id: uuid.UUID) -> Post | None:
         """Get post with media assets loaded."""
@@ -161,7 +171,7 @@ class PostRepository(BaseRepository[Post]):
 
     def get_recent_posts(self, hours: int = 24, limit: int = 50) -> list[Post]:
         """Get recent posts."""
-        since = datetime.utcnow() - timedelta(hours=hours)
+        since = _utcnow() - timedelta(hours=hours)
         return (
             self.session.query(Post)
             .filter(Post.created_at >= since)
@@ -238,8 +248,7 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         """Update transcoded path for a platform."""
         media = self.get_by_id(media_id)
         if media:
-            if media.transcoded_paths is None:
-                media.transcoded_paths = {}
+            media.transcoded_paths = _ensure_mapping(media.transcoded_paths)
             media.transcoded_paths[platform.value] = transcoded_path
             self.session.flush()
         return media
@@ -248,8 +257,7 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         """Update transcode status for a platform."""
         media = self.get_by_id(media_id)
         if media:
-            if media.transcode_status is None:
-                media.transcode_status = {}
+            media.transcode_status = _ensure_mapping(media.transcode_status)
             media.transcode_status[platform.value] = status
             self.session.flush()
         return media
@@ -322,12 +330,12 @@ class SocialAccountRepository(BaseRepository[SocialAccount]):
 
     def get_expiring_tokens(self, hours: int = 24) -> list[SocialAccount]:
         """Get accounts with tokens expiring soon."""
-        expires_before = datetime.utcnow() + timedelta(hours=hours)
+        expires_before = _utcnow() + timedelta(hours=hours)
         return (
             self.session.query(SocialAccount)
             .filter(
                 SocialAccount.is_active,
-                SocialAccount.token_expires_at is not None,
+                SocialAccount.token_expires_at.is_not(None),
                 SocialAccount.token_expires_at <= expires_before,
             )
             .all()
@@ -370,7 +378,7 @@ class PublishTaskRepository(BaseRepository[PublishTask]):
 
     def start_task(self, task_id: uuid.UUID, celery_task_id: str = None) -> PublishTask | None:
         """Mark task as started."""
-        kwargs = {"status": TaskStatus.RUNNING, "started_at": datetime.utcnow()}
+        kwargs = {"status": TaskStatus.RUNNING, "started_at": _utcnow()}
         if celery_task_id:
             kwargs["celery_task_id"] = celery_task_id
         return self.update(task_id, **kwargs)
@@ -382,7 +390,7 @@ class PublishTaskRepository(BaseRepository[PublishTask]):
         return self.update(
             task_id,
             status=TaskStatus.COMPLETED,
-            completed_at=datetime.utcnow(),
+            completed_at=_utcnow(),
             output_data=output_data,
             processing_time=processing_time,
         )
@@ -394,7 +402,7 @@ class PublishTaskRepository(BaseRepository[PublishTask]):
         task = self.get_by_id(task_id)
         if task:
             task.status = TaskStatus.FAILED
-            task.completed_at = datetime.utcnow()
+            task.completed_at = _utcnow()
             task.error_message = error_message
             task.error_traceback = error_traceback
             task.retry_count += 1
@@ -440,7 +448,7 @@ class PublishResultRepository(BaseRepository[PublishResult]):
             error_code=error_code,
             error_message=error_message,
             platform_response=platform_response,
-            published_at=datetime.utcnow() if success else None,
+            published_at=_utcnow() if success else None,
         )
 
     def get_by_post(self, post_id: uuid.UUID) -> list[PublishResult]:
@@ -457,15 +465,18 @@ class PublishResultRepository(BaseRepository[PublishResult]):
 
     def get_recent_failures(self, platform: Platform = None, hours: int = 24) -> list[PublishResult]:
         """Get recent failures."""
-        since = datetime.utcnow() - timedelta(hours=hours)
-        query = self.session.query(PublishResult).filter(not PublishResult.success, PublishResult.created_at >= since)
+        since = _utcnow() - timedelta(hours=hours)
+        query = self.session.query(PublishResult).filter(
+            PublishResult.success.is_(False),
+            PublishResult.created_at >= since,
+        )
         if platform:
             query = query.filter(PublishResult.platform == platform)
         return query.order_by(PublishResult.created_at.desc()).all()
 
     def get_success_rate(self, platform: Platform, days: int = 7) -> float:
         """Calculate success rate for platform."""
-        since = datetime.utcnow() - timedelta(days=days)
+        since = _utcnow() - timedelta(days=days)
         total = (
             self.session.query(func.count(PublishResult.id))
             .filter(PublishResult.platform == platform, PublishResult.created_at >= since)
@@ -514,7 +525,7 @@ class ScheduleRepository(BaseRepository[Schedule]):
     def get_due_schedules(self, now: datetime = None) -> list[Schedule]:
         """Get schedules due to run."""
         if now is None:
-            now = datetime.utcnow()
+            now = _utcnow()
         return (
             self.session.query(Schedule)
             .filter(Schedule.is_active, or_(Schedule.next_run_at is None, Schedule.next_run_at <= now))
@@ -523,7 +534,7 @@ class ScheduleRepository(BaseRepository[Schedule]):
 
     def update_last_run(self, schedule_id: uuid.UUID, next_run_at: datetime = None) -> Schedule | None:
         """Update last run time."""
-        return self.update(schedule_id, last_run_at=datetime.utcnow(), next_run_at=next_run_at)
+        return self.update(schedule_id, last_run_at=_utcnow(), next_run_at=next_run_at)
 
 
 class ContentQueueRepository(BaseRepository[ContentQueue]):
@@ -551,7 +562,7 @@ class ContentQueueRepository(BaseRepository[ContentQueue]):
 
     def get_due_items(self, platform: Platform = None, limit: int = 10) -> list[ContentQueue]:
         """Get items due for publishing."""
-        now = datetime.utcnow()
+        now = _utcnow()
         query = self.session.query(ContentQueue).filter(
             ContentQueue.status == "pending", ContentQueue.scheduled_for <= now
         )
@@ -565,13 +576,13 @@ class ContentQueueRepository(BaseRepository[ContentQueue]):
         if item:
             item.status = "processing"
             item.attempts += 1
-            item.last_attempt_at = datetime.utcnow()
+            item.last_attempt_at = _utcnow()
             self.session.flush()
         return item
 
     def mark_published(self, queue_id: uuid.UUID) -> ContentQueue | None:
         """Mark item as published."""
-        return self.update(queue_id, status="published", published_at=datetime.utcnow())
+        return self.update(queue_id, status="published", published_at=_utcnow())
 
     def mark_failed(self, queue_id: uuid.UUID, error_message: str) -> ContentQueue | None:
         """Mark item as failed."""

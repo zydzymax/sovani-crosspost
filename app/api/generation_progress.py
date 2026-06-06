@@ -16,6 +16,29 @@ from .deps import get_current_user, get_db_async_session
 
 router = APIRouter(prefix="/progress", tags=["generation-progress"])
 
+VALID_STEP_STATUSES = {"pending", "in_progress", "completed", "failed", "skipped"}
+STEP_WEIGHTS = {
+    "caption_generated": 15,
+    "hashtags_generated": 5,
+    "image_prompt_generated": 10,
+    "image_generated": 30,
+    "video_generated": 30,
+    "audio_generated": 10,
+    "post_scheduled": 20,
+    "post_published": 10,
+    "content_reviewed": 5,
+    "compliance_checked": 5,
+}
+COMMON_INITIAL_STEPS = ("caption_generated", "hashtags_generated")
+MEDIA_STEPS = {
+    "IMAGE": ("image_prompt_generated", "image_generated"),
+    "CAROUSEL": ("image_prompt_generated", "image_generated"),
+    "VIDEO": ("image_prompt_generated", "image_generated", "video_generated"),
+    "AUDIO": ("audio_generated",),
+    "VOICE": ("audio_generated",),
+}
+FINAL_INITIAL_STEPS = ("post_scheduled", "post_published", "content_reviewed")
+
 
 # === Response Models ===
 
@@ -75,6 +98,53 @@ class InitProgressRequest(BaseModel):
     content_plan_id: str
 
 
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _parse_uuid_or_400(value: str, field_name: str) -> uuid.UUID:
+    """Parse UUID string or raise HTTP 400 with consistent message."""
+    try:
+        return uuid.UUID(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid {field_name}") from exc
+
+
+async def _load_user_plan_or_raise(db: AsyncSession, plan_id: uuid.UUID, user_id: uuid.UUID) -> ContentPlan:
+    """Load content plan and enforce ownership."""
+    plan = await db.get(ContentPlan, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Content plan not found")
+    if plan.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return plan
+
+
+async def _load_progress_for_post_or_raise(
+    db: AsyncSession, plan_id: uuid.UUID, post_index: int
+) -> PostGenerationProgress:
+    """Load progress entry for specific post or raise 404."""
+    result = await db.execute(
+        select(PostGenerationProgress)
+        .where(PostGenerationProgress.content_plan_id == plan_id)
+        .where(PostGenerationProgress.post_index == post_index)
+    )
+    progress = result.scalars().first()
+    if not progress:
+        raise HTTPException(status_code=404, detail="Post progress not found")
+    return progress
+
+
+def _initial_steps_for_media_type(media_type: str) -> dict[str, dict[str, str]]:
+    """Build initial progress step map for a post media type."""
+    steps = {step: {"status": "pending"} for step in COMMON_INITIAL_STEPS}
+    for step in MEDIA_STEPS.get(media_type, ()):
+        steps[step] = {"status": "pending"}
+    for step in FINAL_INITIAL_STEPS:
+        steps[step] = {"status": "pending"}
+    return steps
+
+
 # === Endpoints ===
 
 
@@ -85,18 +155,8 @@ async def initialize_progress(
     current_user: User = Depends(get_current_user),
 ):
     """Initialize progress tracking for all posts in a content plan."""
-    try:
-        plan_id = uuid.UUID(request.content_plan_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid content_plan_id")
-
-    # Get content plan
-    plan = await db.get(ContentPlan, plan_id)
-    if not plan:
-        raise HTTPException(status_code=404, detail="Content plan not found")
-
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    plan_id = _parse_uuid_or_400(request.content_plan_id, "content_plan_id")
+    plan = await _load_user_plan_or_raise(db, plan_id, current_user.id)
 
     # Check if progress already initialized
     result = await db.execute(
@@ -114,28 +174,7 @@ async def initialize_progress(
     for idx, post in enumerate(posts):
         # Determine required steps based on media_type
         media_type = post.get("media_type", "IMAGE").upper()
-
-        initial_steps = {
-            "caption_generated": {"status": "pending"},
-            "hashtags_generated": {"status": "pending"},
-        }
-
-        if media_type in ["IMAGE", "CAROUSEL"]:
-            initial_steps["image_prompt_generated"] = {"status": "pending"}
-            initial_steps["image_generated"] = {"status": "pending"}
-        elif media_type == "VIDEO":
-            initial_steps["image_prompt_generated"] = {"status": "pending"}
-            initial_steps["image_generated"] = {"status": "pending"}
-            initial_steps["video_generated"] = {"status": "pending"}
-        elif media_type == "AUDIO" or media_type == "VOICE":
-            initial_steps["audio_generated"] = {"status": "pending"}
-
-        # Add publishing steps
-        initial_steps["post_scheduled"] = {"status": "pending"}
-        initial_steps["post_published"] = {"status": "pending"}
-
-        # Add quality checks if enabled
-        initial_steps["content_reviewed"] = {"status": "pending"}
+        initial_steps = _initial_steps_for_media_type(media_type)
 
         progress = PostGenerationProgress(
             content_plan_id=plan_id,
@@ -163,17 +202,8 @@ async def get_plan_progress(
     plan_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Get progress for all posts in a content plan."""
-    try:
-        pid = uuid.UUID(plan_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid plan_id")
-
-    # Check access
-    plan = await db.get(ContentPlan, pid)
-    if not plan:
-        raise HTTPException(status_code=404, detail="Content plan not found")
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    pid = _parse_uuid_or_400(plan_id, "plan_id")
+    await _load_user_plan_or_raise(db, pid, current_user.id)
 
     # Get progress entries
     result = await db.execute(
@@ -197,28 +227,9 @@ async def get_post_progress(
     current_user: User = Depends(get_current_user),
 ):
     """Get progress for a specific post."""
-    try:
-        pid = uuid.UUID(plan_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid plan_id")
-
-    # Check access
-    plan = await db.get(ContentPlan, pid)
-    if not plan:
-        raise HTTPException(status_code=404, detail="Content plan not found")
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    # Get specific post progress
-    result = await db.execute(
-        select(PostGenerationProgress)
-        .where(PostGenerationProgress.content_plan_id == pid)
-        .where(PostGenerationProgress.post_index == post_index)
-    )
-    progress = result.scalars().first()
-
-    if not progress:
-        raise HTTPException(status_code=404, detail="Post progress not found")
+    pid = _parse_uuid_or_400(plan_id, "plan_id")
+    await _load_user_plan_or_raise(db, pid, current_user.id)
+    progress = await _load_progress_for_post_or_raise(db, pid, post_index)
 
     return _to_post_progress(progress)
 
@@ -232,44 +243,26 @@ async def update_step(
     current_user: User = Depends(get_current_user),
 ):
     """Update a generation step status for a post."""
-    try:
-        pid = uuid.UUID(plan_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid plan_id")
-
-    # Check access
-    plan = await db.get(ContentPlan, pid)
-    if not plan:
-        raise HTTPException(status_code=404, detail="Content plan not found")
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    pid = _parse_uuid_or_400(plan_id, "plan_id")
+    await _load_user_plan_or_raise(db, pid, current_user.id)
 
     # Validate status
-    valid_statuses = ["pending", "in_progress", "completed", "failed", "skipped"]
-    if request.status not in valid_statuses:
-        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+    if request.status not in VALID_STEP_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {sorted(VALID_STEP_STATUSES)}")
 
-    # Get progress entry
-    result = await db.execute(
-        select(PostGenerationProgress)
-        .where(PostGenerationProgress.content_plan_id == pid)
-        .where(PostGenerationProgress.post_index == post_index)
-    )
-    progress = result.scalars().first()
-
-    if not progress:
-        raise HTTPException(status_code=404, detail="Post progress not found")
+    progress = await _load_progress_for_post_or_raise(db, pid, post_index)
 
     # Update step
     steps = dict(progress.steps) if progress.steps else {}
     step_data = steps.get(request.step, {})
     step_data["status"] = request.status
-    step_data["updated_at"] = datetime.utcnow().isoformat()
+    now_iso = _utcnow().isoformat()
+    step_data["updated_at"] = now_iso
 
     if request.status == "in_progress" and "started_at" not in step_data:
-        step_data["started_at"] = datetime.utcnow().isoformat()
+        step_data["started_at"] = now_iso
     elif request.status == "completed":
-        step_data["completed_at"] = datetime.utcnow().isoformat()
+        step_data["completed_at"] = now_iso
         if request.result:
             step_data["result"] = request.result
     elif request.status == "failed" and request.error:
@@ -282,7 +275,7 @@ async def update_step(
 
     steps[request.step] = step_data
     progress.steps = steps
-    progress.updated_at = datetime.utcnow()
+    progress.updated_at = _utcnow()
 
     # Recalculate progress
     _recalculate_progress(progress)
@@ -298,17 +291,8 @@ async def reset_progress(
     plan_id: str, db: AsyncSession = Depends(get_db_async_session), current_user: User = Depends(get_current_user)
 ):
     """Reset progress for a content plan (delete and reinitialize)."""
-    try:
-        pid = uuid.UUID(plan_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid plan_id")
-
-    # Check access
-    plan = await db.get(ContentPlan, pid)
-    if not plan:
-        raise HTTPException(status_code=404, detail="Content plan not found")
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    pid = _parse_uuid_or_400(plan_id, "plan_id")
+    await _load_user_plan_or_raise(db, pid, current_user.id)
 
     # Delete existing progress
     result = await db.execute(select(PostGenerationProgress).where(PostGenerationProgress.content_plan_id == pid))
@@ -380,28 +364,14 @@ def _recalculate_progress(progress: PostGenerationProgress):
         progress.progress_percent = 0
         return
 
-    # Step weights
-    weights = {
-        "caption_generated": 15,
-        "hashtags_generated": 5,
-        "image_prompt_generated": 10,
-        "image_generated": 30,
-        "video_generated": 30,
-        "audio_generated": 10,
-        "post_scheduled": 20,
-        "post_published": 10,
-        "content_reviewed": 5,
-        "compliance_checked": 5,
-    }
-
     total_weight = 0
     completed_weight = 0
 
     for step, data in progress.steps.items():
-        weight = weights.get(step, 10)
+        weight = STEP_WEIGHTS.get(step, 10)
         total_weight += weight
         status = data.get("status", "pending")
-        if status == "completed" or status == "skipped":
+        if status in {"completed", "skipped"}:
             completed_weight += weight
         elif status == "in_progress":
             completed_weight += weight * 0.5
@@ -410,9 +380,9 @@ def _recalculate_progress(progress: PostGenerationProgress):
 
     # Update overall status
     statuses = [d.get("status") for d in progress.steps.values()]
-    if all(s in ["completed", "skipped"] for s in statuses):
+    if all(s in {"completed", "skipped"} for s in statuses):
         progress.overall_status = GenerationStepStatus.COMPLETED
-        progress.completed_at = datetime.utcnow()
+        progress.completed_at = _utcnow()
     elif any(s == "failed" for s in statuses):
         progress.overall_status = GenerationStepStatus.FAILED
     elif any(s == "in_progress" for s in statuses):

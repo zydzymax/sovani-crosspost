@@ -1,16 +1,13 @@
-"""Midjourney image generation service for Crosspost.
-
-Uses unofficial API via goapi.ai or similar providers.
+"""
+Midjourney image generation via GoAPI.ai proxy.
+Docs: https://www.goapi.ai/docs/midjourney-api
 """
 
 import asyncio
-import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
 from ..core.logging import get_logger
@@ -18,339 +15,168 @@ from ..core.logging import get_logger
 logger = get_logger("services.image_gen_midjourney")
 
 
-class MidjourneyError(Exception):
-    """Base exception for Midjourney API errors."""
-
-    pass
-
-
-class MidjourneyRateLimitError(MidjourneyError):
-    """Rate limit exceeded."""
-
-    pass
-
-
-class MidjourneyGenerationError(MidjourneyError):
-    """Image generation failed."""
-
-    pass
-
-
-class TaskStatus(str, Enum):
-    """Midjourney task status."""
-
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+class MidjourneyMode(str, Enum):
+    FAST = "fast"
+    RELAX = "relax"
+    TURBO = "turbo"
 
 
 @dataclass
 class MidjourneyResult:
-    """Result of Midjourney image generation."""
-
     success: bool
     image_url: str | None = None
-    image_urls: list = None  # For grid of 4 images
+    image_urls: list[str] | None = None  # All 4 variations
     task_id: str | None = None
     error: str | None = None
-    cost_estimate: float = 0.08  # ~$0.08 per generation
-
-    def __post_init__(self):
-        if self.image_urls is None:
-            self.image_urls = []
+    cost_estimate: float = 0.0
 
 
-class MidjourneyService:
-    """Midjourney image generation service using unofficial API."""
+class MidjourneyProvider:
+    """Midjourney via GoAPI.ai"""
 
-    # API endpoint (using goapi.ai as example, can be changed)
-    API_BASE = "https://api.goapi.ai/mj/v2"
+    BASE_URL = "https://api.goapi.ai/mj/v2"
 
-    # Cost per image generation (for pricing calculations)
-    COST_PER_IMAGE = 0.08
+    def __init__(self, api_key: str | None = None):
+        self.api_key = api_key or settings.GOAPI_KEY
+        if not self.api_key:
+            raise ValueError("GOAPI_KEY is required for Midjourney")
 
-    def __init__(self, api_key: str = None, api_url: str = None):
-        """Initialize Midjourney service."""
-        self.api_key = api_key or self._get_api_key()
-        self.api_base = api_url or self._get_api_url()
-
-        self.http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(120.0),
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+        self.client = httpx.AsyncClient(
+            timeout=180.0, headers={"X-API-Key": self.api_key, "Content-Type": "application/json"}
         )
 
-        logger.info("Midjourney service initialized")
-
-    def _get_api_key(self) -> str:
-        """Get API key from settings or environment."""
-        if hasattr(settings, "midjourney") and hasattr(settings.midjourney, "api_key"):
-            key = settings.midjourney.api_key
-            if hasattr(key, "get_secret_value"):
-                return key.get_secret_value()
-            return str(key)
-
-        import os
-
-        key = os.getenv("MIDJOURNEY_API_KEY")
-        if key:
-            return key
-
-        raise MidjourneyError("Midjourney API key not configured.")
-
-    def _get_api_url(self) -> str:
-        """Get API URL from settings or environment."""
-        if hasattr(settings, "midjourney") and hasattr(settings.midjourney, "api_url"):
-            return str(settings.midjourney.api_url)
-
-        import os
-
-        return os.getenv("MIDJOURNEY_API_URL", self.API_BASE)
-
-    async def generate_image(
+    async def imagine(
         self,
         prompt: str,
         aspect_ratio: str = "1:1",
-        quality: str = "standard",
-        style: str = None,
-        negative_prompt: str = None,
-        seed: int = None,
+        mode: MidjourneyMode = MidjourneyMode.FAST,
+        webhook_url: str | None = None,
     ) -> MidjourneyResult:
         """
-        Generate image using Midjourney.
+        Generate image with Midjourney.
 
         Args:
-            prompt: Text description for image generation
-            aspect_ratio: Image aspect ratio (1:1, 16:9, 9:16, 4:3, 3:4)
-            quality: Generation quality (standard, hd)
-            style: Style preset (raw, cute, scenic, etc.)
-            negative_prompt: What to avoid in the image
-            seed: Random seed for reproducibility
-
-        Returns:
-            MidjourneyResult with image URLs
+            prompt: Image description
+            aspect_ratio: "1:1", "16:9", "9:16", "4:3", etc.
+            mode: fast (~30s), relax (~2min), turbo (~15s)
+            webhook_url: Optional webhook for async notification
         """
-        start_time = time.time()
-
-        logger.info(
-            "Starting Midjourney generation", prompt_length=len(prompt), aspect_ratio=aspect_ratio, quality=quality
-        )
-
         try:
-            # Build the full prompt with parameters
-            full_prompt = self._build_prompt(prompt, aspect_ratio, quality, style, negative_prompt, seed)
+            payload = {
+                "prompt": prompt,
+                "aspect_ratio": aspect_ratio,
+                "process_mode": mode.value,
+            }
 
-            # Submit generation task
-            task_id = await self._submit_task(full_prompt)
+            if webhook_url:
+                payload["webhook_url"] = webhook_url
+                payload["webhook_type"] = "result"
 
-            # Poll for completion
-            result = await self._poll_for_result(task_id)
+            logger.info("Starting Midjourney generation", prompt_preview=prompt[:50])
 
-            processing_time = time.time() - start_time
+            resp = await self.client.post(f"{self.BASE_URL}/imagine", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
 
-            logger.info(
-                "Midjourney generation completed",
-                task_id=task_id,
-                processing_time=processing_time,
-                image_count=len(result.image_urls) if result.image_urls else 0,
-            )
+            task_id = data.get("task_id")
+            if not task_id:
+                return MidjourneyResult(success=False, error=f"No task_id in response: {data}")
 
+            logger.info("Midjourney task created", task_id=task_id)
+
+            # Poll for result
+            result = await self._wait_for_result(task_id)
             return result
 
+        except httpx.HTTPStatusError as e:
+            error_msg = f"GoAPI HTTP error: {e.response.status_code} - {e.response.text}"
+            logger.error(error_msg)
+            return MidjourneyResult(success=False, error=error_msg)
         except Exception as e:
-            logger.error(f"Midjourney generation failed: {e}", exc_info=True)
+            logger.error("Midjourney generation failed", error=str(e))
             return MidjourneyResult(success=False, error=str(e))
 
-    def _build_prompt(
-        self, prompt: str, aspect_ratio: str, quality: str, style: str, negative_prompt: str, seed: int
-    ) -> str:
-        """Build full Midjourney prompt with parameters."""
-        parts = [prompt]
-
-        # Add aspect ratio
-        if aspect_ratio and aspect_ratio != "1:1":
-            parts.append(f"--ar {aspect_ratio}")
-
-        # Add quality (v6 default is standard)
-        if quality == "hd":
-            parts.append("--q 2")
-
-        # Add style
-        if style:
-            parts.append(f"--style {style}")
-
-        # Add negative prompt
-        if negative_prompt:
-            parts.append(f"--no {negative_prompt}")
-
-        # Add seed
-        if seed is not None:
-            parts.append(f"--seed {seed}")
-
-        # Always use v6
-        parts.append("--v 6")
-
-        return " ".join(parts)
-
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, MidjourneyRateLimitError)),
-    )
-    async def _submit_task(self, prompt: str) -> str:
-        """Submit image generation task."""
-        response = await self.http_client.post(
-            f"{self.api_base}/imagine", json={"prompt": prompt, "process_mode": "fast"}  # or "relax"
-        )
-
-        if response.status_code == 429:
-            raise MidjourneyRateLimitError("Rate limit exceeded")
-
-        if response.status_code != 200:
-            error_text = response.text
-            raise MidjourneyError(f"Failed to submit task: {response.status_code} - {error_text}")
-
-        data = response.json()
-        task_id = data.get("task_id")
-
-        if not task_id:
-            raise MidjourneyError(f"No task_id in response: {data}")
-
-        logger.info(f"Task submitted: {task_id}")
-        return task_id
-
-    async def _poll_for_result(self, task_id: str, max_wait: int = 300) -> MidjourneyResult:
+    async def _wait_for_result(self, task_id: str, max_attempts: int = 60, poll_interval: int = 5) -> MidjourneyResult:
         """Poll for task completion."""
-        start_time = time.time()
-        poll_interval = 5  # seconds
-
-        while time.time() - start_time < max_wait:
-            status = await self._get_task_status(task_id)
-
-            if status.get("status") == "completed":
-                return self._parse_completed_task(status)
-
-            if status.get("status") == "failed":
-                error_msg = status.get("error", "Unknown error")
-                return MidjourneyResult(success=False, task_id=task_id, error=error_msg)
-
-            # Wait before next poll
+        for attempt in range(max_attempts):
             await asyncio.sleep(poll_interval)
 
-        # Timeout
-        return MidjourneyResult(success=False, task_id=task_id, error=f"Generation timed out after {max_wait} seconds")
+            try:
+                resp = await self.client.post(f"{self.BASE_URL}/fetch", json={"task_id": task_id})
+                resp.raise_for_status()
+                data = resp.json()
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=5),
-        retry=retry_if_exception_type(httpx.RequestError),
-    )
-    async def _get_task_status(self, task_id: str) -> dict[str, Any]:
-        """Get task status from API."""
-        response = await self.http_client.get(f"{self.api_base}/task/{task_id}")
+                status = data.get("status")
+                logger.debug("Midjourney task status", task_id=task_id, status=status, attempt=attempt + 1)
 
-        if response.status_code != 200:
-            raise MidjourneyError(f"Failed to get task status: {response.status_code}")
+                if status == "completed":
+                    image_url = data.get("task_result", {}).get("image_url")
+                    image_urls = data.get("task_result", {}).get("image_urls", [])
 
-        return response.json()
+                    return MidjourneyResult(
+                        success=True,
+                        image_url=image_url,
+                        image_urls=image_urls,
+                        task_id=task_id,
+                        cost_estimate=self._estimate_cost(data),
+                    )
 
-    def _parse_completed_task(self, status: dict[str, Any]) -> MidjourneyResult:
-        """Parse completed task response."""
-        # Get image URLs from response
-        # Structure may vary by API provider
-        image_url = status.get("image_url")
-        image_urls = status.get("image_urls", [])
+                elif status == "failed":
+                    error = data.get("task_result", {}).get("error_message", "Unknown error")
+                    return MidjourneyResult(success=False, error=error, task_id=task_id)
 
-        if image_url and not image_urls:
-            image_urls = [image_url]
+                elif status in ["pending", "processing"]:
+                    continue
+                else:
+                    logger.warning("Unknown Midjourney task status", task_id=task_id, status=status)
 
-        if not image_urls:
-            # Try alternative response structures
-            result = status.get("result", {})
-            if isinstance(result, dict):
-                image_url = result.get("url") or result.get("image_url")
-                if image_url:
-                    image_urls = [image_url]
+            except Exception as e:
+                logger.warning("Midjourney poll error", task_id=task_id, attempt=attempt + 1, error=str(e))
+                continue
 
-        return MidjourneyResult(
-            success=len(image_urls) > 0,
-            image_url=image_urls[0] if image_urls else None,
-            image_urls=image_urls,
-            task_id=status.get("task_id"),
-            cost_estimate=self.COST_PER_IMAGE,
-        )
+        return MidjourneyResult(success=False, error="Timeout waiting for Midjourney result", task_id=task_id)
 
-    async def upscale_image(self, task_id: str, index: int = 1) -> MidjourneyResult:
-        """
-        Upscale a specific image from the grid.
+    async def upscale(self, task_id: str, index: int) -> MidjourneyResult:  # 1-4
+        """Upscale one of the 4 generated images."""
+        return await self._run_action("upscale", task_id, index)
 
-        Args:
-            task_id: Original task ID
-            index: Image index (1-4)
+    async def variation(self, task_id: str, index: int) -> MidjourneyResult:  # 1-4
+        """Create variations of one image."""
+        return await self._run_action("variation", task_id, index)
 
-        Returns:
-            MidjourneyResult with upscaled image URL
-        """
+    async def _run_action(self, action: str, task_id: str, index: int) -> MidjourneyResult:
         try:
-            response = await self.http_client.post(
-                f"{self.api_base}/upscale", json={"task_id": task_id, "index": index}
+            resp = await self.client.post(
+                f"{self.BASE_URL}/{action}", json={"origin_task_id": task_id, "index": str(index)}
             )
+            resp.raise_for_status()
+            data = resp.json()
 
-            if response.status_code != 200:
-                raise MidjourneyError(f"Upscale failed: {response.status_code}")
-
-            data = response.json()
-            upscale_task_id = data.get("task_id")
-
-            # Poll for upscale completion
-            return await self._poll_for_result(upscale_task_id)
+            new_task_id = data.get("task_id")
+            if not new_task_id:
+                return MidjourneyResult(success=False, error=f"No task_id returned for {action}")
+            return await self._wait_for_result(new_task_id)
 
         except Exception as e:
-            logger.error(f"Upscale failed: {e}", exc_info=True)
+            logger.error(f"{action.capitalize()} failed", task_id=task_id, index=index, error=str(e))
             return MidjourneyResult(success=False, error=str(e))
 
-    async def vary_image(self, task_id: str, index: int = 1, variation_type: str = "subtle") -> MidjourneyResult:
-        """
-        Create variation of a specific image.
-
-        Args:
-            task_id: Original task ID
-            index: Image index (1-4)
-            variation_type: Type of variation (subtle, strong)
-
-        Returns:
-            MidjourneyResult with variation image URLs
-        """
-        try:
-            response = await self.http_client.post(
-                f"{self.api_base}/variation", json={"task_id": task_id, "index": index, "type": variation_type}
-            )
-
-            if response.status_code != 200:
-                raise MidjourneyError(f"Variation failed: {response.status_code}")
-
-            data = response.json()
-            vary_task_id = data.get("task_id")
-
-            return await self._poll_for_result(vary_task_id)
-
-        except Exception as e:
-            logger.error(f"Variation failed: {e}", exc_info=True)
-            return MidjourneyResult(success=False, error=str(e))
+    def _estimate_cost(self, data: dict) -> float:
+        """Estimate cost based on mode."""
+        mode = data.get("meta", {}).get("process_mode", "fast")
+        costs = {"turbo": 0.06, "fast": 0.03, "relax": 0.01}
+        return costs.get(mode, 0.03)
 
     async def close(self):
-        """Close HTTP client."""
-        await self.http_client.aclose()
-        logger.info("Midjourney service closed")
+        await self.client.aclose()
 
 
-# Convenience function
-async def generate_midjourney_image(
-    prompt: str, aspect_ratio: str = "1:1", quality: str = "standard", api_key: str = None
-) -> MidjourneyResult:
-    """Generate image using Midjourney."""
-    service = MidjourneyService(api_key)
-    try:
-        return await service.generate_image(prompt, aspect_ratio, quality)
-    finally:
-        await service.close()
+# Singleton instance
+_midjourney_provider: MidjourneyProvider | None = None
+
+
+def get_midjourney_provider() -> MidjourneyProvider:
+    global _midjourney_provider
+    if _midjourney_provider is None:
+        _midjourney_provider = MidjourneyProvider()
+    return _midjourney_provider

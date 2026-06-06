@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session, declarative_base, sessionmaker
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+HEALTHCHECK_SQL = text("SELECT 1")
 
 # Base class for all SQLAlchemy models
 Base = declarative_base()
@@ -66,6 +67,10 @@ class DatabaseManager:
         self._async_engine = None
         self._sync_session_factory = None
         self._async_session_factory = None
+
+    @staticmethod
+    def _log_error(message: str, exc: Exception) -> None:
+        logger.error("%s: %s", message, exc)
 
     @property
     def sync_engine(self):
@@ -115,6 +120,10 @@ class DatabaseManager:
             )
         return self._async_session_factory
 
+    def get_session(self) -> Session:
+        """Backward-compatible sync session getter used by legacy tasks/tests."""
+        return self.sync_session_factory()
+
     @contextmanager
     def get_sync_session(self) -> Generator[Session, None, None]:
         """Context manager for synchronous database sessions."""
@@ -136,20 +145,20 @@ class DatabaseManager:
         """Check database connection health."""
         try:
             with self.get_sync_session() as session:
-                result = session.execute(text("SELECT 1")).scalar()
+                result = session.execute(HEALTHCHECK_SQL).scalar()
                 return result == 1
-        except Exception as e:
-            logger.error(f"Database health check failed: {e}")
+        except Exception as exc:
+            self._log_error("Database health check failed", exc)
             return False
 
     async def async_health_check(self) -> bool:
         """Async database connection health check."""
         try:
             async with self.async_session_factory() as session:
-                result = await session.execute(text("SELECT 1"))
+                result = await session.execute(HEALTHCHECK_SQL)
                 return result.scalar() == 1
-        except Exception as e:
-            logger.error(f"Async database health check failed: {e}")
+        except Exception as exc:
+            self._log_error("Async database health check failed", exc)
             return False
 
     async def close_async_session(self) -> None:
@@ -186,7 +195,7 @@ class MigrationManager:
     def get_migration_files(self) -> list[Path]:
         """Get sorted list of migration files."""
         if not self.migrations_path.exists():
-            logger.warning(f"Migration path {self.migrations_path} does not exist")
+            logger.warning("Migration path %s does not exist", self.migrations_path)
             return []
 
         migration_files = list(self.migrations_path.glob("*.sql"))
@@ -195,7 +204,7 @@ class MigrationManager:
     def execute_migration(self, migration_file: Path) -> bool:
         """Execute a single migration file."""
         try:
-            logger.info(f"Executing migration: {migration_file.name}")
+            logger.info("Executing migration: %s", migration_file.name)
 
             with migration_file.open("r", encoding="utf-8") as f:
                 sql_content = f.read()
@@ -205,11 +214,11 @@ class MigrationManager:
                 session.execute(text(sql_content))
                 session.commit()
 
-            logger.info(f"Migration {migration_file.name} executed successfully")
+            logger.info("Migration %s executed successfully", migration_file.name)
             return True
 
-        except Exception as e:
-            logger.error(f"Migration {migration_file.name} failed: {e}")
+        except Exception as exc:
+            logger.error("Migration %s failed: %s", migration_file.name, exc)
             return False
 
     def run_migrations(self) -> bool:
@@ -225,10 +234,10 @@ class MigrationManager:
             if self.execute_migration(migration_file):
                 success_count += 1
             else:
-                logger.error(f"Migration failed at {migration_file.name}, stopping")
+                logger.error("Migration failed at %s, stopping", migration_file.name)
                 break
 
-        logger.info(f"Executed {success_count}/{len(migration_files)} migrations")
+        logger.info("Executed %s/%s migrations", success_count, len(migration_files))
         return success_count == len(migration_files)
 
     def create_database_if_not_exists(self) -> bool:
@@ -254,15 +263,15 @@ class MigrationManager:
                     # Create database
                     conn.execute(text("COMMIT"))  # End any active transaction
                     conn.execute(text(f"CREATE DATABASE {db_name}"))
-                    logger.info(f"Created database: {db_name}")
+                    logger.info("Created database: %s", db_name)
                 else:
-                    logger.info(f"Database {db_name} already exists")
+                    logger.info("Database %s already exists", db_name)
 
             temp_engine.dispose()
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to create database: {e}")
+        except Exception as exc:
+            logger.error("Failed to create database: %s", exc)
             return False
 
 

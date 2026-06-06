@@ -97,6 +97,23 @@ class RateLimitOverrideResponse(BaseModel):
         from_attributes = True
 
 
+def _enum_value(value: object) -> str:
+    """Return enum `.value` when available, otherwise string value."""
+    return value.value if hasattr(value, "value") else str(value)
+
+
+def _mask_identifier(value: str | None, visible: int = 8) -> str | None:
+    """Mask identifier for safer logging/output."""
+    if value is None:
+        return None
+    return value[:visible] + "..." if len(value) > visible else value
+
+
+def _success_message(message: str) -> dict[str, str]:
+    """Standard success response shape for admin mutate operations."""
+    return {"status": "success", "message": message}
+
+
 # ============ Fraud Events ============
 
 
@@ -156,8 +173,8 @@ async def list_fraud_events(
     return [
         FraudEventResponse(
             id=e.id,
-            event_type=e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type),
-            risk_level=e.risk_level.value if hasattr(e.risk_level, "value") else str(e.risk_level),
+            event_type=_enum_value(e.event_type),
+            risk_level=_enum_value(e.risk_level),
             score=e.score,
             user_id=e.user_id,
             ip_address=e.ip_address,
@@ -211,10 +228,7 @@ async def get_fraud_stats(db: AsyncSession = Depends(get_db_async_session), admi
     )
 
     type_result = await db.execute(type_query)
-    events_by_type = {
-        row.event_type.value if hasattr(row.event_type, "value") else str(row.event_type): row.count
-        for row in type_result
-    }
+    events_by_type = {_enum_value(row.event_type): row.count for row in type_result}
 
     # Events by risk level (24h)
     risk_query = (
@@ -224,10 +238,7 @@ async def get_fraud_stats(db: AsyncSession = Depends(get_db_async_session), admi
     )
 
     risk_result = await db.execute(risk_query)
-    events_by_risk = {
-        row.risk_level.value if hasattr(row.risk_level, "value") else str(row.risk_level): row.count
-        for row in risk_result
-    }
+    events_by_risk = {_enum_value(row.risk_level): row.count for row in risk_result}
 
     # Top IPs by fraud events (24h)
     top_ip_query = (
@@ -240,7 +251,7 @@ async def get_fraud_stats(db: AsyncSession = Depends(get_db_async_session), admi
 
     top_ip_result = await db.execute(top_ip_query)
     top_ips = [
-        {"ip": row.ip_address[:8] + "..." if row.ip_address else None, "count": row.count, "max_score": row.max_score}
+        {"ip": _mask_identifier(row.ip_address), "count": row.count, "max_score": row.max_score}
         for row in top_ip_result
     ]
 
@@ -323,7 +334,7 @@ async def block_ip(
     await db.commit()
     await db.refresh(blocked_ip)
 
-    logger.info("IP blocked by admin", ip=data.ip_address[:8] + "...", admin_id=str(admin.id), reason=data.reason)
+    logger.info("IP blocked by admin", ip=_mask_identifier(data.ip_address), admin_id=str(admin.id), reason=data.reason)
 
     return blocked_ip
 
@@ -346,9 +357,9 @@ async def unblock_ip(
     blocked_ip.is_active = False
     await db.commit()
 
-    logger.info("IP unblocked by admin", ip=blocked_ip.ip_address[:8] + "...", admin_id=str(admin.id))
+    logger.info("IP unblocked by admin", ip=_mask_identifier(blocked_ip.ip_address), admin_id=str(admin.id))
 
-    return {"status": "success", "message": "IP unblocked"}
+    return _success_message("IP unblocked")
 
 
 # ============ Rate Limit Overrides ============
@@ -423,7 +434,7 @@ async def create_rate_limit_override(
 
     logger.info(
         "Rate limit override created",
-        identifier=data.identifier[:16] + "..." if len(data.identifier) > 16 else data.identifier,
+        identifier=_mask_identifier(data.identifier, visible=16),
         type=data.identifier_type,
         admin_id=str(admin.id),
     )
@@ -451,7 +462,7 @@ async def delete_rate_limit_override(
 
     logger.info("Rate limit override deleted", override_id=str(override_id), admin_id=str(admin.id))
 
-    return {"status": "success", "message": "Rate limit override deleted"}
+    return _success_message("Rate limit override deleted")
 
 
 # ============ Manual Actions ============
@@ -491,8 +502,8 @@ async def check_user_fraud_risk(
         "average_score": round(avg_score, 2),
         "recent_events": [
             {
-                "type": e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type),
-                "risk": e.risk_level.value if hasattr(e.risk_level, "value") else str(e.risk_level),
+                "type": _enum_value(e.event_type),
+                "risk": _enum_value(e.risk_level),
                 "score": e.score,
                 "created_at": e.created_at.isoformat(),
             }

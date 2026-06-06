@@ -30,6 +30,9 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 # Code storage prefix
 AUTH_CODE_PREFIX = "auth:code:email:"
 AUTH_CODE_TTL = 300  # 5 minutes
+EMAIL_RATE_LIMIT_MAX = 5
+EMAIL_RATE_LIMIT_TTL = 3600  # 1 hour
+EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 # Initialize email service
 try:
@@ -44,7 +47,7 @@ try:
     )
     init_email_service(email_config)
 except Exception as e:
-    logger.warning(f"Email service not initialized: {e}")
+    logger.warning("Email service not initialized", error=str(e))
 
 
 # ==================== SCHEMAS ====================
@@ -159,7 +162,7 @@ def verify_telegram_auth(data: TelegramAuthData) -> bool:
     # Calculate hash
     calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
 
-    return calculated_hash == data.hash
+    return hmac.compare_digest(calculated_hash, data.hash)
 
 
 def create_jwt_token(user_id: str, email: str) -> tuple[str, int]:
@@ -243,7 +246,7 @@ async def telegram_login(auth_data: TelegramAuthData, db: AsyncSession = Depends
         db.add(user)
         await db.commit()
         await db.refresh(user)
-        logger.info(f"New user created: {user.id} (tg: {auth_data.id})")
+        logger.info("New user created", user_id=str(user.id), telegram_id=auth_data.id)
     else:
         # Update user info
         user.telegram_username = auth_data.username
@@ -252,12 +255,7 @@ async def telegram_login(auth_data: TelegramAuthData, db: AsyncSession = Depends
         user.telegram_photo_url = auth_data.photo_url
         user.updated_at = datetime.utcnow()
         await db.commit()
-        logger.info(f"User logged in: {user.id} (tg: {auth_data.id})")
-
-    # Calculate demo days left
-    if user.subscription_plan == SubscriptionPlan.DEMO and user.demo_started_at:
-        days_passed = (datetime.utcnow() - user.demo_started_at).days
-        max(0, 7 - days_passed)
+        logger.info("User logged in", user_id=str(user.id), telegram_id=auth_data.id)
 
     # Create JWT token (use email if available, else legacy telegram)
     if user.email:
@@ -307,6 +305,10 @@ def generate_auth_code() -> str:
     return "".join(random.choices(string.digits, k=6))
 
 
+def _normalize_email(email: str) -> str:
+    return email.lower().strip()
+
+
 async def send_telegram_message(chat_id: int, text: str) -> bool:
     """Send message via Telegram Bot API."""
     bot_token = settings.telegram.bot_token.get_secret_value()
@@ -316,8 +318,8 @@ async def send_telegram_message(chat_id: int, text: str) -> bool:
         try:
             response = await client.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
             return response.status_code == 200
-        except Exception as e:
-            logger.error(f"Failed to send Telegram message: {e}")
+        except Exception:
+            logger.exception("Failed to send Telegram message")
             return False
 
 
@@ -336,8 +338,8 @@ async def get_telegram_user_by_username(username: str) -> dict | None:
             if data.get("ok"):
                 return data.get("result")
             return None
-        except Exception as e:
-            logger.error(f"Failed to get Telegram user: {e}")
+        except Exception:
+            logger.exception("Failed to get Telegram user")
             return None
 
 
@@ -347,19 +349,19 @@ async def send_auth_code(request: SendCodeRequest, redis=Depends(get_redis_clien
     Send authentication code to user's email.
     Works for both new and existing users.
     """
-    email = request.email.lower().strip()
+    email = _normalize_email(request.email)
 
     if not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is required")
 
     # Basic email validation
-    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
+    if not EMAIL_REGEX.match(email):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email format")
 
     # Check rate limiting (max 5 codes per email per hour)
     rate_key = f"auth:rate:{email}"
     rate_count = await redis.get(rate_key)
-    if rate_count and int(rate_count) >= 5:
+    if rate_count and int(rate_count) >= EMAIL_RATE_LIMIT_MAX:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Слишком много запросов. Попробуйте через час."
         )
@@ -373,7 +375,7 @@ async def send_auth_code(request: SendCodeRequest, redis=Depends(get_redis_clien
 
     # Increment rate limit counter
     await redis.incr(rate_key)
-    await redis.expire(rate_key, 3600)  # 1 hour expiry
+    await redis.expire(rate_key, EMAIL_RATE_LIMIT_TTL)
 
     # Send code via email
     sent = False
@@ -383,20 +385,20 @@ async def send_auth_code(request: SendCodeRequest, redis=Depends(get_redis_clien
     except RuntimeError:
         # Email service not configured
         logger.warning("Email service not configured")
-    except Exception as e:
-        logger.error(f"Email sending error: {e}")
+    except Exception:
+        logger.exception("Email sending error")
 
     # In development mode, log the code if email wasn't sent
     if not sent:
         if settings.app.is_development:
-            logger.warning(f"DEV MODE: Auth code for {email}: {code}")
+            logger.warning("DEV MODE auth code", email=email, code=code)
             sent = True  # Allow login in dev mode
         else:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Не удалось отправить код. Попробуйте позже."
             )
 
-    logger.info(f"Auth code {'sent' if sent else 'generated'} for {email}")
+    logger.info("Auth code processed", email=email, sent=sent)
 
     return SendCodeResponse(success=True, message=f"Код отправлен на {email}", expires_in=AUTH_CODE_TTL)
 
@@ -410,7 +412,7 @@ async def verify_auth_code(
     Creates new user if not exists.
     """
     # Clean inputs
-    email = request.email.lower().strip()
+    email = _normalize_email(request.email)
     code = request.code.strip()
 
     if not email or not code:
@@ -426,7 +428,7 @@ async def verify_auth_code(
         )
 
     # Verify code
-    if code != stored_code:
+    if not hmac.compare_digest(str(code), str(stored_code)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Неверный код")
 
     # Delete used code
@@ -450,7 +452,7 @@ async def verify_auth_code(
         db.add(user)
         await db.commit()
         await db.refresh(user)
-        logger.info(f"New user created via email auth: {user.id} ({email})")
+        logger.info("New user created via email auth", user_id=str(user.id), email=email)
     else:
         # Update user - mark email as verified
         if not user.email_verified:
@@ -458,7 +460,7 @@ async def verify_auth_code(
         user.last_login_at = datetime.utcnow()
         user.updated_at = datetime.utcnow()
         await db.commit()
-        logger.info(f"User logged in via email auth: {user.id} ({email})")
+        logger.info("User logged in via email auth", user_id=str(user.id), email=email)
 
     # Create JWT token
     token, expires_in = create_jwt_token(str(user.id), email)

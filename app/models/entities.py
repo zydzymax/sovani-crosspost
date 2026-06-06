@@ -105,7 +105,8 @@ class Post(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Source information
-    source_platform = Column(SQLEnum(Platform), nullable=False, index=True)
+    source_platform = Column(SQLEnum(Platform, native_enum=False), nullable=False, index=True)
+    platform = Column(String(50), nullable=True)  # Target platform for posting
     source_message_id = Column(String(255), nullable=True)
     source_chat_id = Column(String(255), nullable=True)
     source_user_id = Column(String(255), nullable=True)
@@ -120,8 +121,8 @@ class Post(Base):
     # Format: {"instagram": "caption", "vk": "caption", ...}
 
     # Processing status
-    status = Column(SQLEnum(PostStatus), default=PostStatus.DRAFT, index=True)
-    current_stage = Column(SQLEnum(TaskStage), nullable=True)
+    status = Column(SQLEnum(PostStatus, native_enum=False), default=PostStatus.DRAFT, index=True)
+    current_stage = Column(SQLEnum(TaskStage, native_enum=False), nullable=True)
 
     # Metadata from enrichment
     enrichment_data = Column(JSONB, nullable=True, default=dict)
@@ -181,7 +182,7 @@ class MediaAsset(Base):
     file_name = Column(String(500), nullable=True)
 
     # File type
-    media_type = Column(SQLEnum(MediaType), nullable=False)
+    media_type = Column(SQLEnum(MediaType, native_enum=False), nullable=False)
     mime_type = Column(String(100), nullable=True)
 
     # File size and dimensions
@@ -234,7 +235,7 @@ class SocialAccount(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Platform info
-    platform = Column(SQLEnum(Platform), nullable=False, index=True)
+    platform = Column(SQLEnum(Platform, native_enum=False), nullable=False, index=True)
     platform_user_id = Column(String(255), nullable=False)
     platform_username = Column(String(255), nullable=True)
     platform_display_name = Column(String(500), nullable=True)
@@ -289,8 +290,8 @@ class PublishTask(Base):
 
     # Task tracking
     celery_task_id = Column(String(255), nullable=True, index=True)
-    stage = Column(SQLEnum(TaskStage), nullable=False)
-    status = Column(SQLEnum(TaskStatus), default=TaskStatus.PENDING)
+    stage = Column(SQLEnum(TaskStage, native_enum=False), nullable=False)
+    status = Column(SQLEnum(TaskStatus, native_enum=False), default=TaskStatus.PENDING)
 
     # Timing
     started_at = Column(DateTime, nullable=True)
@@ -330,7 +331,7 @@ class PublishResult(Base):
     post_id = Column(UUID(as_uuid=True), ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Platform info
-    platform = Column(SQLEnum(Platform), nullable=False, index=True)
+    platform = Column(SQLEnum(Platform, native_enum=False), nullable=False, index=True)
     account_id = Column(UUID(as_uuid=True), ForeignKey("social_accounts.id"), nullable=True)
 
     # Result
@@ -427,7 +428,7 @@ class ContentQueue(Base):
     schedule_id = Column(UUID(as_uuid=True), ForeignKey("schedules.id", ondelete="SET NULL"), nullable=True)
 
     # Target
-    platform = Column(SQLEnum(Platform), nullable=False)
+    platform = Column(SQLEnum(Platform, native_enum=False), nullable=False)
 
     # Scheduling
     scheduled_for = Column(DateTime, nullable=False, index=True)
@@ -546,6 +547,7 @@ class User(Base):
 
     # Status
     is_active = Column(Boolean, default=True)
+    is_master = Column(Boolean, default=False)
     last_login_at = Column(DateTime, nullable=True)
 
     # Timestamps
@@ -600,7 +602,7 @@ class MarketplaceCredential(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Marketplace info
-    platform = Column(SQLEnum(MarketplacePlatform), nullable=False)
+    platform = Column(SQLEnum(MarketplacePlatform, native_enum=False), nullable=False)
 
     # Credentials (encrypted)
     api_key = Column(Text, nullable=True)  # Encrypted - main API token
@@ -695,7 +697,7 @@ class ContentPlan(Base):
     # Format: [{"date": "2024-01-15", "topic": "...", "caption_draft": "...", "platforms": [...], "media_type": "image"}]
 
     # Status
-    status = Column(SQLEnum(ContentPlanStatus), default=ContentPlanStatus.DRAFT)
+    status = Column(SQLEnum(ContentPlanStatus, native_enum=False), default=ContentPlanStatus.DRAFT)
 
     # Statistics
     posts_created = Column(Integer, default=0)
@@ -769,7 +771,7 @@ class PostGenerationProgress(Base):
     post_topic = Column(String(500), nullable=True)
 
     steps = Column(JSONB, nullable=False, default=dict)
-    overall_status = Column(SQLEnum(GenerationStepStatus), default=GenerationStepStatus.PENDING)
+    overall_status = Column(SQLEnum(GenerationStepStatus, native_enum=False), default=GenerationStepStatus.PENDING)
     progress_percent = Column(Integer, default=0)
 
     last_error = Column(Text, nullable=True)
@@ -806,7 +808,7 @@ class VideoGenTask(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Provider info
-    provider = Column(SQLEnum(VideoGenProvider), default=VideoGenProvider.RUNWAY)
+    provider = Column(SQLEnum(VideoGenProvider, native_enum=False), default=VideoGenProvider.RUNWAY)
 
     # Input
     prompt = Column(Text, nullable=False)
@@ -821,7 +823,7 @@ class VideoGenTask(Base):
     result_thumbnail_url = Column(String(1000), nullable=True)
 
     # Status
-    status = Column(SQLEnum(VideoGenStatus), default=VideoGenStatus.PENDING)
+    status = Column(SQLEnum(VideoGenStatus, native_enum=False), default=VideoGenStatus.PENDING)
     error_message = Column(Text, nullable=True)
 
     # Cost tracking
@@ -880,7 +882,7 @@ class CloudStorageConnection(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Provider info
-    provider = Column(SQLEnum(CloudProvider), nullable=False)
+    provider = Column(SQLEnum(CloudProvider, native_enum=False), nullable=False)
 
     # Folder identification
     folder_id = Column(String(500), nullable=False)  # Google Drive folder ID or Yandex path
@@ -897,7 +899,7 @@ class CloudStorageConnection(Base):
     is_public = Column(Boolean, default=False)
 
     # Connection status
-    status = Column(SQLEnum(CloudConnectionStatus), default=CloudConnectionStatus.PENDING)
+    status = Column(SQLEnum(CloudConnectionStatus, native_enum=False), default=CloudConnectionStatus.PENDING)
     error_message = Column(Text, nullable=True)
 
     # Sync settings
@@ -971,7 +973,7 @@ class CloudSyncedFile(Base):
     cloud_modified_at = Column(DateTime, nullable=True)
 
     # Media type
-    media_type = Column(SQLEnum(MediaType), nullable=False)
+    media_type = Column(SQLEnum(MediaType, native_enum=False), nullable=False)
 
     # Local file info
     local_path = Column(String(1000), nullable=True)
@@ -1043,8 +1045,8 @@ class FraudEvent(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Event type and risk
-    event_type = Column(SQLEnum(FraudEventType), nullable=False, index=True)
-    risk_level = Column(SQLEnum(FraudRiskLevel), nullable=False, index=True)
+    event_type = Column(SQLEnum(FraudEventType, native_enum=False), nullable=False, index=True)
+    risk_level = Column(SQLEnum(FraudRiskLevel, native_enum=False), nullable=False, index=True)
     score = Column(Float, nullable=False)
 
     # Target information
@@ -1339,7 +1341,9 @@ class Order(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
     order_number = Column(String(50), unique=True, nullable=False)
-    status = Column(SQLEnum(OrderStatus, name="order_status", create_type=False), default=OrderStatus.PENDING)
+    status = Column(
+        SQLEnum(OrderStatus, name="order_status", create_type=False, native_enum=False), default=OrderStatus.PENDING
+    )
 
     items = Column(JSONB, nullable=False)
 
@@ -1384,7 +1388,10 @@ class Payment(Base):
     amount_rub = Column(Float, nullable=False)
     currency = Column(String(3), default="RUB")
 
-    status = Column(SQLEnum(PaymentStatus, name="payment_status", create_type=False), default=PaymentStatus.PENDING)
+    status = Column(
+        SQLEnum(PaymentStatus, name="payment_status", create_type=False, native_enum=False),
+        default=PaymentStatus.PENDING,
+    )
 
     provider = Column(String(50), nullable=False)
     provider_payment_id = Column(String(255), nullable=True)
@@ -1555,9 +1562,9 @@ class ContentInsight(Base):
     platform = Column(String(50), nullable=True)
 
     # Insight details
-    insight_type = Column(SQLEnum(InsightType), nullable=False)
-    priority = Column(SQLEnum(InsightPriority), default=InsightPriority.MEDIUM)
-    status = Column(SQLEnum(InsightStatus), default=InsightStatus.PENDING)
+    insight_type = Column(SQLEnum(InsightType, native_enum=False), nullable=False)
+    priority = Column(SQLEnum(InsightPriority, native_enum=False), default=InsightPriority.MEDIUM)
+    status = Column(SQLEnum(InsightStatus, native_enum=False), default=InsightStatus.PENDING)
 
     # Content
     title = Column(String(255), nullable=False)
@@ -1630,7 +1637,7 @@ class AnalyticsSettings(Base):
     metrics_frequency_hours = Column(Integer, default=24)
 
     # Optimization mode
-    optimization_mode = Column(SQLEnum(OptimizationMode), default=OptimizationMode.HINTS_ONLY)
+    optimization_mode = Column(SQLEnum(OptimizationMode, native_enum=False), default=OptimizationMode.HINTS_ONLY)
 
     # Feature toggles
     auto_adjust_timing = Column(Boolean, default=False)

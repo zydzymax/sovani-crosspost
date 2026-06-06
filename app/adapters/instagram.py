@@ -5,7 +5,9 @@ This module handles Instagram publishing through the Instagram Graph API,
 including container creation, media upload, and publishing workflows.
 """
 
+import ast
 import asyncio
+import inspect
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -21,6 +23,8 @@ from ..core.logging import get_logger, with_logging_context
 from ..observability.metrics import metrics
 
 logger = get_logger("adapters.instagram")
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi"}
 
 
 class InstagramError(Exception):
@@ -118,10 +122,11 @@ class PublishResult:
 class InstagramAdapter:
     """Instagram Graph API adapter."""
 
-    def __init__(self):
+    def __init__(self, access_token: str | None = None, page_id: str | None = None):
         """Initialize Instagram adapter."""
-        self.access_token = self._get_access_token()
-        self.page_id = settings.instagram.page_id
+        self.access_token = access_token or self._get_access_token()
+        instagram_settings = getattr(settings, "instagram", None)
+        self.page_id = page_id or getattr(instagram_settings, "page_id", "")
         self.api_base = "https://graph.facebook.com/v18.0"
 
         # HTTP client configuration
@@ -139,8 +144,9 @@ class InstagramAdapter:
 
     def _get_access_token(self) -> str:
         """Get Instagram access token from settings."""
-        if hasattr(settings.instagram, "access_token"):
-            token = settings.instagram.access_token
+        instagram_settings = getattr(settings, "instagram", None)
+        if instagram_settings and hasattr(instagram_settings, "access_token"):
+            token = instagram_settings.access_token
             if hasattr(token, "get_secret_value"):
                 return token.get_secret_value()
             return str(token)
@@ -202,7 +208,6 @@ class InstagramAdapter:
                     endpoint="create_container",
                     status_code=getattr(e, "status_code", 500),
                     duration=processing_time,
-                    error=str(e),
                 )
 
                 logger.error(
@@ -256,7 +261,7 @@ class InstagramAdapter:
         children_ids = []
 
         for i, media_item in enumerate(media_items):
-            logger.info(f"Creating carousel item {i+1}/{len(media_items)}")
+            logger.info("Creating carousel item", item_index=i + 1, total_items=len(media_items))
 
             url = f"{self.api_base}/{self.page_id}/media"
             data = {
@@ -358,7 +363,6 @@ class InstagramAdapter:
                     endpoint="publish_container",
                     status_code=getattr(e, "status_code", 500),
                     duration=processing_time,
-                    error=str(e),
                 )
 
                 error_code = getattr(e, "error_code", None)
@@ -519,7 +523,7 @@ class InstagramAdapter:
         2. Return publicly accessible URL
         3. Handle different media types appropriately
         """
-        logger.info(f"Uploading media file: {file_path}")
+        logger.info("Uploading media file", file_path=file_path)
 
         # For now, assume files are already uploaded and return the path
         # In production, implement actual upload logic
@@ -534,6 +538,7 @@ class InstagramAdapter:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
         retry=retry_if_exception_type((httpx.RequestError, InstagramRateLimitError)),
+        reraise=True,
     )
     async def _make_api_request(
         self,
@@ -565,6 +570,8 @@ class InstagramAdapter:
             # Handle response
             if response.status_code == 200:
                 response_data = response.json()
+                if inspect.isawaitable(response_data):
+                    response_data = await response_data
                 if "error" in response_data:
                     await self._handle_api_error(response_data["error"])
                 return response_data
@@ -576,6 +583,8 @@ class InstagramAdapter:
             elif response.status_code >= 400:
                 try:
                     error_data = response.json()
+                    if inspect.isawaitable(error_data):
+                        error_data = await error_data
                     await self._handle_api_error(error_data.get("error", {}))
                 except ValueError:
                     raise InstagramError(f"API request failed: {response.status_code} {response.text}")
@@ -584,10 +593,10 @@ class InstagramAdapter:
                 return response.json()
 
         except httpx.RequestError as e:
-            logger.warning(f"Request error, will retry: {e}")
+            logger.warning("Request error, will retry", error=str(e))
             raise
-        except Exception as e:
-            logger.error(f"API request failed: {e}")
+        except Exception:
+            logger.exception("API request failed")
             raise
 
     async def _check_rate_limits(self):
@@ -601,7 +610,7 @@ class InstagramAdapter:
 
         if self.rate_limit_remaining <= 5:
             wait_time = self.rate_limit_reset_time - current_time
-            logger.warning(f"Rate limit nearly exceeded. Waiting {wait_time:.1f} seconds")
+            logger.warning("Rate limit nearly exceeded", wait_time=round(wait_time, 1))
             await asyncio.sleep(wait_time)
             self.rate_limit_remaining = 200
             self.rate_limit_reset_time = time.time() + 3600
@@ -610,14 +619,14 @@ class InstagramAdapter:
         """Update rate limit counters from response headers."""
         if "X-Business-Use-Case-Usage" in headers:
             try:
-                usage_data = eval(headers["X-Business-Use-Case-Usage"])
+                usage_data = ast.literal_eval(headers["X-Business-Use-Case-Usage"])
                 if isinstance(usage_data, dict):
                     for _app_id, limits in usage_data.items():
                         if "call_count" in limits:
                             self.rate_limit_remaining = 200 - limits["call_count"]
                             break
             except Exception as e:
-                logger.warning(f"Failed to parse rate limit headers: {e}")
+                logger.warning("Failed to parse rate limit headers", error=str(e))
 
     async def _handle_api_error(self, error_data: dict[str, Any]):
         """Handle Instagram API errors."""
@@ -652,7 +661,7 @@ class InstagramAdapter:
         try:
             return await self._make_api_request("GET", url, params=params)
         except Exception as e:
-            logger.warning(f"Failed to get post details: {e}")
+            logger.warning("Failed to get post details", error=str(e), post_id=post_id)
             return {}
 
     async def get_container_status(self, container_id: str) -> dict[str, Any]:
@@ -687,7 +696,7 @@ class InstagramAdapter:
             }
 
         except Exception as e:
-            logger.error(f"Failed to get container status: {e}")
+            logger.error("Failed to get container status", error=str(e), container_id=container_id, exc_info=True)
             return {"container_id": container_id, "status": "error", "error": str(e), "is_ready": False}
 
     async def update_post_status(self, post_id: str, status: str, result_data: dict[str, Any] = None):
@@ -717,8 +726,19 @@ instagram_adapter = InstagramAdapter()
 
 
 # Convenience functions
+async def _resolve_awaitable(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
 async def publish_instagram_post(
-    caption: str, media_files: list[str], schedule_time: datetime = None, correlation_id: str = None
+    caption: str,
+    media_files: list[str],
+    schedule_time: datetime = None,
+    correlation_id: str = None,
+    access_token: str | None = None,
+    page_id: str | None = None,
 ) -> PublishResult:
     """
     Publish post to Instagram.
@@ -735,11 +755,10 @@ async def publish_instagram_post(
     # Convert file paths to MediaItem objects
     media_items = []
     for file_path in media_files:
-        # Detect media type based on file extension
         file_ext = Path(file_path).suffix.lower()
-        if file_ext in [".jpg", ".jpeg", ".png", ".webp"]:
+        if file_ext in IMAGE_EXTENSIONS:
             media_type = ContainerType.IMAGE
-        elif file_ext in [".mp4", ".mov", ".avi"]:
+        elif file_ext in VIDEO_EXTENSIONS:
             media_type = ContainerType.VIDEO
         else:
             raise InstagramValidationError(f"Unsupported file type: {file_ext}")
@@ -748,16 +767,26 @@ async def publish_instagram_post(
 
     post = InstagramPost(caption=caption, media_items=media_items, schedule_time=schedule_time)
 
-    # Create container
-    container_result = await instagram_adapter.create_container(post, correlation_id)
+    adapter = instagram_adapter
+    owns_adapter = False
+    if access_token or page_id:
+        adapter = InstagramAdapter(access_token=access_token, page_id=page_id)
+        owns_adapter = True
 
-    # Publish or schedule
-    return await instagram_adapter.schedule_if_needed(post, container_result.container_id, correlation_id)
+    try:
+        # Create container
+        container_result = await _resolve_awaitable(adapter.create_container(post, correlation_id))
+
+        # Publish or schedule
+        return await _resolve_awaitable(adapter.schedule_if_needed(post, container_result.container_id, correlation_id))
+    finally:
+        if owns_adapter:
+            await adapter.close()
 
 
 async def get_instagram_container_status(container_id: str) -> dict[str, Any]:
     """Get Instagram container status."""
-    return await instagram_adapter.get_container_status(container_id)
+    return await _resolve_awaitable(instagram_adapter.get_container_status(container_id))
 
 
 async def cleanup_instagram_adapter():

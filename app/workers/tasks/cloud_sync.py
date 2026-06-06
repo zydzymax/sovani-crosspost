@@ -159,8 +159,8 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
 
                             files_processed += 1
 
-                        except Exception as e:
-                            logger.warning(f"Failed to record synced file: {e}", file_path=file_path)
+                        except Exception:
+                            logger.exception("Failed to record synced file", file_path=file_path)
 
                     # Update connection status
                     connection.last_sync_at = datetime.utcnow()
@@ -195,7 +195,7 @@ def sync_cloud_connection(self, connection_id: str) -> dict[str, Any]:
                     }
 
                 except Exception as e:
-                    logger.error("Cloud sync failed", connection_id=connection_id, error=str(e), exc_info=True)
+                    logger.exception("Cloud sync failed", connection_id=connection_id, error=str(e))
 
                     # Update connection with error
                     connection.last_sync_at = datetime.utcnow()
@@ -266,7 +266,7 @@ def sync_all_connections(self) -> dict[str, Any]:
                         )
 
                     except Exception as e:
-                        logger.error("Failed to queue sync for connection", connection_id=str(conn.id), error=str(e))
+                        logger.exception("Failed to queue sync for connection", connection_id=str(conn.id))
                         failed_count += 1
                         sync_results.append(
                             {
@@ -365,7 +365,10 @@ def process_synced_file(self, synced_file_id: str) -> dict[str, Any]:
                         if result.get("success"):
                             processed_versions[platform] = output_path
                             logger.info(
-                                f"Processed for {platform}", synced_file_id=synced_file_id, output_path=output_path
+                                "Processed synced file for platform",
+                                platform=platform,
+                                synced_file_id=synced_file_id,
+                                output_path=output_path,
                             )
 
                     processing_time = time.time() - task_start_time
@@ -385,7 +388,7 @@ def process_synced_file(self, synced_file_id: str) -> dict[str, Any]:
                     }
 
                 except Exception as e:
-                    logger.error("File processing failed", synced_file_id=synced_file_id, error=str(e), exc_info=True)
+                    logger.exception("File processing failed", synced_file_id=synced_file_id, error=str(e))
                     return {"success": False, "synced_file_id": synced_file_id, "error": str(e)}
 
         return asyncio.run(_process())

@@ -20,6 +20,8 @@ env_file = project_root / ".env"
 if env_file.exists():
     load_dotenv(env_file)
 
+import time
+import uuid
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -32,6 +34,7 @@ from .api.account import router as account_router
 from .api.admin_fraud import router as admin_fraud_router
 from .api.analytics import router as analytics_router
 from .api.auth import router as auth_router
+from .api.billing import router as billing_router
 from .api.cart import router as cart_router
 from .api.checkout import router as checkout_router
 from .api.cloud_storage import router as cloud_storage_router
@@ -48,6 +51,84 @@ from .core.logging import get_logger, setup_logging, with_logging_context
 from .middleware.antifraud import AntifraudMiddleware, IPBlockMiddleware
 from .models.db import db_manager
 from .observability.metrics import get_metrics_response, metrics
+
+SERVICE_NAME = "saleswhisper-crosspost"
+API_PREFIX = "/api/v1"
+HEALTH_PAYLOAD = {"status": "healthy", "service": SERVICE_NAME}
+PRODUCTION_CORS_ORIGINS = [
+    "https://admin.saleswhisper.ru",
+    "https://app.saleswhisper.ru",
+    "https://saleswhisper.pro",
+    "https://crosspost.saleswhisper.pro",
+    "https://headofsales.saleswhisper.pro",
+    "https://sites.saleswhisper.pro",
+]
+CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+CORS_HEADERS = [
+    "Accept",
+    "Accept-Language",
+    "Content-Language",
+    "Content-Type",
+    "Authorization",
+    "X-Request-ID",
+    "X-API-Key",
+]
+API_ROUTERS = (
+    api_router,
+    auth_router,
+    user_router,
+    content_plan_router,
+    progress_router,
+    video_gen_router,
+    tts_router,
+    pricing_router,
+    cloud_storage_router,
+    admin_fraud_router,
+    cart_router,
+    checkout_router,
+    account_router,
+    tiktok_oauth_router,
+    analytics_router,
+    billing_router,
+)
+
+
+async def _cleanup_adapter(
+    logger,
+    import_fn,
+    adapter_name: str,
+    import_failure_log_level: str = "warning",
+) -> None:
+    """Import and execute adapter cleanup coroutine with safe logging."""
+    try:
+        cleanup_fn = import_fn()
+    except ModuleNotFoundError as exc:
+        if import_failure_log_level == "info":
+            logger.info("%s cleanup skipped", adapter_name, reason=str(exc))
+        else:
+            logger.warning("Failed to import %s cleanup", adapter_name, error=str(exc))
+        return
+    except Exception as exc:
+        logger.warning("Failed to import %s cleanup", adapter_name, error=str(exc))
+        return
+
+    try:
+        await cleanup_fn()
+        logger.info("%s adapter closed", adapter_name)
+    except Exception as exc:
+        logger.warning("Failed to close %s adapter cleanly", adapter_name, error=str(exc))
+
+
+def _import_telegram_cleanup():
+    from .adapters.telegram import cleanup_telegram_adapter
+
+    return cleanup_telegram_adapter
+
+
+def _import_telegram_intake_cleanup():
+    from .adapters.telegram_intake import cleanup_telegram_intake
+
+    return cleanup_telegram_intake
 
 
 @asynccontextmanager
@@ -86,6 +167,18 @@ async def lifespan(app: FastAPI):
         await db_manager.close_async_session()
         logger.info("Database connections closed")
 
+        await _cleanup_adapter(
+            logger,
+            import_fn=_import_telegram_cleanup,
+            adapter_name="Telegram",
+        )
+        await _cleanup_adapter(
+            logger,
+            import_fn=_import_telegram_intake_cleanup,
+            adapter_name="Telegram intake",
+            import_failure_log_level="info",
+        )
+
         logger.info("Application shutdown completed")
 
     except Exception as e:
@@ -114,27 +207,34 @@ def create_application() -> FastAPI:
     setup_middleware(app)
 
     # Add routes
-    app.include_router(api_router, prefix="/api/v1")
-    app.include_router(auth_router, prefix="/api/v1")
-    app.include_router(user_router, prefix="/api/v1")
-    app.include_router(content_plan_router, prefix="/api/v1")
-    app.include_router(progress_router, prefix="/api/v1")
-    app.include_router(video_gen_router, prefix="/api/v1")
-    app.include_router(tts_router, prefix="/api/v1")
-    app.include_router(pricing_router, prefix="/api/v1")
-    app.include_router(cloud_storage_router, prefix="/api/v1")
-    app.include_router(admin_fraud_router, prefix="/api/v1")
-    app.include_router(cart_router, prefix="/api/v1")
-    app.include_router(checkout_router, prefix="/api/v1")
-    app.include_router(account_router, prefix="/api/v1")
-    app.include_router(tiktok_oauth_router, prefix="/api/v1")
-    app.include_router(analytics_router, prefix="/api/v1")
+    for router in API_ROUTERS:
+        app.include_router(router, prefix=API_PREFIX)
 
     # Health check endpoint for Docker/Kubernetes
+    @app.get("/")
+    async def root():
+        """Root endpoint for domain probes and quick diagnostics."""
+        return {
+            "service": SERVICE_NAME,
+            "status": "ok",
+            "health": "/health",
+            "api": API_PREFIX,
+        }
+
+    @app.head("/", include_in_schema=False)
+    async def root_head():
+        """HEAD endpoint for domain probes."""
+        return Response(status_code=200)
+
     @app.get("/health")
     async def health_check():
         """Health check endpoint for container orchestration."""
-        return {"status": "healthy", "service": "saleswhisper-crosspost"}
+        return HEALTH_PAYLOAD
+
+    @app.get("/api/health")
+    async def api_health_check():
+        """Compatibility health endpoint for external monitors."""
+        return HEALTH_PAYLOAD
 
     # Add metrics endpoint
     @app.get("/metrics", response_class=Response)
@@ -195,35 +295,18 @@ def setup_middleware(app: FastAPI):
     app.add_middleware(
         CORSMiddleware,
         allow_origins=(
-            ["*"]
-            if settings.app.is_development
-            else [
-                "https://admin.saleswhisper.ru",
-                "https://app.saleswhisper.ru",
-                "https://saleswhisper.pro",
-                "https://crosspost.saleswhisper.pro",
-                "https://headofsales.saleswhisper.pro",
-                "https://sites.saleswhisper.pro",
-            ]
+            ["*"] if settings.app.is_development else PRODUCTION_CORS_ORIGINS
         ),
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=[
-            "Accept",
-            "Accept-Language",
-            "Content-Language",
-            "Content-Type",
-            "Authorization",
-            "X-Request-ID",
-            "X-API-Key",
-        ],
+        allow_methods=CORS_METHODS,
+        allow_headers=CORS_HEADERS,
     )
 
     # Trusted host middleware (security)
     if not settings.app.is_development:
         app.add_middleware(
             TrustedHostMiddleware,
-            allowed_hosts=["api.saleswhisper.ru", "*.saleswhisper.ru", "*.saleswhisper.pro", "saleswhisper.pro"],
+            allowed_hosts=["api.saleswhisper.ru", "*.saleswhisper.ru", "*.saleswhisper.pro", "saleswhisper.pro", "127.0.0.1", "localhost"],
         )
 
     # Anti-fraud middleware (rate limiting + bot detection)
@@ -238,14 +321,11 @@ def setup_middleware(app: FastAPI):
     @app.middleware("http")
     async def logging_middleware(request: Request, call_next):
         """Add request ID and logging context."""
-        import time
-        import uuid
-
         # Generate request ID
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         request.state.request_id = request_id
 
-        start_time = time.time()
+        start_time = time.monotonic()
 
         with with_logging_context(request_id=request_id):
             logger = get_logger("app.request")
@@ -265,7 +345,7 @@ def setup_middleware(app: FastAPI):
                 response = await call_next(request)
 
                 # Calculate response time
-                duration = time.time() - start_time
+                duration = time.monotonic() - start_time
 
                 # Log response
                 logger.info("Request completed", status_code=response.status_code, duration_seconds=round(duration, 3))
@@ -284,7 +364,7 @@ def setup_middleware(app: FastAPI):
                 return response
 
             except Exception as exc:
-                duration = time.time() - start_time
+                duration = time.monotonic() - start_time
 
                 logger.error(
                     "Request failed with exception", error=str(exc), duration_seconds=round(duration, 3), exc_info=True

@@ -4,6 +4,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+
+from ..core.logging import get_logger
+
+logger = get_logger("api.content_plan")
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.entities import ContentPlan, ContentPlanStatus, User
@@ -11,6 +15,8 @@ from ..services.content_planner import Tone, generate_content_plan
 from .deps import get_current_user, get_db_async_session
 
 router = APIRouter(prefix="/content-plan", tags=["content-plan"])
+VALID_PLATFORMS = ("telegram", "vk", "instagram", "facebook", "tiktok", "youtube", "rutube")
+VALID_MEDIA_TYPES = ("IMAGE", "VIDEO", "CAROUSEL", "TEXT_ONLY")
 
 
 # Request/Response models
@@ -64,6 +70,48 @@ class RegeneratPostRequest(BaseModel):
     feedback: str | None = Field(None, description="Feedback for regeneration")
 
 
+def _to_plan_response(plan: ContentPlan) -> "ContentPlanResponse":
+    return ContentPlanResponse(
+        id=str(plan.id),
+        niche=plan.niche,
+        duration_days=plan.duration_days,
+        posts_per_day=plan.posts_per_day,
+        tone=plan.tone,
+        platforms=plan.platforms,
+        status=plan.status.value,
+        posts=[PlannedPostResponse(**p) for p in plan.plan_data],
+        total_posts=len(plan.plan_data),
+        posts_created=plan.posts_created,
+        posts_published=plan.posts_published,
+    )
+
+
+def _ensure_plan_access(plan: ContentPlan | None, current_user: User) -> ContentPlan:
+    if not plan:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content plan not found")
+    if plan.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return plan
+
+
+def _normalize_and_validate_platforms(platforms: list[str]) -> list[str]:
+    normalized = [p.lower() for p in platforms]
+    invalid_platforms = sorted({p for p in normalized if p not in VALID_PLATFORMS})
+    if invalid_platforms:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid platform: {invalid_platforms[0]}")
+    return normalized
+
+
+def _normalize_and_validate_media_type(media_type: str) -> str:
+    normalized = media_type.upper()
+    if normalized not in VALID_MEDIA_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid media_type: {media_type}. Valid: {list(VALID_MEDIA_TYPES)}",
+        )
+    return normalized
+
+
 @router.post("/generate", response_model=ContentPlanResponse)
 async def generate_plan(
     request: GeneratePlanRequest,
@@ -71,11 +119,7 @@ async def generate_plan(
     db: AsyncSession = Depends(get_db_async_session),
 ):
     """Generate AI-powered content plan."""
-    # Validate platforms
-    valid_platforms = ["telegram", "vk", "instagram", "facebook", "tiktok", "youtube", "rutube"]
-    for platform in request.platforms:
-        if platform not in valid_platforms:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid platform: {platform}")
+    request.platforms = _normalize_and_validate_platforms(request.platforms)
 
     # Validate tone
     valid_tones = [t.value for t in Tone]
@@ -128,19 +172,7 @@ async def generate_plan(
     await db.commit()
     await db.refresh(plan)
 
-    return ContentPlanResponse(
-        id=str(plan.id),
-        niche=plan.niche,
-        duration_days=plan.duration_days,
-        posts_per_day=plan.posts_per_day,
-        tone=plan.tone,
-        platforms=plan.platforms,
-        status=plan.status.value,
-        posts=[PlannedPostResponse(**p) for p in plan.plan_data],
-        total_posts=len(plan.plan_data),
-        posts_created=plan.posts_created,
-        posts_published=plan.posts_published,
-    )
+    return _to_plan_response(plan)
 
 
 @router.get("/{plan_id}", response_model=ContentPlanResponse)
@@ -148,27 +180,8 @@ async def get_plan(
     plan_id: UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db_async_session)
 ):
     """Get content plan by ID."""
-    plan = await db.get(ContentPlan, plan_id)
-
-    if not plan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content plan not found")
-
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-
-    return ContentPlanResponse(
-        id=str(plan.id),
-        niche=plan.niche,
-        duration_days=plan.duration_days,
-        posts_per_day=plan.posts_per_day,
-        tone=plan.tone,
-        platforms=plan.platforms,
-        status=plan.status.value,
-        posts=[PlannedPostResponse(**p) for p in plan.plan_data],
-        total_posts=len(plan.plan_data),
-        posts_created=plan.posts_created,
-        posts_published=plan.posts_published,
-    )
+    plan = _ensure_plan_access(await db.get(ContentPlan, plan_id), current_user)
+    return _to_plan_response(plan)
 
 
 @router.get("/", response_model=list[ContentPlanResponse])
@@ -192,22 +205,7 @@ async def list_plans(
     result = await db.execute(query)
     plans = result.scalars().all()
 
-    return [
-        ContentPlanResponse(
-            id=str(plan.id),
-            niche=plan.niche,
-            duration_days=plan.duration_days,
-            posts_per_day=plan.posts_per_day,
-            tone=plan.tone,
-            platforms=plan.platforms,
-            status=plan.status.value,
-            posts=[PlannedPostResponse(**p) for p in plan.plan_data],
-            total_posts=len(plan.plan_data),
-            posts_created=plan.posts_created,
-            posts_published=plan.posts_published,
-        )
-        for plan in plans
-    ]
+    return [_to_plan_response(plan) for plan in plans]
 
 
 @router.put("/{plan_id}", response_model=ContentPlanResponse)
@@ -218,32 +216,14 @@ async def update_plan(
     db: AsyncSession = Depends(get_db_async_session),
 ):
     """Update content plan posts."""
-    plan = await db.get(ContentPlan, plan_id)
-
-    if not plan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content plan not found")
-
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    plan = _ensure_plan_access(await db.get(ContentPlan, plan_id), current_user)
 
     # Update plan data
     plan.plan_data = [p.model_dump() for p in posts]
     await db.commit()
     await db.refresh(plan)
 
-    return ContentPlanResponse(
-        id=str(plan.id),
-        niche=plan.niche,
-        duration_days=plan.duration_days,
-        posts_per_day=plan.posts_per_day,
-        tone=plan.tone,
-        platforms=plan.platforms,
-        status=plan.status.value,
-        posts=[PlannedPostResponse(**p) for p in plan.plan_data],
-        total_posts=len(plan.plan_data),
-        posts_created=plan.posts_created,
-        posts_published=plan.posts_published,
-    )
+    return _to_plan_response(plan)
 
 
 @router.post("/{plan_id}/activate")
@@ -251,47 +231,70 @@ async def activate_plan(
     plan_id: UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db_async_session)
 ):
     """Activate content plan and create scheduled posts."""
+    import json
     from datetime import datetime
+    from uuid import uuid4
 
-    from ..models.entities import ContentQueue, Platform, Post, PostStatus
+    from sqlalchemy import text
 
-    plan = await db.get(ContentPlan, plan_id)
-
-    if not plan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content plan not found")
-
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    plan = _ensure_plan_access(await db.get(ContentPlan, plan_id), current_user)
 
     if plan.status != ContentPlanStatus.DRAFT:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan is already activated or completed")
 
-    # Create posts from plan
+    # Create posts from plan using raw SQL (ORM model mismatch with user_id)
     created_posts = 0
+    created_post_ids = []  # For image generation
     for post_data in plan.plan_data:
-        # Create Post entity
-        post = Post(
-            source_platform=Platform.TELEGRAM,  # Default source
-            original_text=post_data["caption_draft"],
-            generated_caption=post_data["caption_draft"],
-            hashtags=post_data["hashtags"],
-            status=PostStatus.DRAFT,
-            is_scheduled=True,
-            scheduled_at=datetime.fromisoformat(f"{post_data['date']}T{post_data['time']}:00"),
-        )
-        db.add(post)
-        created_posts += 1
+        post_id = uuid4()
 
-        # Queue for each platform
-        for platform_name in post_data["platforms"]:
-            try:
-                platform = Platform(platform_name)
-                queue_item = ContentQueue(
-                    post_id=post.id, platform=platform, scheduled_for=post.scheduled_at, status="pending"
-                )
-                db.add(queue_item)
-            except:
-                continue
+        # Parse scheduled time
+        try:
+            scheduled_at = datetime.fromisoformat(f"{post_data['date']}T{post_data['time']}:00")
+        except Exception:
+            scheduled_at = datetime.utcnow()
+
+        enrichment = json.dumps({"image_prompt": post_data.get("image_prompt"), "topic": post_data.get("topic")})
+
+        # Create Post using raw SQL to include user_id
+        await db.execute(
+            text(
+                """
+                INSERT INTO posts (id, user_id, original_text, generated_caption, hashtags,
+                                   status, is_scheduled, scheduled_at, source_platform,
+                                   enrichment_data, created_at, updated_at)
+                VALUES (:id, :user_id, :text, :caption, :hashtags,
+                        'draft', true, :scheduled_at, 'telegram',
+                        CAST(:enrichment AS jsonb), NOW(), NOW())
+            """
+            ),
+            {
+                "id": post_id,
+                "user_id": current_user.id,
+                "text": post_data.get("caption_draft", ""),
+                "caption": post_data.get("caption_draft", ""),
+                "hashtags": post_data.get("hashtags", []),
+                "scheduled_at": scheduled_at,
+                "enrichment": enrichment,
+            },
+        )
+        created_posts += 1
+        # Track for image generation if has image_prompt
+        if post_data.get("image_prompt"):
+            created_post_ids.append(str(post_id))
+
+        # Create content queue entries for each platform
+        for platform_name in post_data.get("platforms", ["telegram"]):
+            queue_id = uuid4()
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO content_queue (id, post_id, platform, scheduled_for, status, created_at)
+                    VALUES (:id, :post_id, :platform, :scheduled_for, 'pending', NOW())
+                """
+                ),
+                {"id": queue_id, "post_id": post_id, "platform": platform_name.lower(), "scheduled_for": scheduled_at},
+            )
 
     # Update plan status
     plan.status = ContentPlanStatus.ACTIVE
@@ -300,10 +303,23 @@ async def activate_plan(
 
     await db.commit()
 
+    # Trigger image generation for posts with image_prompt
+    images_queued = 0
+    if created_post_ids:
+        try:
+            from ..workers.tasks.image_generate import batch_generate_images
+
+            batch_generate_images.delay(created_post_ids)
+            images_queued = len(created_post_ids)
+            logger.info("Queued image generation", posts_count=images_queued)
+        except Exception as e:
+            logger.warning("Failed to queue image generation", error=str(e))
+
     return {
         "success": True,
-        "message": f"Plan activated. {created_posts} posts scheduled.",
+        "message": f"Plan activated. {created_posts} posts scheduled. {images_queued} images queued.",
         "posts_created": created_posts,
+        "images_queued": images_queued,
     }
 
 
@@ -312,13 +328,7 @@ async def delete_plan(
     plan_id: UUID, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db_async_session)
 ):
     """Delete content plan."""
-    plan = await db.get(ContentPlan, plan_id)
-
-    if not plan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content plan not found")
-
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    plan = _ensure_plan_access(await db.get(ContentPlan, plan_id), current_user)
 
     await db.delete(plan)
     await db.commit()
@@ -334,13 +344,7 @@ async def regenerate_post(
     db: AsyncSession = Depends(get_db_async_session),
 ):
     """Regenerate a single post in the plan."""
-    plan = await db.get(ContentPlan, plan_id)
-
-    if not plan:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content plan not found")
-
-    if plan.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    plan = _ensure_plan_access(await db.get(ContentPlan, plan_id), current_user)
 
     if request.post_index >= len(plan.plan_data):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid post index")
@@ -431,22 +435,10 @@ async def upload_plan(
     from datetime import datetime
 
     # Validate platforms
-    valid_platforms = ["telegram", "vk", "instagram", "facebook", "tiktok", "youtube", "rutube"]
-    valid_media_types = ["IMAGE", "VIDEO", "CAROUSEL", "TEXT_ONLY"]
-
     posts_data = []
     for post in request.posts:
-        # Validate platforms
-        for platform in post.platforms:
-            if platform.lower() not in valid_platforms:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid platform: {platform}")
-
-        # Validate media type
-        if post.media_type.upper() not in valid_media_types:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid media_type: {post.media_type}. Valid: {valid_media_types}",
-            )
+        normalized_platforms = _normalize_and_validate_platforms(post.platforms)
+        normalized_media_type = _normalize_and_validate_media_type(post.media_type)
 
         # Parse date to get day of week
         try:
@@ -465,8 +457,8 @@ async def upload_plan(
                 "topic": post.topic,
                 "caption_draft": post.caption,
                 "hashtags": post.hashtags or [],
-                "platforms": [p.lower() for p in post.platforms],
-                "media_type": post.media_type.upper(),
+                "platforms": normalized_platforms,
+                "media_type": normalized_media_type,
                 "image_prompt": post.image_prompt,
                 "media_url": post.media_url,
                 "call_to_action": None,
@@ -493,33 +485,7 @@ async def upload_plan(
     await db.commit()
     await db.refresh(plan)
 
-    return ContentPlanResponse(
-        id=str(plan.id),
-        niche=plan.niche,
-        duration_days=plan.duration_days,
-        posts_per_day=plan.posts_per_day,
-        tone=plan.tone,
-        platforms=plan.platforms,
-        status=plan.status.value,
-        posts=[
-            PlannedPostResponse(
-                date=p["date"],
-                day_of_week=p["day_of_week"],
-                time=p["time"],
-                topic=p["topic"],
-                caption_draft=p["caption_draft"],
-                hashtags=p["hashtags"],
-                platforms=p["platforms"],
-                media_type=p["media_type"],
-                image_prompt=p.get("image_prompt"),
-                call_to_action=p.get("call_to_action"),
-            )
-            for p in plan.plan_data
-        ],
-        total_posts=len(plan.plan_data),
-        posts_created=0,
-        posts_published=0,
-    )
+    return _to_plan_response(plan)
 
 
 @router.post("/upload-csv", response_model=ContentPlanResponse)
@@ -568,7 +534,10 @@ async def upload_plan_from_csv(
 
             # Parse platforms (pipe or comma separated)
             platforms_raw = row.get("platforms", "telegram")
-            platforms = [p.strip().lower() for p in platforms_raw.replace("|", ",").split(",") if p.strip()]
+            platforms = _normalize_and_validate_platforms(
+                [p.strip() for p in platforms_raw.replace("|", ",").split(",") if p.strip()]
+            )
+            media_type = _normalize_and_validate_media_type(row.get("media_type", "IMAGE").strip())
 
             posts_data.append(
                 {
@@ -579,7 +548,7 @@ async def upload_plan_from_csv(
                     "caption_draft": row["caption"].strip(),
                     "hashtags": hashtags,
                     "platforms": platforms,
-                    "media_type": row.get("media_type", "IMAGE").strip().upper(),
+                    "media_type": media_type,
                     "image_prompt": row.get("image_prompt", "").strip() or None,
                     "call_to_action": row.get("call_to_action", "").strip() or None,
                 }
@@ -611,30 +580,4 @@ async def upload_plan_from_csv(
     await db.commit()
     await db.refresh(plan)
 
-    return ContentPlanResponse(
-        id=str(plan.id),
-        niche=plan.niche,
-        duration_days=plan.duration_days,
-        posts_per_day=plan.posts_per_day,
-        tone=plan.tone,
-        platforms=plan.platforms,
-        status=plan.status.value,
-        posts=[
-            PlannedPostResponse(
-                date=p["date"],
-                day_of_week=p["day_of_week"],
-                time=p["time"],
-                topic=p["topic"],
-                caption_draft=p["caption_draft"],
-                hashtags=p["hashtags"],
-                platforms=p["platforms"],
-                media_type=p["media_type"],
-                image_prompt=p.get("image_prompt"),
-                call_to_action=p.get("call_to_action"),
-            )
-            for p in plan.plan_data
-        ],
-        total_posts=len(plan.plan_data),
-        posts_created=0,
-        posts_published=0,
-    )
+    return _to_plan_response(plan)

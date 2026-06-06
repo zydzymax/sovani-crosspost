@@ -1,6 +1,7 @@
 """VK API adapter for SalesWhisper Crosspost."""
 
 import asyncio
+import inspect
 import json
 import mimetypes
 import time
@@ -131,7 +132,8 @@ class VKAdapter:
     def __init__(self):
         """Initialize VK adapter."""
         self.access_token = self._get_access_token()
-        self.group_id = settings.vk.group_id if hasattr(settings.vk, "group_id") else None
+        vk_settings = getattr(settings, "vk", None)
+        self.group_id = vk_settings.group_id if vk_settings and hasattr(vk_settings, "group_id") else None
         self.api_version = "5.131"
         self.api_base = "https://api.vk.com/method"
 
@@ -152,20 +154,21 @@ class VKAdapter:
     def _get_access_token(self) -> str:
         """Get VK access token from settings."""
         # First try direct settings access
-        if hasattr(settings, "vk") and hasattr(settings.vk, "service_token"):
-            token = settings.vk.service_token
-            if hasattr(token, "get_secret_value"):
-                return token.get_secret_value()
-            return str(token)
+        vk_settings = getattr(settings, "vk", None)
+        if vk_settings and (hasattr(vk_settings, "service_token") or hasattr(vk_settings, "access_token")):
+            for attr_name in ("access_token", "service_token"):
+                token = getattr(vk_settings, attr_name, None)
+                if token is None:
+                    continue
+                if hasattr(token, "get_secret_value"):
+                    value = token.get_secret_value()
+                    if isinstance(value, str) and value.strip():
+                        return value
+                    continue
+                if isinstance(token, str) and token.strip():
+                    return token
 
-        # Fallback to environment variable
-        import os
-
-        token = os.getenv("VK_SERVICE_TOKEN")
-        if token:
-            return token
-
-        raise VKAuthError("VK service token not configured. Set VK_SERVICE_TOKEN environment variable.")
+        raise VKAuthError("VK access token not configured. Set VK_SERVICE_TOKEN environment variable.")
 
     async def publish_post(self, post: VKPost, correlation_id: str = None) -> VKPublishResult:
         """Publish post to VK wall."""
@@ -183,15 +186,17 @@ class VKAdapter:
             try:
                 # Upload media items first
                 attachments = []
+                upload_handlers = {
+                    MediaType.PHOTO: self._upload_photo,
+                    MediaType.VIDEO: self._upload_video,
+                }
                 for i, media_item in enumerate(post.media_items):
-                    logger.info(f"Uploading media item {i+1}/{len(post.media_items)}")
-
-                    if media_item.media_type == MediaType.PHOTO:
-                        upload_result = await self._upload_photo(media_item, correlation_id)
-                    elif media_item.media_type == MediaType.VIDEO:
-                        upload_result = await self._upload_video(media_item, correlation_id)
-                    else:
+                    logger.info("Uploading media item", item_index=i + 1, total_items=len(post.media_items))
+                    upload_handler = upload_handlers.get(media_item.media_type)
+                    if upload_handler is None:
                         raise VKValidationError(f"Unsupported media type: {media_item.media_type}")
+
+                    upload_result = await upload_handler(media_item, correlation_id)
 
                     if upload_result.attachment_string:
                         attachments.append(upload_result.attachment_string)
@@ -225,7 +230,6 @@ class VKAdapter:
                     endpoint="wall_post",
                     status_code=getattr(e, "error_code", 500),
                     duration=processing_time,
-                    error=str(e),
                 )
 
                 logger.error("Failed to publish VK post", error=str(e), processing_time=processing_time, exc_info=True)
@@ -242,9 +246,10 @@ class VKAdapter:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
         retry=retry_if_exception_type((httpx.RequestError, VKRateLimitError)),
+        reraise=True,
     )
     async def _upload_photo(self, media_item: VKMediaItem, correlation_id: str = None) -> VKUploadResult:
-        """Upload photo to VK using getWallUploadServer � saveWallPhoto workflow."""
+        """Upload photo to VK using getWallUploadServer -> saveWallPhoto workflow."""
         start_time = time.time()
 
         with with_logging_context(correlation_id=correlation_id, media_type="photo"):
@@ -323,6 +328,7 @@ class VKAdapter:
     async def _upload_video(self, media_item: VKMediaItem, correlation_id: str = None) -> VKUploadResult:
         """Upload video to VK using video.save workflow."""
         start_time = time.time()
+        file_size = 0
 
         with with_logging_context(correlation_id=correlation_id, media_type="video"):
             logger.info("Starting VK video upload", file_path=media_item.file_path)
@@ -330,7 +336,9 @@ class VKAdapter:
             try:
                 # Get file info
                 file_path = Path(media_item.file_path)
-                file_size = file_path.stat().st_size if file_path.exists() else 0
+                if not file_path.exists():
+                    raise VKUploadError(f"File not found: {media_item.file_path}")
+                file_size = file_path.stat().st_size
 
                 # Step 1: Create video entry
                 video_save_response = await self._make_api_request(
@@ -450,10 +458,26 @@ class VKAdapter:
             # Handle both URL and local file paths
             if file_path.startswith(("http://", "https://")):
                 # Download file from URL first
-                async with self.http_client.get(file_path) as response:
-                    response.raise_for_status()
-                    file_content = await response.aread()
-                    file_name = Path(file_path).name
+                request_result = self.http_client.get(file_path)
+                if inspect.isawaitable(request_result):
+                    request_result = await request_result
+                if hasattr(request_result, "__aenter__"):
+                    async with request_result as response:
+                        raise_result = response.raise_for_status()
+                        if inspect.isawaitable(raise_result):
+                            await raise_result
+                        file_content = response.aread()
+                        if inspect.isawaitable(file_content):
+                            file_content = await file_content
+                else:
+                    response = await request_result
+                    raise_result = response.raise_for_status()
+                    if inspect.isawaitable(raise_result):
+                        await raise_result
+                    file_content = response.aread()
+                    if inspect.isawaitable(file_content):
+                        file_content = await file_content
+                file_name = Path(file_path).name
             else:
                 # Read local file
                 file_path_obj = Path(file_path)
@@ -470,22 +494,35 @@ class VKAdapter:
             # Upload file
             files = {field_name: (file_name, file_content, mime_type)}
 
-            async with self.http_client.post(upload_url, files=files) as response:
-                response.raise_for_status()
+            request_result = self.http_client.post(upload_url, files=files)
+            if inspect.isawaitable(request_result):
+                request_result = await request_result
+            if hasattr(request_result, "__aenter__"):
+                async with request_result as response:
+                    raise_result = response.raise_for_status()
+                    if inspect.isawaitable(raise_result):
+                        await raise_result
+                    result = response.aread()
+                    if inspect.isawaitable(result):
+                        result = await result
+            else:
+                response = await request_result
+                raise_result = response.raise_for_status()
+                if inspect.isawaitable(raise_result):
+                    await raise_result
+                result = response.aread()
+                if inspect.isawaitable(result):
+                    result = await result
 
-                result = await response.aread()
-
-                # VK returns JSON response
-                try:
-                    return json.loads(result.decode("utf-8"))
-                except json.JSONDecodeError as e:
-                    logger.error(
-                        "Failed to parse upload response", response_text=result.decode("utf-8", errors="ignore")
-                    )
-                    raise VKUploadError(f"Invalid upload response: {e}")
+            # VK returns JSON response
+            try:
+                return json.loads(result.decode("utf-8"))
+            except json.JSONDecodeError as e:
+                logger.error("Failed to parse upload response", response_text=result.decode("utf-8", errors="ignore"))
+                raise VKUploadError(f"Invalid upload response: {e}")
 
         except Exception as e:
-            logger.error(f"File upload failed: {e}", file_path=file_path, upload_url=upload_url)
+            logger.exception("File upload failed", file_path=file_path, upload_url=upload_url)
             raise VKUploadError(f"File upload failed: {e}")
 
     async def _check_rate_limits(self):
@@ -503,7 +540,7 @@ class VKAdapter:
                 wait_time = 1.0 - (current_time - oldest_request)
 
                 if wait_time > 0:
-                    logger.warning(f"VK rate limit reached. Waiting {wait_time:.2f} seconds")
+                    logger.warning("VK rate limit reached", wait_time=round(wait_time, 2))
                     await asyncio.sleep(wait_time)
 
             # Record this request
@@ -513,6 +550,7 @@ class VKAdapter:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
         retry=retry_if_exception_type((httpx.RequestError, VKRateLimitError)),
+        reraise=True,
     )
     async def _make_api_request(self, method: str, params: dict[str, Any] = None) -> dict[str, Any]:
         """Make authenticated API request to VK."""
@@ -532,6 +570,8 @@ class VKAdapter:
             response.raise_for_status()
 
             result = response.json()
+            if inspect.isawaitable(result):
+                result = await result
 
             # Handle VK API errors
             if "error" in result:
@@ -540,10 +580,10 @@ class VKAdapter:
             return result
 
         except httpx.RequestError as e:
-            logger.warning(f"VK API request error, will retry: {e}")
+            logger.warning("VK API request error, will retry", error=str(e))
             raise
-        except Exception as e:
-            logger.error(f"VK API request failed: {e}")
+        except Exception:
+            logger.exception("VK API request failed")
             raise
 
     async def _handle_api_error(self, error_data: dict[str, Any]):
@@ -611,8 +651,8 @@ class VKAdapter:
                 "url": f"https://vk.com/wall{post.get('owner_id')}_{post.get('id')}",
             }
 
-        except Exception as e:
-            logger.error(f"Failed to get VK post info: {e}", owner_id=owner_id, post_id=post_id)
+        except Exception:
+            logger.exception("Failed to get VK post info", owner_id=owner_id, post_id=post_id)
             return {}
 
     async def delete_post(self, owner_id: int, post_id: int) -> bool:
@@ -623,8 +663,8 @@ class VKAdapter:
             logger.info("VK post deleted successfully", owner_id=owner_id, post_id=post_id)
             return True
 
-        except Exception as e:
-            logger.error(f"Failed to delete VK post: {e}", owner_id=owner_id, post_id=post_id)
+        except Exception:
+            logger.exception("Failed to delete VK post", owner_id=owner_id, post_id=post_id)
             return False
 
     async def update_post_status(self, post_id: str, status: str, result_data: dict[str, Any] = None):
@@ -637,8 +677,15 @@ class VKAdapter:
         logger.info("VK adapter closed")
 
 
-# Global adapter instance
-vk_adapter = VKAdapter()
+# Global adapter instance (lazy init to avoid import-time failure without env vars)
+vk_adapter: VKAdapter | None = None
+
+
+def _get_vk_adapter() -> VKAdapter:
+    global vk_adapter
+    if vk_adapter is None:
+        vk_adapter = VKAdapter()
+    return vk_adapter
 
 
 # Convenience functions
@@ -671,19 +718,30 @@ async def publish_vk_post(
         message=message, media_items=media_items, owner_id=owner_id, from_group=from_group, publish_date=publish_date
     )
 
-    return await vk_adapter.publish_post(post, correlation_id)
+    result = _get_vk_adapter().publish_post(post, correlation_id)
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 
 async def get_vk_post_info(owner_id: int, post_id: int) -> dict[str, Any]:
     """Get VK post information."""
-    return await vk_adapter.get_post_info(owner_id, post_id)
+    result = _get_vk_adapter().get_post_info(owner_id, post_id)
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 
 async def delete_vk_post(owner_id: int, post_id: int) -> bool:
     """Delete VK post."""
-    return await vk_adapter.delete_post(owner_id, post_id)
+    result = _get_vk_adapter().delete_post(owner_id, post_id)
+    if inspect.isawaitable(result):
+        return await result
+    return result
 
 
 async def cleanup_vk_adapter():
     """Cleanup VK adapter resources."""
+    if vk_adapter is None:
+        return
     await vk_adapter.close()

@@ -355,6 +355,18 @@ class MetricsCollector:
         """Update cache hit ratio."""
         self.cache_hit_ratio.set(ratio)
 
+
+    def track_preflight_stage(self, post_id: str, platforms_count: int, all_passed: bool,
+                               violations_count: int, processing_time: float,
+                               avg_quality_score: float = 0.0,
+                               optimal_time_platforms: list = None, error: str = None):
+        """Track preflight check stage (stub - logs only)."""
+        import logging
+        logging.getLogger("metrics").debug(
+            "preflight_stage post=%s platforms=%d passed=%s violations=%d time=%.3fs",
+            post_id, platforms_count, all_passed, violations_count, processing_time,
+        )
+
     def get_metrics(self) -> str:
         """Get metrics in Prometheus format."""
         return generate_latest(self.registry)
@@ -362,6 +374,12 @@ class MetricsCollector:
 
 # Global metrics collector
 metrics = MetricsCollector()
+
+
+def _request_method(args: tuple, kwargs: dict) -> str:
+    """Best-effort extraction of HTTP method from request argument."""
+    request = kwargs.get("request") or (args[0] if args else None)
+    return getattr(request, "method", "unknown") if request else "unknown"
 
 
 # Decorators for automatic metrics collection
@@ -376,19 +394,11 @@ def track_request_metrics(endpoint: str):
                 response = await func(*args, **kwargs)
                 duration = time.time() - start_time
                 status_code = getattr(response, "status_code", 200)
-
-                # Extract method from request if available
-                request = kwargs.get("request") or (args[0] if args else None)
-                method = getattr(request, "method", "unknown") if request else "unknown"
-
-                metrics.track_request(method, endpoint, status_code, duration)
+                metrics.track_request(_request_method(args, kwargs), endpoint, status_code, duration)
                 return response
             except Exception:
                 duration = time.time() - start_time
-                request = kwargs.get("request") or (args[0] if args else None)
-                method = getattr(request, "method", "unknown") if request else "unknown"
-
-                metrics.track_request(method, endpoint, 500, duration)
+                metrics.track_request(_request_method(args, kwargs), endpoint, 500, duration)
                 raise
 
         @wraps(func)
@@ -398,18 +408,11 @@ def track_request_metrics(endpoint: str):
                 response = func(*args, **kwargs)
                 duration = time.time() - start_time
                 status_code = getattr(response, "status_code", 200)
-
-                request = kwargs.get("request") or (args[0] if args else None)
-                method = getattr(request, "method", "unknown") if request else "unknown"
-
-                metrics.track_request(method, endpoint, status_code, duration)
+                metrics.track_request(_request_method(args, kwargs), endpoint, status_code, duration)
                 return response
             except Exception:
                 duration = time.time() - start_time
-                request = kwargs.get("request") or (args[0] if args else None)
-                method = getattr(request, "method", "unknown") if request else "unknown"
-
-                metrics.track_request(method, endpoint, 500, duration)
+                metrics.track_request(_request_method(args, kwargs), endpoint, 500, duration)
                 raise
 
         # Return appropriate wrapper based on function type

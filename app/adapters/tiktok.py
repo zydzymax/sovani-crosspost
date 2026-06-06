@@ -8,6 +8,7 @@ including direct posting for approved apps and draft creation with webhook callb
 import asyncio
 import hashlib
 import hmac
+import inspect
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -16,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..core.config import settings
 from ..core.logging import get_logger, with_logging_context
@@ -144,11 +145,11 @@ class WebhookEvent:
 class TikTokAdapter:
     """TikTok API adapter."""
 
-    def __init__(self):
+    def __init__(self, access_token: str | None = None):
         """Initialize TikTok adapter."""
         self.client_key = self._get_client_key()
         self.client_secret = self._get_client_secret()
-        self.access_token = self._get_access_token()
+        self.access_token = access_token or self._get_access_token()
         self.webhook_secret = self._get_webhook_secret()
 
         self.api_base = "https://open.tiktokapis.com/v2"
@@ -171,10 +172,32 @@ class TikTokAdapter:
 
         logger.info("TikTok adapter initialized")
 
+    @staticmethod
+    async def _await_maybe(value: Any) -> Any:
+        if inspect.isawaitable(value):
+            return await value
+        return value
+
+    @staticmethod
+    def _build_post_info(post: TikTokPost) -> dict[str, Any]:
+        post_info = {
+            "title": post.video_item.title,
+            "description": post.video_item.description,
+            "privacy_level": post.video_item.privacy_level,
+            "disable_duet": post.video_item.disable_duet,
+            "disable_comment": post.video_item.disable_comment,
+            "disable_stitch": post.video_item.disable_stitch,
+            "auto_add_music": post.auto_add_music,
+        }
+        if post.video_item.tags:
+            post_info["tag"] = post.video_item.tags
+        return post_info
+
     def _get_client_key(self) -> str:
         """Get TikTok client key from settings."""
-        if hasattr(settings.tiktok, "client_key"):
-            key = settings.tiktok.client_key
+        tiktok_settings = getattr(settings, "tiktok", None)
+        if tiktok_settings and hasattr(tiktok_settings, "client_key"):
+            key = tiktok_settings.client_key
             if hasattr(key, "get_secret_value"):
                 return key.get_secret_value()
             return str(key)
@@ -182,8 +205,9 @@ class TikTokAdapter:
 
     def _get_client_secret(self) -> str:
         """Get TikTok client secret from settings."""
-        if hasattr(settings.tiktok, "client_secret"):
-            secret = settings.tiktok.client_secret
+        tiktok_settings = getattr(settings, "tiktok", None)
+        if tiktok_settings and hasattr(tiktok_settings, "client_secret"):
+            secret = tiktok_settings.client_secret
             if hasattr(secret, "get_secret_value"):
                 return secret.get_secret_value()
             return str(secret)
@@ -191,8 +215,9 @@ class TikTokAdapter:
 
     def _get_access_token(self) -> str:
         """Get TikTok access token from settings."""
-        if hasattr(settings.tiktok, "access_token"):
-            token = settings.tiktok.access_token
+        tiktok_settings = getattr(settings, "tiktok", None)
+        if tiktok_settings and hasattr(tiktok_settings, "access_token"):
+            token = tiktok_settings.access_token
             if hasattr(token, "get_secret_value"):
                 return token.get_secret_value()
             return str(token)
@@ -200,8 +225,9 @@ class TikTokAdapter:
 
     def _get_webhook_secret(self) -> str:
         """Get TikTok webhook secret from settings."""
-        if hasattr(settings.tiktok, "webhook_secret"):
-            secret = settings.tiktok.webhook_secret
+        tiktok_settings = getattr(settings, "tiktok", None)
+        if tiktok_settings and hasattr(tiktok_settings, "webhook_secret"):
+            secret = tiktok_settings.webhook_secret
             if hasattr(secret, "get_secret_value"):
                 return secret.get_secret_value()
             return str(secret)
@@ -265,7 +291,6 @@ class TikTokAdapter:
                     endpoint="publish_post",
                     status_code=getattr(e, "error_code", 500),
                     duration=processing_time,
-                    error=str(e),
                 )
 
                 logger.error(
@@ -328,6 +353,9 @@ class TikTokAdapter:
             except Exception as e:
                 upload_time = time.time() - start_time
 
+                if isinstance(e, httpx.RequestError | TikTokRateLimitError):
+                    raise
+
                 logger.error(
                     "Failed to upload TikTok video",
                     file_path=video_item.file_path,
@@ -358,12 +386,22 @@ class TikTokAdapter:
             # TikTok expects multipart upload
             files = {"video": (Path(file_path).name, file_content, "video/mp4")}
 
-            async with self.http_client.put(upload_url, files=files) as response:
-                response.raise_for_status()
+            request_result = self.http_client.put(upload_url, files=files)
+            request_result = await self._await_maybe(request_result)
+            if hasattr(request_result, "__aenter__"):
+                async with request_result as response:
+                    raise_result = response.raise_for_status()
+                    if inspect.isawaitable(raise_result):
+                        await raise_result
+                    status_code = response.status_code
+            else:
+                response = request_result
+                raise_result = response.raise_for_status()
+                if inspect.isawaitable(raise_result):
+                    await raise_result
+                status_code = response.status_code
 
-                logger.info(
-                    "Video chunks uploaded successfully", file_size=len(file_content), status_code=response.status_code
-                )
+            logger.info("Video chunks uploaded successfully", file_size=len(file_content), status_code=status_code)
 
     async def _direct_publish(
         self, post: TikTokPost, upload_id: str, correlation_id: str = None
@@ -371,28 +409,14 @@ class TikTokAdapter:
         """Directly publish post for approved apps."""
         with with_logging_context(correlation_id=correlation_id, action="direct_publish"):
             try:
-                payload = {
-                    "post_info": {
-                        "title": post.video_item.title,
-                        "description": post.video_item.description,
-                        "privacy_level": post.video_item.privacy_level,
-                        "disable_duet": post.video_item.disable_duet,
-                        "disable_comment": post.video_item.disable_comment,
-                        "disable_stitch": post.video_item.disable_stitch,
-                        "brand_content_toggle": post.video_item.brand_content_toggle,
-                        "brand_organic_toggle": post.video_item.brand_organic_toggle,
-                        "auto_add_music": post.auto_add_music,
-                    },
-                    "source_info": {"source": "FILE_UPLOAD", "video_id": upload_id},
-                }
+                post_info = self._build_post_info(post)
+                post_info["brand_content_toggle"] = post.video_item.brand_content_toggle
+                post_info["brand_organic_toggle"] = post.video_item.brand_organic_toggle
+                payload = {"post_info": post_info, "source_info": {"source": "FILE_UPLOAD", "video_id": upload_id}}
 
                 # Add scheduling if specified
                 if post.schedule_time:
                     payload["post_info"]["schedule_time"] = int(post.schedule_time.timestamp())
-
-                # Add tags
-                if post.video_item.tags:
-                    payload["post_info"]["tag"] = post.video_item.tags
 
                 response = await self._make_api_request(
                     "POST", f"{self.upload_api_base}/video/publish", json_data=payload
@@ -412,8 +436,8 @@ class TikTokAdapter:
                     published_at=datetime.now(timezone.utc) if not post.schedule_time else post.schedule_time,
                 )
 
-            except Exception as e:
-                logger.error(f"Direct publish failed: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Direct publish failed")
                 raise
 
     async def _create_draft(self, post: TikTokPost, upload_id: str, correlation_id: str = None) -> TikTokPublishResult:
@@ -421,21 +445,9 @@ class TikTokAdapter:
         with with_logging_context(correlation_id=correlation_id, action="create_draft"):
             try:
                 payload = {
-                    "post_info": {
-                        "title": post.video_item.title,
-                        "description": post.video_item.description,
-                        "privacy_level": post.video_item.privacy_level,
-                        "disable_duet": post.video_item.disable_duet,
-                        "disable_comment": post.video_item.disable_comment,
-                        "disable_stitch": post.video_item.disable_stitch,
-                        "auto_add_music": post.auto_add_music,
-                    },
+                    "post_info": self._build_post_info(post),
                     "source_info": {"source": "FILE_UPLOAD", "video_id": upload_id},
                 }
-
-                # Add tags
-                if post.video_item.tags:
-                    payload["post_info"]["tag"] = post.video_item.tags
 
                 response = await self._make_api_request(
                     "POST", f"{self.upload_api_base}/video/draft", json_data=payload
@@ -451,8 +463,8 @@ class TikTokAdapter:
                     published_at=None,
                 )
 
-            except Exception as e:
-                logger.error(f"Create draft failed: {e}", exc_info=True)
+            except Exception:
+                logger.exception("Create draft failed")
                 raise
 
     def validate_webhook_signature(self, payload: str, signature: str, timestamp: str) -> bool:
@@ -467,8 +479,8 @@ class TikTokAdapter:
 
             return hmac.compare_digest(signature, expected_signature)
 
-        except Exception as e:
-            logger.error(f"Webhook signature validation failed: {e}")
+        except Exception:
+            logger.exception("Webhook signature validation failed")
             return False
 
     async def handle_webhook_event(self, payload: dict[str, Any], correlation_id: str = None) -> WebhookEvent:
@@ -483,7 +495,7 @@ class TikTokAdapter:
                 try:
                     event_type = WebhookEventType(event_type_str)
                 except ValueError:
-                    logger.warning(f"Unknown webhook event type: {event_type_str}")
+                    logger.warning("Unknown webhook event type", event_type=event_type_str)
                     event_type = None
 
                 event_data = payload.get("data", {})
@@ -514,8 +526,8 @@ class TikTokAdapter:
                     error_message=error_message,
                 )
 
-            except Exception as e:
-                logger.error(f"Webhook event handling failed: {e}", payload=payload, exc_info=True)
+            except Exception:
+                logger.exception("Webhook event handling failed", payload=payload)
                 raise
 
     async def _update_post_from_webhook(
@@ -580,7 +592,7 @@ class TikTokAdapter:
                 wait_time = 60.0 - (current_time - oldest_request)
 
                 if wait_time > 0:
-                    logger.warning(f"TikTok minute rate limit reached. Waiting {wait_time:.2f} seconds")
+                    logger.warning("TikTok minute rate limit reached", wait_seconds=round(wait_time, 2))
                     await asyncio.sleep(wait_time)
 
             # Record request
@@ -590,7 +602,10 @@ class TikTokAdapter:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=8),
-        retry=retry_if_exception_type((httpx.RequestError, TikTokRateLimitError)),
+        retry=retry_if_exception(
+            lambda exc: isinstance(exc, httpx.RequestError)
+            or (isinstance(exc, TikTokRateLimitError) and str(exc).strip().lower() == "rate limit")
+        ),
     )
     async def _make_api_request(
         self, method: str, url: str, params: dict[str, Any] = None, json_data: dict[str, Any] = None
@@ -605,8 +620,12 @@ class TikTokAdapter:
                 method=method, url=url, headers=headers, params=params, json=json_data
             )
 
-            response.raise_for_status()
+            raise_result = response.raise_for_status()
+            if inspect.isawaitable(raise_result):
+                await raise_result
             result = response.json()
+            if inspect.isawaitable(result):
+                result = await result
 
             # Handle TikTok API errors
             if result.get("error"):
@@ -615,10 +634,10 @@ class TikTokAdapter:
             return result
 
         except httpx.RequestError as e:
-            logger.warning(f"TikTok API request error, will retry: {e}")
+            logger.warning("TikTok API request error, will retry", error=str(e))
             raise
-        except Exception as e:
-            logger.error(f"TikTok API request failed: {e}")
+        except Exception:
+            logger.exception("TikTok API request failed")
             raise
 
     async def _handle_api_error(self, error_data: dict[str, Any]):
@@ -672,8 +691,8 @@ class TikTokAdapter:
 
             return {}
 
-        except Exception as e:
-            logger.error(f"Failed to get TikTok video info: {e}", share_id=share_id)
+        except Exception:
+            logger.exception("Failed to get TikTok video info", share_id=share_id)
             return {}
 
     async def update_post_status(self, post_id: str, status: str, result_data: dict[str, Any] = None):
@@ -691,6 +710,12 @@ tiktok_adapter = TikTokAdapter()
 
 
 # Convenience functions
+async def _resolve_awaitable(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
+
+
 async def publish_tiktok_video(
     video_path: str,
     title: str,
@@ -699,6 +724,7 @@ async def publish_tiktok_video(
     privacy_level: str = "PUBLIC_TO_EVERYONE",
     is_app_approved: bool = False,
     correlation_id: str = None,
+    access_token: str | None = None,
 ) -> TikTokPublishResult:
     """Publish video to TikTok."""
     video_item = TikTokVideoItem(
@@ -707,12 +733,19 @@ async def publish_tiktok_video(
 
     post = TikTokPost(video_item=video_item, is_app_approved=is_app_approved)
 
-    return await tiktok_adapter.publish_post(post, correlation_id)
+    if access_token:
+        adapter = TikTokAdapter(access_token=access_token)
+        try:
+            return await _resolve_awaitable(adapter.publish_post(post, correlation_id))
+        finally:
+            await adapter.close()
+
+    return await _resolve_awaitable(tiktok_adapter.publish_post(post, correlation_id))
 
 
 async def get_tiktok_video_info(share_id: str) -> dict[str, Any]:
     """Get TikTok video information."""
-    return await tiktok_adapter.get_video_info(share_id)
+    return await _resolve_awaitable(tiktok_adapter.get_video_info(share_id))
 
 
 async def validate_tiktok_webhook(payload: str, signature: str, timestamp: str) -> bool:
@@ -722,7 +755,7 @@ async def validate_tiktok_webhook(payload: str, signature: str, timestamp: str) 
 
 async def handle_tiktok_webhook(payload: dict[str, Any], correlation_id: str = None) -> WebhookEvent:
     """Handle TikTok webhook event."""
-    return await tiktok_adapter.handle_webhook_event(payload, correlation_id)
+    return await _resolve_awaitable(tiktok_adapter.handle_webhook_event(payload, correlation_id))
 
 
 async def cleanup_tiktok_adapter():

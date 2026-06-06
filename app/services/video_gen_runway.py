@@ -103,6 +103,10 @@ class RunwayService:
 
         logger.info("Runway ML service initialized")
 
+    @staticmethod
+    def _failed_result(error: str, task_id: str | None = None) -> RunwayVideoResult:
+        return RunwayVideoResult(success=False, task_id=task_id, error=error)
+
     def _get_api_key(self) -> str:
         """Get API key from settings or environment."""
         if hasattr(settings, "runway") and hasattr(settings.runway, "api_key"):
@@ -183,8 +187,8 @@ class RunwayService:
             return result
 
         except Exception as e:
-            logger.error(f"Runway video generation failed: {e}", exc_info=True)
-            return RunwayVideoResult(success=False, error=str(e))
+            logger.exception("Runway video generation failed")
+            return self._failed_result(str(e))
 
     async def generate_video_from_image(
         self,
@@ -237,8 +241,8 @@ class RunwayService:
             return result
 
         except Exception as e:
-            logger.error(f"Runway image-to-video failed: {e}", exc_info=True)
-            return RunwayVideoResult(success=False, error=str(e))
+            logger.exception("Runway image-to-video failed")
+            return self._failed_result(str(e))
 
     @retry(
         stop=stop_after_attempt(3),
@@ -260,18 +264,7 @@ class RunwayService:
         if seed is not None:
             request_data["seed"] = seed
 
-        response = await self.http_client.post(f"{self.API_BASE}/text-to-video", json=request_data)
-
-        await self._handle_response_errors(response)
-
-        data = response.json()
-        task_id = data.get("id")
-
-        if not task_id:
-            raise RunwayError(f"No task ID in response: {data}")
-
-        logger.info(f"Text-to-video task submitted: {task_id}")
-        return task_id
+        return await self._submit_generation_task("/text-to-video", request_data, "Text-to-video")
 
     @retry(
         stop=stop_after_attempt(3),
@@ -290,17 +283,18 @@ class RunwayService:
         if seed is not None:
             request_data["seed"] = seed
 
-        response = await self.http_client.post(f"{self.API_BASE}/image-to-video", json=request_data)
+        return await self._submit_generation_task("/image-to-video", request_data, "Image-to-video")
 
+    async def _submit_generation_task(self, endpoint: str, request_data: dict[str, Any], label: str) -> str:
+        response = await self.http_client.post(f"{self.API_BASE}{endpoint}", json=request_data)
         await self._handle_response_errors(response)
 
         data = response.json()
         task_id = data.get("id")
-
         if not task_id:
             raise RunwayError(f"No task ID in response: {data}")
 
-        logger.info(f"Image-to-video task submitted: {task_id}")
+        logger.info(f"{label} task submitted", task_id=task_id)
         return task_id
 
     async def _poll_for_result(self, task_id: str, max_wait: int = 600) -> RunwayVideoResult:
@@ -318,19 +312,19 @@ class RunwayService:
 
             if task_status in ["failed", "error"]:
                 error_msg = status.get("error", status.get("message", "Unknown error"))
-                return RunwayVideoResult(success=False, task_id=task_id, error=error_msg)
+                return self._failed_result(error_msg, task_id=task_id)
 
             if task_status == "cancelled":
-                return RunwayVideoResult(success=False, task_id=task_id, error="Task was cancelled")
+                return self._failed_result("Task was cancelled", task_id=task_id)
 
             # Log progress
             progress = status.get("progress", 0)
             if progress:
-                logger.info(f"Generation progress: {progress}%", task_id=task_id)
+                logger.info("Generation progress", task_id=task_id, progress_percent=progress)
 
             await asyncio.sleep(poll_interval)
 
-        return RunwayVideoResult(success=False, task_id=task_id, error=f"Generation timed out after {max_wait} seconds")
+        return self._failed_result(f"Generation timed out after {max_wait} seconds", task_id=task_id)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -390,8 +384,8 @@ class RunwayService:
             try:
                 error_data = response.json()
                 error_text = error_data.get("error", error_data.get("message", error_text))
-            except:
-                pass
+            except ValueError:
+                logger.debug("Failed to parse Runway error response as JSON", status_code=response.status_code)
             raise RunwayError(f"API Error {response.status_code}: {error_text}")
 
     async def get_account_info(self) -> dict[str, Any]:
@@ -405,7 +399,7 @@ class RunwayService:
             return {}
 
         except Exception as e:
-            logger.warning(f"Failed to get account info: {e}")
+            logger.warning("Failed to get account info", error=str(e))
             return {}
 
     async def cancel_task(self, task_id: str) -> bool:
@@ -414,13 +408,13 @@ class RunwayService:
             response = await self.http_client.post(f"{self.API_BASE}/tasks/{task_id}/cancel")
 
             if response.status_code in [200, 204]:
-                logger.info(f"Task cancelled: {task_id}")
+                logger.info("Task cancelled", task_id=task_id)
                 return True
 
             return False
 
-        except Exception as e:
-            logger.error(f"Failed to cancel task: {e}", task_id=task_id)
+        except Exception:
+            logger.exception("Failed to cancel task", task_id=task_id)
             return False
 
     async def close(self):

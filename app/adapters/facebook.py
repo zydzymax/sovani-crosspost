@@ -18,6 +18,8 @@ from ..core.logging import get_logger, with_logging_context
 from ..observability.metrics import metrics
 
 logger = get_logger("adapters.facebook")
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi"}
 
 
 class FacebookError(Exception):
@@ -263,6 +265,15 @@ class FacebookAdapter:
         else:
             raise FacebookValidationError(f"Unsupported media type: {media_item.media_type}")
 
+    @staticmethod
+    def _detect_media_type(file_path: str) -> MediaType:
+        file_ext = Path(file_path).suffix.lower()
+        if file_ext in PHOTO_EXTENSIONS:
+            return MediaType.PHOTO
+        if file_ext in VIDEO_EXTENSIONS:
+            return MediaType.VIDEO
+        return MediaType.PHOTO
+
     async def _publish_multi_media(
         self, post: FacebookPost, page_id: str, correlation_id: str = None
     ) -> FacebookPublishResult:
@@ -389,7 +400,7 @@ class FacebookAdapter:
 
         except Exception as e:
             upload_time = time.time() - start_time
-            logger.error(f"Failed to upload photo: {e}", exc_info=True)
+            logger.exception("Failed to upload photo", file_path=media_item.file_path)
 
             return FacebookUploadResult(
                 media_type=MediaType.PHOTO, media_id="", upload_time=upload_time, error_message=str(e)
@@ -518,10 +529,10 @@ class FacebookAdapter:
             return result
 
         except httpx.RequestError as e:
-            logger.warning(f"Facebook API request error: {e}")
+            logger.warning("Facebook API request error", error=str(e))
             raise
-        except Exception as e:
-            logger.error(f"Facebook API request failed: {e}")
+        except Exception:
+            logger.exception("Facebook API request failed")
             raise
 
     async def _handle_api_error(self, error_data: dict[str, Any]):
@@ -564,8 +575,8 @@ class FacebookAdapter:
             )
             logger.info("Facebook post deleted", post_id=post_id)
             return True
-        except Exception as e:
-            logger.error(f"Failed to delete Facebook post: {e}", post_id=post_id)
+        except Exception:
+            logger.exception("Failed to delete Facebook post", post_id=post_id)
             return False
 
     async def close(self):
@@ -590,14 +601,7 @@ async def publish_facebook_post(
         media_items = []
         if media_files:
             for file_path in media_files:
-                file_ext = Path(file_path).suffix.lower()
-                if file_ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
-                    media_type = MediaType.PHOTO
-                elif file_ext in [".mp4", ".mov", ".avi"]:
-                    media_type = MediaType.VIDEO
-                else:
-                    media_type = MediaType.PHOTO
-
+                media_type = FacebookAdapter._detect_media_type(file_path)
                 media_items.append(FacebookMediaItem(file_path=file_path, media_type=media_type))
 
         post = FacebookPost(

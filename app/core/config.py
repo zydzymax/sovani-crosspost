@@ -9,10 +9,30 @@ This module provides:
 """
 
 import os
+from types import SimpleNamespace
 from typing import Any
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ALLOWED_ENVIRONMENTS = ("development", "testing", "staging", "production")
+ALLOWED_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+KNOWN_INSECURE_SECRET_VALUES = {
+    "",
+    "01234567890123456789012345678901",
+    "your-jwt-secret-key-here",
+    "webhook-secret",
+    "dev-only-aes-key-change-me-00001",
+    "dev-only-token-key-change-me-000",
+    "dev-only-jwt-secret-change-me-00",
+    "dev-webhook-secret-change-me-000",
+}
+INSECURE_SECRET_MARKERS = ("change-me", "placeholder", "example", "your-", "dev-only")
+
+
+def _secret_env(name: str, default: str = "") -> SecretStr:
+    """Read secret from environment into SecretStr with default fallback."""
+    return SecretStr(os.getenv(name, default))
 
 
 class DatabaseConfig(BaseSettings):
@@ -87,14 +107,14 @@ class SecurityConfig(BaseSettings):
 
     # Encryption keys
     aes_key: SecretStr = Field(
-        default="01234567890123456789012345678901",
+        default="dev-only-aes-key-change-me-00001",
         validation_alias="AES_KEY",
         description="256-bit AES key for data encryption",
     )
     token_encryption_key: SecretStr = Field(
-        default="01234567890123456789012345678901", validation_alias="TOKEN_ENCRYPTION_KEY"
+        default="dev-only-token-key-change-me-000", validation_alias="TOKEN_ENCRYPTION_KEY"
     )
-    jwt_secret_key: SecretStr = Field(default="your-jwt-secret-key-here", validation_alias="JWT_SECRET_KEY")
+    jwt_secret_key: SecretStr = Field(default="dev-only-jwt-secret-change-me-00", validation_alias="JWT_SECRET_KEY")
 
     # JWT settings
     jwt_algorithm: str = Field(default="HS256")
@@ -102,7 +122,7 @@ class SecurityConfig(BaseSettings):
 
     # API security
     api_key_header: str = Field(default="X-API-Key")
-    webhook_secret: SecretStr = Field(default="webhook-secret")
+    webhook_secret: SecretStr = Field(default="dev-webhook-secret-change-me-000")
 
     @field_validator("aes_key")
     @classmethod
@@ -212,7 +232,7 @@ class AppConfig(BaseSettings):
     app_name: str = Field(default="SalesWhisper Crosspost", validation_alias="APP_NAME")
     version: str = Field(default="1.0.0", validation_alias="APP_VERSION")
     environment: str = Field(default="development", validation_alias="ENVIRONMENT")
-    debug: bool = Field(default=True, validation_alias="DEBUG")
+    debug: bool = Field(default=False, validation_alias="DEBUG")
 
     # API settings
     api_host: str = Field(default="0.0.0.0", validation_alias="API_HOST")
@@ -234,17 +254,15 @@ class AppConfig(BaseSettings):
     @field_validator("environment")
     @classmethod
     def validate_environment(cls, v: str) -> str:
-        allowed = ["development", "testing", "staging", "production"]
-        if v not in allowed:
-            raise ValueError(f"Environment must be one of: {allowed}")
+        if v not in ALLOWED_ENVIRONMENTS:
+            raise ValueError(f"Environment must be one of: {list(ALLOWED_ENVIRONMENTS)}")
         return v
 
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
-        allowed = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if v.upper() not in allowed:
-            raise ValueError(f"Log level must be one of: {allowed}")
+        if v.upper() not in ALLOWED_LOG_LEVELS:
+            raise ValueError(f"Log level must be one of: {list(ALLOWED_LOG_LEVELS)}")
         return v.upper()
 
     @property
@@ -302,10 +320,66 @@ class Settings:
         self.security = SecurityConfig()
         self.telegram = TelegramConfig()
         self.social_media = SocialMediaConfig()
+        # Backward-compatible aliases used by existing adapters/tests.
+        self.vk = SimpleNamespace(
+            group_id=self.social_media.vk_group_id,
+            service_token=self.social_media.vk_service_token,
+            access_token=self.social_media.vk_service_token,
+        )
+        self.instagram = SimpleNamespace(
+            page_id=os.getenv("IG_PAGE_ID", ""),
+            access_token=self.social_media.meta_access_token,
+            app_id=self.social_media.meta_app_id,
+            app_secret=self.social_media.meta_app_secret,
+        )
+        self.tiktok = SimpleNamespace(
+            client_key=self.social_media.tiktok_client_key,
+            client_secret=self.social_media.tiktok_client_secret,
+            access_token=_secret_env("TIKTOK_ACCESS_TOKEN"),
+            webhook_secret=_secret_env("TIKTOK_WEBHOOK_SECRET"),
+            redirect_uri=self.social_media.tiktok_redirect_uri,
+        )
         self.media = MediaConfig()
         self.celery = CeleryConfig()
         self.email = EmailConfig()
         self.payment = PaymentConfig()
+        # External AI APIs
+        self.GOAPI_KEY = os.environ.get("GOAPI_KEY", "")
+        self._validate_security_configuration()
+
+    @staticmethod
+    def _is_insecure_secret(secret_value: str, *, min_length: int) -> bool:
+        secret = (secret_value or "").strip()
+        if len(secret) < min_length:
+            return True
+        if secret in KNOWN_INSECURE_SECRET_VALUES:
+            return True
+        lower_secret = secret.lower()
+        return any(marker in lower_secret for marker in INSECURE_SECRET_MARKERS)
+
+    def _validate_security_configuration(self):
+        """
+        Enforce strict secrets/debug settings in staging and production.
+        """
+        if self.app.environment not in {"staging", "production"}:
+            return
+
+        issues: list[str] = []
+        if self.app.debug:
+            issues.append("DEBUG must be false in staging/production")
+
+        security_checks = [
+            ("AES_KEY", self.security.aes_key.get_secret_value(), 32),
+            ("TOKEN_ENCRYPTION_KEY", self.security.token_encryption_key.get_secret_value(), 32),
+            ("JWT_SECRET_KEY", self.security.jwt_secret_key.get_secret_value(), 32),
+            ("WEBHOOK_SECRET", self.security.webhook_secret.get_secret_value(), 24),
+        ]
+        for name, value, min_length in security_checks:
+            if self._is_insecure_secret(value, min_length=min_length):
+                issues.append(f"{name} is missing or insecure")
+
+        if issues:
+            raise ValueError(f"Insecure configuration for {self.app.environment}: {', '.join(issues)}")
 
     def get_database_url(self, async_driver: bool = False) -> str:
         """Get database URL with optional async driver."""

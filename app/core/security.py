@@ -118,6 +118,11 @@ class WebhookSigner:
     def __init__(self, secret: str | None = None):
         """Initialize signer with secret key."""
         self.secret = secret or settings.security.webhook_secret.get_secret_value()
+        self._secret_bytes = self.secret.encode("utf-8")
+
+    def _compute_signature(self, timestamp: int, payload: str) -> str:
+        signed_payload = f"{timestamp}.{payload}"
+        return hmac.new(self._secret_bytes, signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
     def sign(self, payload: str, timestamp: int | None = None) -> str:
         """
@@ -132,12 +137,7 @@ class WebhookSigner:
         """
         if timestamp is None:
             timestamp = int(time.time())
-
-        # Create signed payload: timestamp.payload
-        signed_payload = f"{timestamp}.{payload}"
-
-        # Generate HMAC-SHA256 signature
-        signature = hmac.new(self.secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        signature = self._compute_signature(timestamp, payload)
 
         return f"t={timestamp},v1={signature}"
 
@@ -173,11 +173,7 @@ class WebhookSigner:
             if current_time - timestamp > tolerance:
                 return False
 
-            # Generate expected signature
-            signed_payload = f"{timestamp}.{payload}"
-            expected_signature = hmac.new(
-                self.secret.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256
-            ).hexdigest()
+            expected_signature = self._compute_signature(timestamp, payload)
 
             # Compare signatures using constant-time comparison
             for sig in signatures:

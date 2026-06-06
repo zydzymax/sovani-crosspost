@@ -127,6 +127,28 @@ class KlingService:
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         )
 
+    @staticmethod
+    def _extract_task_id(data: dict[str, Any]) -> str:
+        if data.get("code") != 0:
+            raise KlingGenerationError(data.get("message", "Unknown error"))
+        task_id = data.get("data", {}).get("task_id")
+        if not task_id:
+            raise KlingGenerationError("No task_id returned")
+        return task_id
+
+    async def _submit_generation(self, endpoint: str, payload: dict[str, Any]) -> str:
+        async with await self._get_client() as client:
+            response = await client.post(f"{self.API_BASE}{endpoint}", json=payload)
+
+            if response.status_code == 401:
+                raise KlingAuthError("Invalid API credentials")
+            if response.status_code == 429:
+                raise KlingRateLimitError("Rate limit exceeded")
+            if response.status_code != 200:
+                raise KlingGenerationError(f"API error: {response.status_code}")
+
+            return self._extract_task_id(response.json())
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=4, max=60),
@@ -144,42 +166,21 @@ class KlingService:
         """Generate video from text prompt."""
         logger.info("Starting Kling text-to-video generation", prompt=prompt[:50])
 
-        async with await self._get_client() as client:
-            payload = {
-                "model_name": model.value,
-                "prompt": prompt,
-                "negative_prompt": negative_prompt,
-                "cfg_scale": cfg_scale,
-                "duration": duration.value,
-                "aspect_ratio": aspect_ratio.value,
-            }
+        payload = {
+            "model_name": model.value,
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            "cfg_scale": cfg_scale,
+            "duration": duration.value,
+            "aspect_ratio": aspect_ratio.value,
+        }
 
-            try:
-                response = await client.post(f"{self.API_BASE}/videos/text2video", json=payload)
-
-                if response.status_code == 401:
-                    raise KlingAuthError("Invalid API credentials")
-                elif response.status_code == 429:
-                    raise KlingRateLimitError("Rate limit exceeded")
-                elif response.status_code != 200:
-                    raise KlingGenerationError(f"API error: {response.status_code}")
-
-                data = response.json()
-
-                if data.get("code") != 0:
-                    raise KlingGenerationError(data.get("message", "Unknown error"))
-
-                task_id = data.get("data", {}).get("task_id")
-
-                if not task_id:
-                    raise KlingGenerationError("No task_id returned")
-
-                # Poll for result
-                return await self._poll_for_result(task_id, int(duration.value))
-
-            except httpx.TimeoutException:
-                logger.error("Kling API timeout")
-                raise
+        try:
+            task_id = await self._submit_generation("/videos/text2video", payload)
+            return await self._poll_for_result(task_id, int(duration.value))
+        except httpx.TimeoutException:
+            logger.error("Kling API timeout")
+            raise
 
     @retry(
         stop=stop_after_attempt(3),
@@ -198,41 +199,21 @@ class KlingService:
         """Generate video from image."""
         logger.info("Starting Kling image-to-video generation")
 
-        async with await self._get_client() as client:
-            payload = {
-                "model_name": model.value,
-                "image": image_url,
-                "prompt": prompt,
-                "negative_prompt": negative_prompt,
-                "cfg_scale": cfg_scale,
-                "duration": duration.value,
-            }
+        payload = {
+            "model_name": model.value,
+            "image": image_url,
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            "cfg_scale": cfg_scale,
+            "duration": duration.value,
+        }
 
-            try:
-                response = await client.post(f"{self.API_BASE}/videos/image2video", json=payload)
-
-                if response.status_code == 401:
-                    raise KlingAuthError("Invalid API credentials")
-                elif response.status_code == 429:
-                    raise KlingRateLimitError("Rate limit exceeded")
-                elif response.status_code != 200:
-                    raise KlingGenerationError(f"API error: {response.status_code}")
-
-                data = response.json()
-
-                if data.get("code") != 0:
-                    raise KlingGenerationError(data.get("message", "Unknown error"))
-
-                task_id = data.get("data", {}).get("task_id")
-
-                if not task_id:
-                    raise KlingGenerationError("No task_id returned")
-
-                return await self._poll_for_result(task_id, int(duration.value))
-
-            except httpx.TimeoutException:
-                logger.error("Kling API timeout")
-                raise
+        try:
+            task_id = await self._submit_generation("/videos/image2video", payload)
+            return await self._poll_for_result(task_id, int(duration.value))
+        except httpx.TimeoutException:
+            logger.error("Kling API timeout")
+            raise
 
     async def _poll_for_result(
         self, task_id: str, duration: int, max_attempts: int = 120, poll_interval: int = 5
@@ -245,7 +226,7 @@ class KlingService:
                 response = await client.get(f"{self.API_BASE}/videos/text2video/{task_id}")
 
                 if response.status_code != 200:
-                    logger.warning(f"Poll request failed: {response.status_code}")
+                    logger.warning("Poll request failed", status_code=response.status_code, task_id=task_id)
                     await asyncio.sleep(poll_interval)
                     continue
 

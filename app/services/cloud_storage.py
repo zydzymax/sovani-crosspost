@@ -108,6 +108,31 @@ class CloudStorageService:
         self._local_storage_path = os.getenv("CLOUD_SYNC_PATH", "/app/data/cloud_media")
         logger.info("CloudStorageService initialized")
 
+    @staticmethod
+    def _require_provider(provider: CloudProvider, supported: tuple[CloudProvider, ...]) -> None:
+        if provider not in supported:
+            raise ValueError(f"Unsupported provider: {provider}")
+
+    @staticmethod
+    def _get_access_token(credentials: dict[str, Any] | None) -> str | None:
+        if not credentials:
+            return None
+        token = credentials.get("access_token")
+        if not token:
+            return None
+        return str(token)
+
+    @staticmethod
+    def _sync_error_result(error: str, files_failed: int = 0) -> SyncResult:
+        return SyncResult(
+            success=False,
+            files_found=0,
+            files_downloaded=0,
+            files_failed=files_failed,
+            errors=[error],
+            downloaded_files=[],
+        )
+
     # ==================== OAuth URLs ====================
 
     def get_oauth_url(self, provider: CloudProvider, redirect_uri: str, state: str | None = None) -> str:
@@ -122,12 +147,14 @@ class CloudStorageService:
         Returns:
             OAuth authorization URL
         """
-        if provider == CloudProvider.GOOGLE_DRIVE:
-            return get_google_oauth_url(redirect_uri, state)
-        elif provider == CloudProvider.YANDEX_DISK:
-            return get_yandex_oauth_url(redirect_uri, state)
-        else:
+        oauth_url_handlers = {
+            CloudProvider.GOOGLE_DRIVE: get_google_oauth_url,
+            CloudProvider.YANDEX_DISK: get_yandex_oauth_url,
+        }
+        handler = oauth_url_handlers.get(provider)
+        if handler is None:
             raise ValueError(f"Unsupported provider: {provider}")
+        return handler(redirect_uri, state)
 
     async def exchange_oauth_code(self, provider: CloudProvider, code: str, redirect_uri: str) -> dict[str, Any] | None:
         """
@@ -141,12 +168,14 @@ class CloudStorageService:
         Returns:
             Token data or None
         """
-        if provider == CloudProvider.GOOGLE_DRIVE:
-            return await exchange_google_code(code, redirect_uri)
-        elif provider == CloudProvider.YANDEX_DISK:
-            return await exchange_yandex_code(code, redirect_uri)
-        else:
+        exchange_handlers = {
+            CloudProvider.GOOGLE_DRIVE: exchange_google_code,
+            CloudProvider.YANDEX_DISK: exchange_yandex_code,
+        }
+        handler = exchange_handlers.get(provider)
+        if handler is None:
             raise ValueError(f"Unsupported provider: {provider}")
+        return await handler(code, redirect_uri)
 
     async def refresh_token(self, provider: CloudProvider, refresh_token: str) -> dict[str, Any] | None:
         """
@@ -159,12 +188,14 @@ class CloudStorageService:
         Returns:
             New token data or None
         """
-        if provider == CloudProvider.GOOGLE_DRIVE:
-            return await refresh_google_token(refresh_token)
-        elif provider == CloudProvider.YANDEX_DISK:
-            return await refresh_yandex_token(refresh_token)
-        else:
+        refresh_handlers = {
+            CloudProvider.GOOGLE_DRIVE: refresh_google_token,
+            CloudProvider.YANDEX_DISK: refresh_yandex_token,
+        }
+        handler = refresh_handlers.get(provider)
+        if handler is None:
             raise ValueError(f"Unsupported provider: {provider}")
+        return await handler(refresh_token)
 
     # ==================== Folder Operations ====================
 
@@ -179,18 +210,23 @@ class CloudStorageService:
         Returns:
             Folder ID or None
         """
-        if provider == CloudProvider.GOOGLE_DRIVE:
-            # Check if it's a URL or direct ID
-            if "drive.google.com" in url_or_id:
-                return GoogleDriveAdapter.extract_folder_id_from_url(url_or_id)
-            return url_or_id
-        elif provider == CloudProvider.YANDEX_DISK:
-            # Check if it's a public URL or path
-            if "disk.yandex" in url_or_id:
-                return YandexDiskAdapter.extract_public_key_from_url(url_or_id)
-            return url_or_id
-        else:
+        extractors = {
+            CloudProvider.GOOGLE_DRIVE: (
+                "drive.google.com",
+                GoogleDriveAdapter.extract_folder_id_from_url,
+            ),
+            CloudProvider.YANDEX_DISK: (
+                "disk.yandex",
+                YandexDiskAdapter.extract_public_key_from_url,
+            ),
+        }
+        extractor_data = extractors.get(provider)
+        if extractor_data is None:
             return None
+        host_marker, extractor = extractor_data
+        if host_marker in url_or_id:
+            return extractor(url_or_id)
+        return url_or_id
 
     async def get_folder_info(
         self,
@@ -248,7 +284,11 @@ class CloudStorageService:
                     folder_name = "Public Folder"
                 elif credentials:
                     # Private folder
-                    files = await self.yandex_disk.list_folder_contents(folder_id, credentials.get("access_token", ""))
+                    access_token = self._get_access_token(credentials)
+                    if not access_token:
+                        logger.error("Yandex Disk credentials missing access_token")
+                        return None
+                    files = await self.yandex_disk.list_folder_contents(folder_id, access_token)
                     folder_name = Path(folder_id).name or folder_id
                 else:
                     logger.error("Yandex Disk requires credentials or public URL")
@@ -277,8 +317,8 @@ class CloudStorageService:
 
             return None
 
-        except Exception as e:
-            logger.error(f"Failed to get folder info: {e}")
+        except Exception:
+            logger.exception("Failed to get folder info")
             return None
 
     async def list_media_files(
@@ -312,14 +352,16 @@ class CloudStorageService:
                 if public_url:
                     return await self.yandex_disk.list_public_folder(public_url, "", media_types)
                 elif credentials:
-                    return await self.yandex_disk.list_folder_contents(
-                        folder_id, credentials.get("access_token", ""), media_types
-                    )
+                    access_token = self._get_access_token(credentials)
+                    if not access_token:
+                        logger.error("Yandex Disk credentials missing access_token")
+                        return []
+                    return await self.yandex_disk.list_folder_contents(folder_id, access_token, media_types)
 
             return []
 
-        except Exception as e:
-            logger.error(f"Failed to list media files: {e}")
+        except Exception:
+            logger.exception("Failed to list media files")
             return []
 
     # ==================== Sync Operations ====================
@@ -354,38 +396,23 @@ class CloudStorageService:
         try:
             if provider == CloudProvider.GOOGLE_DRIVE:
                 if not credentials:
-                    return SyncResult(
-                        success=False,
-                        files_found=0,
-                        files_downloaded=0,
-                        files_failed=0,
-                        errors=["Google Drive requires credentials"],
-                        downloaded_files=[],
-                    )
+                    return self._sync_error_result("Google Drive requires credentials")
                 return await self.google_drive.sync_folder(folder_id, credentials, output_dir, media_types)
 
             elif provider == CloudProvider.YANDEX_DISK:
                 if public_url:
                     return await self.yandex_disk.sync_public_folder(public_url, output_dir, media_types)
                 elif credentials:
-                    return await self.yandex_disk.sync_folder(
-                        folder_id, credentials.get("access_token", ""), output_dir, media_types
-                    )
+                    access_token = self._get_access_token(credentials)
+                    if not access_token:
+                        return self._sync_error_result("Yandex Disk credentials missing access_token")
+                    return await self.yandex_disk.sync_folder(folder_id, access_token, output_dir, media_types)
 
-            return SyncResult(
-                success=False,
-                files_found=0,
-                files_downloaded=0,
-                files_failed=0,
-                errors=[f"Unsupported provider: {provider}"],
-                downloaded_files=[],
-            )
+            return self._sync_error_result(f"Unsupported provider: {provider}")
 
         except Exception as e:
-            logger.error(f"Sync failed: {e}")
-            return SyncResult(
-                success=False, files_found=0, files_downloaded=0, files_failed=1, errors=[str(e)], downloaded_files=[]
-            )
+            logger.exception("Cloud folder sync failed")
+            return self._sync_error_result(str(e), files_failed=1)
 
     async def download_file(
         self,
@@ -418,14 +445,16 @@ class CloudStorageService:
                 if download_url:
                     return await self.yandex_disk.download_public_file(download_url, output_path)
                 elif credentials:
-                    return await self.yandex_disk.download_file(
-                        file_id, credentials.get("access_token", ""), output_path
-                    )
+                    access_token = self._get_access_token(credentials)
+                    if not access_token:
+                        logger.error("Yandex Disk credentials missing access_token")
+                        return False
+                    return await self.yandex_disk.download_file(file_id, access_token, output_path)
 
             return False
 
-        except Exception as e:
-            logger.error(f"Download failed: {e}")
+        except Exception:
+            logger.exception("Cloud file download failed")
             return False
 
     # ==================== Validation ====================
@@ -464,6 +493,7 @@ class CloudStorageService:
             return True, None
 
         except Exception as e:
+            logger.exception("Cloud connection validation failed")
             return False, str(e)
 
     def get_expected_folder_structure(self) -> dict[str, Any]:

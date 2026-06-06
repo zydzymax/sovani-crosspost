@@ -21,6 +21,7 @@ if env_file.exists():
     load_dotenv(env_file)
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import (
     after_setup_logger,
     after_setup_task_logger,
@@ -57,6 +58,8 @@ def make_celery() -> Celery:
             "app.workers.tasks.publish",
             "app.workers.tasks.finalize",
             "app.workers.tasks.outbox",
+            "app.workers.tasks.scheduler",
+            "app.workers.tasks.token_maintenance",
         ],
     )
 
@@ -151,6 +154,11 @@ def make_celery() -> Celery:
         task_default_routing_key="ingest",
         # Beat scheduler settings
         beat_schedule={
+            "process-scheduled-posts": {
+                "task": "app.workers.tasks.scheduler.process_scheduled_posts",
+                "schedule": 60.0,  # Every minute
+                "options": {"queue": "default", "priority": 9},
+            },
             "process-outbox": {
                 "task": "app.workers.tasks.outbox.process_outbox_events",
                 "schedule": 10.0,  # Every 10 seconds
@@ -170,6 +178,27 @@ def make_celery() -> Celery:
                 "task": "app.workers.tasks.outbox.health_check_task",
                 "schedule": 60.0,  # Every minute
                 "options": {"queue": "outbox", "priority": 3},
+            },
+            "refresh-expiring-social-tokens": {
+                "task": "app.workers.tasks.token_maintenance.refresh_expiring_social_tokens",
+                "schedule": 1800.0,  # Every 30 minutes
+                "options": {"queue": "outbox", "priority": 4},
+            },
+            # --- Content automation ---
+            "blog-autogen": {
+                "task": "app.workers.tasks.blog_autogen.generate_blog_article",
+                "schedule": crontab(hour=9, minute=0, day_of_week="0,3,6"),  # Mon/Thu/Sun 09:00 MSK
+                "options": {"queue": "default", "priority": 5},
+            },
+            "news-commentary-morning": {
+                "task": "app.workers.tasks.news_monitor.post_news_commentary",
+                "schedule": crontab(hour=9, minute=30),  # 09:30 MSK daily
+                "options": {"queue": "default", "priority": 6},
+            },
+            "news-commentary-evening": {
+                "task": "app.workers.tasks.news_monitor.post_news_commentary",
+                "schedule": crontab(hour=19, minute=0),  # 19:00 MSK daily
+                "options": {"queue": "default", "priority": 6},
             },
         },
         # Monitoring

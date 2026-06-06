@@ -119,7 +119,7 @@ class SmartCropStub:
             analysis_time=asyncio.get_event_loop().time() - start_time,
             metadata={
                 "stub_version": "1.0",
-                "analysis_method": "pad_fallback",
+                "analysis_method": "stub_pad_fallback",
                 "reason": "Stub implementation returns safe pad strategy to avoid content loss",
                 "future_features": [
                     "Face detection and preservation",

@@ -146,21 +146,9 @@ async def calculate_usage(request: UsageRequest):
     )
 
     return {
-        "image": {
-            "credits_used": usage.image_credits_used,
-            "credits_included": usage.image_credits_included,
-            "overage": usage.image_overage,
-        },
-        "video": {
-            "credits_used": usage.video_credits_used,
-            "credits_included": usage.video_credits_included,
-            "overage": usage.video_overage,
-        },
-        "tts": {
-            "credits_used": usage.tts_credits_used,
-            "credits_included": usage.tts_credits_included,
-            "overage": usage.tts_overage,
-        },
+        "image": _usage_payload(usage.image_credits_used, usage.image_credits_included, usage.image_overage),
+        "video": _usage_payload(usage.video_credits_used, usage.video_credits_included, usage.video_overage),
+        "tts": _usage_payload(usage.tts_credits_used, usage.tts_credits_included, usage.tts_overage),
         "overage_cost_usd": usage.overage_cost_usd,
         "overage_cost_rub": round(usage.overage_cost_usd * USD_TO_RUB, -1),
     }
@@ -179,6 +167,36 @@ class RecommendRequest(BaseModel):
     tts_provider: str | None = None
     tts_chars_per_month: int = 0
     platforms_count: int = 3
+
+
+def _usage_payload(credits_used: int, credits_included: int, overage: int) -> dict[str, int]:
+    return {
+        "credits_used": credits_used,
+        "credits_included": credits_included,
+        "overage": overage,
+    }
+
+
+def _recommendation_response(recommendation) -> dict:
+    return {
+        "plan": {
+            "id": recommendation.plan_id,
+            "name": recommendation.plan_name,
+            "price_rub": recommendation.monthly_cost_rub,
+            "price_usd": recommendation.monthly_cost_usd,
+        },
+        "included": {
+            "images": recommendation.images_available,
+            "videos": recommendation.videos_available,
+            "tts_chars": recommendation.tts_chars_available,
+        },
+        "overage_cost_usd": recommendation.overage_cost_usd,
+        "total": {"usd": recommendation.total_cost_usd, "rub": recommendation.total_cost_rub},
+    }
+
+
+def _provider_if_has_usage(provider: str, usage: int) -> str | None:
+    return provider if usage > 0 else None
 
 
 @router.post("/recommend-plan")
@@ -200,21 +218,7 @@ async def recommend_plan(request: RecommendRequest):
         platforms_count=request.platforms_count,
     )
 
-    return {
-        "plan": {
-            "id": recommendation.plan_id,
-            "name": recommendation.plan_name,
-            "price_rub": recommendation.monthly_cost_rub,
-            "price_usd": recommendation.monthly_cost_usd,
-        },
-        "included": {
-            "images": recommendation.images_available,
-            "videos": recommendation.videos_available,
-            "tts_chars": recommendation.tts_chars_available,
-        },
-        "overage_cost_usd": recommendation.overage_cost_usd,
-        "total": {"usd": recommendation.total_cost_usd, "rub": recommendation.total_cost_rub},
-    }
+    return _recommendation_response(recommendation)
 
 
 # =============================================================================
@@ -234,11 +238,11 @@ async def quick_estimate(
 ):
     """Get quick price estimate."""
     recommendation = pricing_service.recommend_plan(
-        image_provider=image_provider if images_per_month > 0 else None,
+        image_provider=_provider_if_has_usage(image_provider, images_per_month),
         images_per_month=images_per_month,
-        video_provider=video_provider if video_clips_per_month > 0 else None,
+        video_provider=_provider_if_has_usage(video_provider, video_clips_per_month),
         video_clips_per_month=video_clips_per_month,
-        tts_provider=tts_provider if tts_chars_per_month > 0 else None,
+        tts_provider=_provider_if_has_usage(tts_provider, tts_chars_per_month),
         tts_chars_per_month=tts_chars_per_month,
         platforms_count=platforms_count,
     )
