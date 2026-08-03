@@ -8,7 +8,7 @@ from app.api import routes
 
 def _make_settings(
     endpoint: str = "http://minio:9000",
-    access_key: str = "[REVOKED_SECRET_REMOVED]",
+    access_key: str = "test-access-key",
     secret_key: SecretStr | str = SecretStr("secret"),
     bucket_name: str = "media-bucket",
 ):

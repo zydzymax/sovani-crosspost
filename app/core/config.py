@@ -82,8 +82,8 @@ class S3Config(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="S3_", case_sensitive=False, extra="ignore")
 
     endpoint: str = Field(default="http://localhost:9000")
-    access_key: str = Field(default="[REVOKED_SECRET_REMOVED]")
-    secret_key: SecretStr = Field(default="[REVOKED_SECRET_REMOVED]")
+    access_key: str = Field(default="")
+    secret_key: SecretStr = Field(default="")
     bucket_name: str = Field(default="saleswhisper-media")
     region: str = Field(default="us-east-1")
 

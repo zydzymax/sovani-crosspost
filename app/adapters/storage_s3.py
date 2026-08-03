@@ -18,7 +18,7 @@ class S3Storage:
     def __init__(self):
         """Initialize S3 storage adapter."""
         self.endpoint = os.getenv("S3_ENDPOINT", "http://minio:9000")
-        self.access_key = os.getenv("S3_ACCESS_KEY", "[REVOKED_SECRET_REMOVED]")
+        self.access_key = os.getenv("S3_ACCESS_KEY", "")
         self.secret_key = os.getenv("S3_SECRET_KEY", "[REVOKED_SECRET_REMOVED]")
         # Prefer S3_BUCKET_NAME to match project config and env files.
         self.bucket = os.getenv("S3_BUCKET_NAME") or os.getenv("S3_BUCKET") or "crosspost-media"
