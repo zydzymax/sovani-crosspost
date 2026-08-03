@@ -107,4 +107,10 @@ node_modules/
 
 # Build artifacts
 *.tar.gz
-*.zipscripts/backup-prod.sh.bak
+*.zip
+
+# Production secrets and generated backups
+.env.bak*
+backups/
+docker-compose.resolved.yml
+scripts/backup-prod.sh.bak
